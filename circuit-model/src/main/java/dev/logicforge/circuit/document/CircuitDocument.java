@@ -106,10 +106,33 @@ public final class CircuitDocument {
             return;
         }
         components.put(instance.id(), instance);
-        boolean reconfigured = !previous.parameters().equals(instance.parameters());
-        notifyListeners(new CircuitChange(reconfigured
-                ? CircuitChange.Kind.COMPONENT_RECONFIGURED
-                : CircuitChange.Kind.COMPONENT_MOVED, instance.id()));
+        
+        // Determine the most specific change kind
+        boolean parametersChanged = !previous.parameters().equals(instance.parameters());
+        boolean positionChanged = !previous.position().equals(instance.position());
+        boolean rotationChanged = previous.rotation() != instance.rotation();
+        boolean labelChanged = !previous.label().equals(instance.label());
+        
+        CircuitChange.Kind kind;
+        if (parametersChanged) {
+            kind = CircuitChange.Kind.COMPONENT_RECONFIGURED;
+        } else if (positionChanged && !rotationChanged && !labelChanged) {
+            kind = CircuitChange.Kind.COMPONENT_MOVED;
+        } else if (!positionChanged && rotationChanged && !labelChanged) {
+            kind = CircuitChange.Kind.COMPONENT_ROTATED;
+        } else if (!positionChanged && !rotationChanged && labelChanged) {
+            kind = CircuitChange.Kind.COMPONENT_RENAMED;
+        } else if (positionChanged || rotationChanged) {
+            // Combined position and/or rotation change
+            kind = CircuitChange.Kind.COMPONENT_MOVED;
+        } else if (labelChanged) {
+            kind = CircuitChange.Kind.COMPONENT_RENAMED;
+        } else {
+            // Fallback for any other change
+            kind = CircuitChange.Kind.COMPONENT_MOVED;
+        }
+        
+        notifyListeners(new CircuitChange(kind, instance.id()));
     }
 
     // ------------------------------------------------------------------

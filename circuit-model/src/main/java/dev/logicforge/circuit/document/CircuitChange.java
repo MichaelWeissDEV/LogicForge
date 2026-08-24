@@ -11,8 +11,12 @@ public record CircuitChange(Kind kind, UUID elementId) {
         COMPONENT_REMOVED(true),
         /** Parameters changed, so ports may have appeared or disappeared. */
         COMPONENT_RECONFIGURED(true),
-        /** Position, rotation or label changed — the netlist is unaffected. */
+        /** Component's position changed — the netlist is unaffected. */
         COMPONENT_MOVED(false),
+        /** Component's rotation changed — the netlist is unaffected. */
+        COMPONENT_ROTATED(false),
+        /** Component's label changed — the netlist is unaffected. */
+        COMPONENT_RENAMED(false),
         CONNECTION_ADDED(true),
         CONNECTION_REMOVED(true),
         /** Only the wire's waypoints changed. */
