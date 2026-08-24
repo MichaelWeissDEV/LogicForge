@@ -31,17 +31,11 @@ import java.util.Set;
 import java.util.UUID;
 import javafx.scene.Cursor;
 import javafx.scene.canvas.Canvas;
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.SeparatorMenuItem;
-import javafx.scene.input.ClipboardContent;
-import javafx.scene.input.Dragboard;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
-import javafx.scene.input.TransferMode;
 import javafx.scene.layout.Region;
 
 /**
@@ -70,7 +64,8 @@ public final class CircuitCanvasView extends Region {
     private final WireRouter router = new OrthogonalWireRouter();
     private final CircuitRenderer renderer;
     private final HitTester hitTester;
-    private final ContextMenu contextMenu = new ContextMenu();
+    private final CanvasContextMenu contextMenu = new CanvasContextMenu(this);
+    private final ComponentDropTarget dropTarget;
 
     private CanvasOverlay overlay = CanvasOverlay.EMPTY;
     private Mode mode = Mode.IDLE;
@@ -87,6 +82,7 @@ public final class CircuitCanvasView extends Region {
         this.editor = editor;
         this.renderer = new CircuitRenderer(editor, RendererRegistry.standard(), router);
         this.hitTester = new HitTester(editor::document, editor::definition, router);
+        this.dropTarget = new ComponentDropTarget(editor, viewport);
 
         getChildren().add(canvas);
         setFocusTraversable(true);
@@ -204,7 +200,7 @@ public final class CircuitCanvasView extends Region {
             return;
         }
         if (pendingPlacement != null) {
-            place(pendingPlacement, Grid.snap(dragStartWorld));
+            place(dropTarget.instanceAt(pendingPlacement, Grid.snap(dragStartWorld)));
             setPendingPlacement(null);
             return;
         }
@@ -503,54 +499,21 @@ public final class CircuitCanvasView extends Region {
 
     // ------------------------------------------------------------ drag & drop
 
-    /** The clipboard key palette drags carry. */
-    public static final String COMPONENT_DRAG_PREFIX = "logicforge:component:";
-
-    public static ClipboardContent dragContentFor(String definitionId) {
-        ClipboardContent content = new ClipboardContent();
-        content.putString(COMPONENT_DRAG_PREFIX + definitionId);
-        return content;
+    /** The clipboard content a palette drag carries. */
+    public static javafx.scene.input.ClipboardContent dragContentFor(String definitionId) {
+        return ComponentDropTarget.contentFor(definitionId);
     }
 
     private void installDragAndDrop() {
-        setOnDragOver(event -> {
-            definitionIdOf(event.getDragboard()).ifPresent(definitionId -> {
-                event.acceptTransferModes(TransferMode.COPY);
-                CircuitPoint world = Grid.snap(viewport.screenToWorld(event.getX(), event.getY()));
-                overlay = overlay.withGhost(ghostFor(definitionId, world));
-                redraw();
-            });
-            event.consume();
-        });
-        setOnDragExited(event -> {
-            overlay = overlay.withGhost(null);
-            redraw();
-        });
-        setOnDragDropped(event -> {
-            Optional<String> definitionId = definitionIdOf(event.getDragboard());
-            definitionId.ifPresent(id ->
-                    place(id, Grid.snap(viewport.screenToWorld(event.getX(), event.getY()))));
-            overlay = overlay.withGhost(null);
-            event.setDropCompleted(definitionId.isPresent());
-            event.consume();
-        });
+        dropTarget.install(this,
+                ghost -> {
+                    overlay = overlay.withGhost(ghost);
+                    redraw();
+                },
+                this::place);
     }
 
-    private Optional<String> definitionIdOf(Dragboard dragboard) {
-        if (!dragboard.hasString() || !dragboard.getString().startsWith(COMPONENT_DRAG_PREFIX)) {
-            return Optional.empty();
-        }
-        String id = dragboard.getString().substring(COMPONENT_DRAG_PREFIX.length());
-        return editor.definition(id).isPresent() ? Optional.of(id) : Optional.empty();
-    }
-
-    private ComponentInstance ghostFor(String definitionId, CircuitPoint position) {
-        return ComponentInstance.create(definitionId, position,
-                editor.definition(definitionId).orElseThrow().defaultParameters());
-    }
-
-    private void place(String definitionId, CircuitPoint position) {
-        ComponentInstance instance = ghostFor(definitionId, position);
+    private void place(ComponentInstance instance) {
         editor.execute(new AddComponentCommand(editor.document(), instance));
         editor.selection().selectComponent(instance.id());
         requestFocus();
@@ -561,32 +524,15 @@ public final class CircuitCanvasView extends Region {
     private void showContextMenu(MouseEvent event) {
         CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
         Optional<ComponentInstance> component = hitTester.componentAt(world);
-        contextMenu.getItems().clear();
-
         if (component.isPresent()) {
             if (!editor.selection().containsComponent(component.get().id())) {
                 editor.selection().selectComponent(component.get().id());
             }
-            contextMenu.getItems().addAll(
-                    menuItem("Rotate", this::rotateSelection),
-                    menuItem("Duplicate", this::duplicateSelection),
-                    new SeparatorMenuItem(),
-                    menuItem("Delete", this::deleteSelection));
+            contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else {
-            contextMenu.getItems().addAll(
-                    menuItem("Paste", this::paste),
-                    new SeparatorMenuItem(),
-                    menuItem("Zoom to fit", this::zoomToFit),
-                    menuItem("Reset zoom", this::resetZoom));
+            contextMenu.showForCanvas(this, event.getScreenX(), event.getScreenY());
         }
-        contextMenu.show(this, event.getScreenX(), event.getScreenY());
         redraw();
-    }
-
-    private MenuItem menuItem(String text, Runnable action) {
-        MenuItem item = new MenuItem(text);
-        item.setOnAction(event -> action.run());
-        return item;
     }
 
     // --------------------------------------------------------------- helpers
