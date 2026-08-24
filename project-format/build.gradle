@@ -5,4 +5,10 @@ plugins {
 dependencies {
     api project(':circuit-model')
     testImplementation project(':component-library')
+    testImplementation project(':circuit-compiler')
+}
+
+tasks.named('test') {
+    // The example circuits shipped in the repository are loaded and simulated by the tests.
+    systemProperty 'logicforge.examples', rootProject.file('examples').absolutePath
 }

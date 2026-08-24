@@ -10,25 +10,50 @@ dependencies {
 
 javafx {
     version = '25.0.1'
-    // javafx.swing is only needed by the development screenshot task.
+    // javafx.swing is only used by the development tools below.
     modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
 }
 
 application {
     mainClass = 'dev.logicforge.app.LogicForgeApp'
-    // JavaFX loads its native libraries itself; granting native access keeps the
-    // start-up free of warnings on Java 25.
+    // JavaFX loads its own native libraries; granting native access keeps start-up quiet.
     applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics']
 }
 
-/**
- * Renders the workbench with a demo circuit into a PNG, without a visible window.
- * A development aid for checking the look of the editor; not part of the application.
+/*
+ * Development tools that drive the real workbench (rendering a picture of it, replaying
+ * interactions). They are not part of the application and not unit tests, so they live in
+ * their own source set and never end up in the distribution.
  */
+sourceSets {
+    tools {
+        compileClasspath += sourceSets.main.output + configurations.runtimeClasspath
+        runtimeClasspath += sourceSets.main.output + configurations.runtimeClasspath
+    }
+}
+
 tasks.register('screenshot', JavaExec) {
     group = 'verification'
-    description = 'Renders the workbench into build/screenshot.png'
-    classpath = sourceSets.test.runtimeClasspath
+    description = 'Renders the workbench with a demo circuit into build/screenshot.png'
+    dependsOn tasks.named('toolsClasses')
+    classpath = sourceSets.tools.runtimeClasspath
     mainClass = 'dev.logicforge.app.WorkbenchScreenshot'
     args = [project.findProperty('out') ?: "${layout.buildDirectory.get()}/screenshot.png"]
+}
+
+tasks.register('uiCheck', JavaExec) {
+    group = 'verification'
+    description = 'Replays canvas gestures against the real UI and reports the outcome'
+    dependsOn tasks.named('toolsClasses')
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'dev.logicforge.app.CanvasInteractionCheck'
+}
+
+tasks.register('examples', JavaExec) {
+    group = 'build'
+    description = 'Regenerates the example circuits in examples/ through the real save path'
+    dependsOn tasks.named('toolsClasses')
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'dev.logicforge.app.ExampleGenerator'
+    args = [rootProject.file('examples').absolutePath]
 }

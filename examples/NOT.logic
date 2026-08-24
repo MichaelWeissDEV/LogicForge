@@ -1,0 +1,63 @@
+{
+  "formatVersion": 1,
+  "application": "LogicForge",
+  "name": "NOT",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Inverter: the LED is on while the switch is off",
+      "components": [
+        {
+          "id": "4171b32a-79f1-4c21-91f3-e0cefedeebe4",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 160,
+          "label": "A",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "7c677e96-1c6a-46f3-ba0f-c9462cd63fea",
+          "type": "logic.not",
+          "x": 264,
+          "y": 160
+        },
+        {
+          "id": "733697cd-e8d3-4ba0-82ea-64603557d4e6",
+          "type": "output.led",
+          "x": 424,
+          "y": 160,
+          "label": "Y",
+          "parameters": {
+            "color": "green"
+          }
+        }
+      ],
+      "connections": [
+        {
+          "id": "a2b729d4-ee89-47aa-98da-5c1adce49749",
+          "from": {
+            "component": "4171b32a-79f1-4c21-91f3-e0cefedeebe4",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "7c677e96-1c6a-46f3-ba0f-c9462cd63fea",
+            "port": "A"
+          }
+        },
+        {
+          "id": "8caa145e-f646-46f3-bf9d-eea2dedf08d8",
+          "from": {
+            "component": "7c677e96-1c6a-46f3-ba0f-c9462cd63fea",
+            "port": "Y"
+          },
+          "to": {
+            "component": "733697cd-e8d3-4ba0-82ea-64603557d4e6",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}

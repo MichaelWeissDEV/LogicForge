@@ -1,0 +1,87 @@
+{
+  "formatVersion": 1,
+  "application": "LogicForge",
+  "name": "XOR",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "XOR gate driven by two switches",
+      "components": [
+        {
+          "id": "84e3323b-a9a7-439c-9afe-c29bf578bf24",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 112,
+          "label": "A",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "b984d068-ad52-4d89-8300-c6d944da788c",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 224,
+          "label": "B",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "bf720870-70b5-4e17-8f96-ffab3d2c2dbf",
+          "type": "logic.xor",
+          "x": 288,
+          "y": 168,
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "daac2ccf-1ba4-459e-8aa3-4f02f192ccb7",
+          "type": "output.led",
+          "x": 456,
+          "y": 168,
+          "label": "Y",
+          "parameters": {
+            "color": "green"
+          }
+        }
+      ],
+      "connections": [
+        {
+          "id": "20988901-2c8b-4a3f-b3dc-72a121e841e5",
+          "from": {
+            "component": "84e3323b-a9a7-439c-9afe-c29bf578bf24",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "bf720870-70b5-4e17-8f96-ffab3d2c2dbf",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "e0d7a8b1-9719-4b77-856a-defe6a206be6",
+          "from": {
+            "component": "b984d068-ad52-4d89-8300-c6d944da788c",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "bf720870-70b5-4e17-8f96-ffab3d2c2dbf",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "fed5163c-e268-4a53-8f35-dfab65a34337",
+          "from": {
+            "component": "bf720870-70b5-4e17-8f96-ffab3d2c2dbf",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "daac2ccf-1ba4-459e-8aa3-4f02f192ccb7",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}

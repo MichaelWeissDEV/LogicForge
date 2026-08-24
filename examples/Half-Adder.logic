@@ -1,0 +1,141 @@
+{
+  "formatVersion": 1,
+  "application": "LogicForge",
+  "name": "Half-Adder",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Half adder: SUM = A xor B, CARRY = A and B",
+      "components": [
+        {
+          "id": "d94750b9-c910-4c2a-a19c-d5276b32beb6",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 120,
+          "label": "A",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "53ab7ce7-c513-4b3f-9a4a-d6456f328029",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 264,
+          "label": "B",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "cf6c5c5c-3210-46f6-8607-e2a8495f094e",
+          "type": "logic.xor",
+          "x": 320,
+          "y": 120,
+          "label": "SUM_XOR",
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "0c3f2d50-ba16-470e-9d61-775512d0b21e",
+          "type": "logic.and",
+          "x": 320,
+          "y": 288,
+          "label": "CARRY_AND",
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "6a6a5d63-d726-47e3-91af-eb56c9b85217",
+          "type": "output.led",
+          "x": 520,
+          "y": 120,
+          "label": "SUM",
+          "parameters": {
+            "color": "green"
+          }
+        },
+        {
+          "id": "2231a50c-ad1e-4fa9-a596-4d072aae6e6a",
+          "type": "output.led",
+          "x": 520,
+          "y": 288,
+          "label": "CARRY",
+          "parameters": {
+            "color": "amber"
+          }
+        }
+      ],
+      "connections": [
+        {
+          "id": "0eaa877b-7102-42d7-b5e3-596bba540a8e",
+          "from": {
+            "component": "d94750b9-c910-4c2a-a19c-d5276b32beb6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "cf6c5c5c-3210-46f6-8607-e2a8495f094e",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "e882c520-679a-477f-9a68-7e64311d503d",
+          "from": {
+            "component": "53ab7ce7-c513-4b3f-9a4a-d6456f328029",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "cf6c5c5c-3210-46f6-8607-e2a8495f094e",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "5e075410-2450-42a5-9f55-908773f751f7",
+          "from": {
+            "component": "d94750b9-c910-4c2a-a19c-d5276b32beb6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "0c3f2d50-ba16-470e-9d61-775512d0b21e",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "ca722a7d-b83f-416c-9104-94162606060c",
+          "from": {
+            "component": "53ab7ce7-c513-4b3f-9a4a-d6456f328029",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "0c3f2d50-ba16-470e-9d61-775512d0b21e",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "33141733-043f-4f2e-a757-72e0142ffe37",
+          "from": {
+            "component": "cf6c5c5c-3210-46f6-8607-e2a8495f094e",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "6a6a5d63-d726-47e3-91af-eb56c9b85217",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "33eff7e3-c23b-4752-881a-95646e9326cf",
+          "from": {
+            "component": "0c3f2d50-ba16-470e-9d61-775512d0b21e",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "2231a50c-ad1e-4fa9-a596-4d072aae6e6a",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}

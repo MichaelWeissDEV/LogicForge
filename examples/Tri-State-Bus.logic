@@ -1,0 +1,140 @@
+{
+  "formatVersion": 1,
+  "application": "LogicForge",
+  "name": "Tri-State-Bus",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Two drivers on one bus: Z when idle, X when they disagree",
+      "components": [
+        {
+          "id": "6b8b7ea0-2402-4732-a1d9-f06a923ca961",
+          "type": "source.zero",
+          "x": 96,
+          "y": 96
+        },
+        {
+          "id": "f8d4de5a-f76b-49ee-9ecd-948e26e6dae6",
+          "type": "source.one",
+          "x": 96,
+          "y": 296
+        },
+        {
+          "id": "f3730e45-5b4f-443e-8b80-07ff1afe659e",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 176,
+          "label": "ENABLE_A",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "ba7da822-cc3a-42cb-9ac6-3965d01e2c25",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 376,
+          "label": "ENABLE_B",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "3cae32cb-f4cf-49e7-ae2e-3d5e64b18f32",
+          "type": "logic.tristate",
+          "x": 320,
+          "y": 120,
+          "label": "DRIVER_A",
+          "parameters": {
+            "activeLow": false
+          }
+        },
+        {
+          "id": "e12e35ba-a12b-4897-b9e8-fa6e1158481e",
+          "type": "logic.tristate",
+          "x": 320,
+          "y": 320,
+          "label": "DRIVER_B",
+          "parameters": {
+            "activeLow": false
+          }
+        },
+        {
+          "id": "c5b2baba-0f2e-4a2a-b7be-1ef46f585e9c",
+          "type": "output.probe",
+          "x": 520,
+          "y": 216,
+          "label": "BUS"
+        }
+      ],
+      "connections": [
+        {
+          "id": "fb33da06-9013-47d6-9e4c-6e799e2696ee",
+          "from": {
+            "component": "6b8b7ea0-2402-4732-a1d9-f06a923ca961",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "3cae32cb-f4cf-49e7-ae2e-3d5e64b18f32",
+            "port": "A"
+          }
+        },
+        {
+          "id": "00b24c75-6703-43d1-9539-b7b2dfb805c9",
+          "from": {
+            "component": "f3730e45-5b4f-443e-8b80-07ff1afe659e",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "3cae32cb-f4cf-49e7-ae2e-3d5e64b18f32",
+            "port": "ENABLE"
+          }
+        },
+        {
+          "id": "c25311d0-777e-4b0d-b7e8-7bbd001953b8",
+          "from": {
+            "component": "f8d4de5a-f76b-49ee-9ecd-948e26e6dae6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "e12e35ba-a12b-4897-b9e8-fa6e1158481e",
+            "port": "A"
+          }
+        },
+        {
+          "id": "da2b131b-58d1-417e-b340-7b2832e01b7f",
+          "from": {
+            "component": "ba7da822-cc3a-42cb-9ac6-3965d01e2c25",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "e12e35ba-a12b-4897-b9e8-fa6e1158481e",
+            "port": "ENABLE"
+          }
+        },
+        {
+          "id": "5a2443ac-f88b-403c-822f-2eca6a2ab841",
+          "from": {
+            "component": "3cae32cb-f4cf-49e7-ae2e-3d5e64b18f32",
+            "port": "Y"
+          },
+          "to": {
+            "component": "c5b2baba-0f2e-4a2a-b7be-1ef46f585e9c",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "781d37fd-21f5-4f1d-9452-9a0666ac9307",
+          "from": {
+            "component": "e12e35ba-a12b-4897-b9e8-fa6e1158481e",
+            "port": "Y"
+          },
+          "to": {
+            "component": "c5b2baba-0f2e-4a2a-b7be-1ef46f585e9c",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}
