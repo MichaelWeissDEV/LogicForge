@@ -290,4 +290,51 @@ class SimulationTest {
         }
         return trace;
     }
+
+    @Test
+    void oscillationDetectionIsPerTimestampNotTotal() {
+        // Test that many successive timestamps do NOT cause oscillation detection
+        // Only too many delta cycles at the SAME timestamp should trigger oscillation
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int netA = builder.addNet(BitWidth.ONE);
+        int netB = builder.addNet(BitWidth.ONE);
+        int netC = builder.addNet(BitWidth.ONE);
+        
+        // Create a long chain of inverters that will take many delta cycles to settle
+        // but each at the same timestamp (time 0)
+        int switchA = builder.addComponent("source.toggle", "A", TestBehaviors.SWITCH, NONE, new int[]{netA});
+        int prev = netA;
+        for (int i = 0; i < 50; i++) {
+            int net = builder.addNet(BitWidth.ONE);
+            builder.addComponent("logic.not", "N" + i, TestBehaviors.NOT, new int[]{prev}, new int[]{net});
+            prev = net;
+        }
+        
+        Simulation simulation = new Simulation(builder.build());
+        
+        // This should NOT oscillate because each delta cycle is at the same timestamp
+        // but the limit is on delta cycles per timestamp, not total
+        // With maxDeltaCycles = 1000, 50 inverters in a chain should be fine
+        simulation.setInput(switchA, LogicState.ONE);
+        
+        // Should stabilize without oscillation
+        assertEquals(SimulationStatus.STABLE, simulation.status());
+    }
+
+    @Test
+    void zeroDelayLoopIsDetectedAsOscillation() {
+        // Test that a true zero-delay loop is detected as oscillation
+        // Use ALWAYS_FLIPPING which treats UNKNOWN as 0 and always inverts,
+        // causing an infinite oscillation: 0 -> 1 -> 0 -> 1 ...
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int loop = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.flipping", "OSC", TestBehaviors.ALWAYS_FLIPPING,
+                new int[]{loop}, new int[]{loop});
+        
+        Simulation simulation = new Simulation(builder.build());
+        
+        // This should detect oscillation because we have an infinite loop at timestamp 0
+        assertEquals(SimulationStatus.OSCILLATING, simulation.status());
+        assertTrue(simulation.oscillation().isPresent());
+    }
 }

@@ -25,7 +25,9 @@ import dev.logicforge.ui.viewport.ViewportTransform;
 import dev.logicforge.ui.wiring.OrthogonalWireRouter;
 import dev.logicforge.ui.wiring.WireRouter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,6 +80,12 @@ public final class CircuitCanvasView extends Region {
     private String pendingPlacement;
     private Runnable statusListener = () -> {
     };
+    
+    // For momentary button handling: track which component is being pressed
+    private UUID pressedComponentId = null;
+    
+    // For transient move preview: store original positions of components being moved
+    private Map<UUID, CircuitPoint> originalPositions = Map.of();
 
     public CircuitCanvasView(CircuitEditor editor) {
         this.editor = editor;
@@ -180,6 +188,16 @@ public final class CircuitCanvasView extends Region {
             viewport.zoomBy(event.getZoomFactor(), event.getX(), event.getY());
             redraw();
         });
+        setOnMouseExited(this::onMouseExited);
+    }
+
+    private void onMouseExited(MouseEvent event) {
+        // If a momentary button is pressed and mouse exits, release it
+        if (pressedComponentId != null) {
+            editor.handleInputInteraction(pressedComponentId, false);
+            pressedComponentId = null;
+            redraw();
+        }
     }
 
     private void onMousePressed(MouseEvent event) {
@@ -219,6 +237,12 @@ public final class CircuitCanvasView extends Region {
 
         Optional<ComponentInstance> component = hitTester.componentAt(dragStartWorld);
         if (component.isPresent()) {
+            // Check if this is a momentary button - start tracking press
+            var interaction = editor.inputInteraction(component.get().id());
+            if (interaction == dev.logicforge.circuit.component.InputInteraction.MOMENTARY) {
+                pressedComponentId = component.get().id();
+                editor.handleInputInteraction(pressedComponentId, true);
+            }
             beginComponentInteraction(component.get(), event);
             return;
         }
@@ -248,8 +272,23 @@ public final class CircuitCanvasView extends Region {
         } else if (!editor.selection().containsComponent(component.id())) {
             editor.selection().selectComponent(component.id());
         }
+        
+        // For momentary buttons, don't start a drag - they are handled by press/release
+        var interaction = editor.inputInteraction(component.id());
+        if (interaction == dev.logicforge.circuit.component.InputInteraction.MOMENTARY) {
+            mode = Mode.IDLE;  // Don't enter MOVING mode for momentary buttons
+            movedComponentsBefore = List.of();
+            return;
+        }
+        
         mode = Mode.MOVING;
         movedComponentsBefore = selectedComponents();
+        
+        // Capture original positions for transient preview
+        originalPositions = new java.util.LinkedHashMap<>();
+        for (ComponentInstance instance : movedComponentsBefore) {
+            originalPositions.put(instance.id(), instance.position());
+        }
     }
 
     private void onMouseDragged(MouseEvent event) {
@@ -260,6 +299,16 @@ public final class CircuitCanvasView extends Region {
             dragExceededThreshold = true;
         }
         CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
+
+        // If a momentary button is pressed, check if mouse is still over it
+        if (pressedComponentId != null) {
+            Optional<ComponentInstance> component = hitTester.componentAt(world);
+            if (component.isEmpty() || !component.get().id().equals(pressedComponentId)) {
+                // Mouse moved off the button - release it
+                editor.handleInputInteraction(pressedComponentId, false);
+                pressedComponentId = null;
+            }
+        }
 
         switch (mode) {
             case PANNING -> {
@@ -286,17 +335,18 @@ public final class CircuitCanvasView extends Region {
         lastScreenY = event.getY();
     }
 
-    /** Moves the selection as a whole, snapping the dragged group onto the grid. */
+    /** Updates the transient preview positions during drag. Does NOT modify the document. */
     private void dragSelection(CircuitPoint world) {
         if (movedComponentsBefore.isEmpty()) {
             return;
         }
         CircuitPoint offset = world.minus(dragStartWorld);
+        Map<UUID, CircuitPoint> newPositions = new java.util.LinkedHashMap<>();
         for (ComponentInstance before : movedComponentsBefore) {
             CircuitPoint target = Grid.snap(before.position().plus(offset));
-            editor.document().replaceComponent(
-                    editor.document().requireComponent(before.id()).withPosition(target));
+            newPositions.put(before.id(), target);
         }
+        overlay = overlay.withMovingComponents(newPositions);
         redraw();
     }
 
@@ -309,6 +359,13 @@ public final class CircuitCanvasView extends Region {
             default -> {
             }
         }
+        
+        // Release momentary button if it was pressed
+        if (pressedComponentId != null) {
+            editor.handleInputInteraction(pressedComponentId, false);
+            pressedComponentId = null;
+        }
+        
         mode = Mode.IDLE;
         overlay = overlay.withSelectionRectangle(null).withPreviewWire(null, null);
         setCursor(pendingPlacement == null ? Cursor.DEFAULT : Cursor.CROSSHAIR);
@@ -326,17 +383,40 @@ public final class CircuitCanvasView extends Region {
      */
     private void finishMove(MouseEvent event) {
         if (!dragExceededThreshold) {
-            restorePositions();
+            // No actual movement - this is a click, not a drag
+            // Don't restore positions (they were never changed in the document)
             handleClick(event);
+            movedComponentsBefore = List.of();
+            originalPositions = Map.of();
+            overlay = overlay.withMovingComponents(Map.of());
             return;
         }
+        
+        // Build the final positions from the preview overlay
+        Map<UUID, CircuitPoint> finalPositions = overlay.movingComponentPositions();
+        if (finalPositions.isEmpty()) {
+            // Fallback: use drag position
+            CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
+            CircuitPoint offset = world.minus(dragStartWorld);
+            finalPositions = new java.util.LinkedHashMap<>();
+            for (ComponentInstance before : movedComponentsBefore) {
+                CircuitPoint target = Grid.snap(before.position().plus(offset));
+                finalPositions.put(before.id(), target);
+            }
+        }
+        
+        // Create the after instances with new positions
         List<ComponentInstance> after = new ArrayList<>();
         for (ComponentInstance before : movedComponentsBefore) {
-            after.add(editor.document().requireComponent(before.id()));
+            CircuitPoint newPosition = finalPositions.getOrDefault(before.id(), before.position());
+            after.add(before.withPosition(newPosition));
         }
-        restorePositions();
+        
+        // Execute ONE command for the entire move
         editor.execute(new MoveComponentsCommand(editor.document(), movedComponentsBefore, after));
         movedComponentsBefore = List.of();
+        originalPositions = Map.of();
+        overlay = overlay.withMovingComponents(Map.of());
     }
 
     /** Puts the components back where the drag started, so the command owns the change. */
@@ -350,7 +430,12 @@ public final class CircuitCanvasView extends Region {
         hitTester.componentAt(viewport.screenToWorld(event.getX(), event.getY()))
                 .ifPresent(component -> {
                     if (editor.isUserInput(component.id())) {
-                        editor.toggleInput(component.id());
+                        var interaction = editor.inputInteraction(component.id());
+                        if (interaction == dev.logicforge.circuit.component.InputInteraction.TOGGLE) {
+                            editor.toggleInput(component.id());
+                        }
+                        // MOMENTARY buttons are handled by press/release in onMousePressed/onMouseReleased
+                        // so we don't need to do anything here for them
                     }
                 });
     }

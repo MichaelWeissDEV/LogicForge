@@ -57,6 +57,8 @@ public final class Simulation {
     private long sequence;
     private long time;
     private int deltaCycle;
+    private int deltaCyclesAtCurrentTime;
+    private long lastOscillationCheckTime;
     private boolean running = true;
     private SimulationStatus status = SimulationStatus.STABLE;
     private SimulationOscillationException oscillation;
@@ -92,6 +94,8 @@ public final class Simulation {
         sequence = 0;
         time = 0;
         deltaCycle = 0;
+        deltaCyclesAtCurrentTime = 0;
+        lastOscillationCheckTime = -1;
         for (int netId = 0; netId < netValues.length; netId++) {
             netValues[netId] = undriven(netId);
         }
@@ -136,8 +140,17 @@ public final class Simulation {
             return false;
         }
         SimulationEvent next = queue.peek();
-        time = next.time();
-        deltaCycle = next.deltaCycle();
+        long newTime = next.time();
+        int newDeltaCycle = next.deltaCycle();
+        
+        // Check if we've moved to a new timestamp
+        if (newTime != time) {
+            deltaCyclesAtCurrentTime = 0;
+            lastOscillationCheckTime = newTime;
+        }
+        
+        time = newTime;
+        deltaCycle = newDeltaCycle;
 
         TreeSet<Integer> dirtyNets = new TreeSet<>();
         while (!queue.isEmpty() && queue.peek().time() == time && queue.peek().deltaCycle() == deltaCycle) {
@@ -173,22 +186,34 @@ public final class Simulation {
      * Propagates until nothing is left to do.
      *
      * @return the number of delta cycles it took
-     * @throws SimulationOscillationException if the circuit does not settle
+     * @throws SimulationOscillationException if the circuit does not settle within
+     *         {@link #maxDeltaCycles} delta cycles at the same timestamp
      */
     public int runUntilStable() {
-        int cycles = 0;
+        int totalCycles = 0;
         while (!queue.isEmpty()) {
             step();
-            if (++cycles > maxDeltaCycles) {
+            totalCycles++;
+            
+            // Track delta cycles at the current timestamp
+            if (time == lastOscillationCheckTime) {
+                deltaCyclesAtCurrentTime++;
+            } else {
+                deltaCyclesAtCurrentTime = 1;
+                lastOscillationCheckTime = time;
+            }
+            
+            // Check for oscillation: too many delta cycles at the SAME timestamp
+            if (deltaCyclesAtCurrentTime > maxDeltaCycles) {
                 status = SimulationStatus.OSCILLATING;
                 queue.clear();
-                oscillation = new SimulationOscillationException(cycles, List.copyOf(lastChangedNets));
+                oscillation = new SimulationOscillationException(totalCycles, List.copyOf(lastChangedNets));
                 throw oscillation;
             }
         }
         status = SimulationStatus.STABLE;
         oscillation = null;
-        return cycles;
+        return totalCycles;
     }
 
     /** Details of the last detected oscillation, while {@link #status()} reports one. */

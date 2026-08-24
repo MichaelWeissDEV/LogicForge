@@ -3,6 +3,7 @@ package dev.logicforge.ui.edit;
 import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.document.CircuitChange;
 import dev.logicforge.circuit.document.CircuitDocument;
+import dev.logicforge.circuit.document.CircuitDocumentListener;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PortReference;
@@ -11,6 +12,7 @@ import dev.logicforge.compiler.CircuitCompiler;
 import dev.logicforge.compiler.CompilationResult;
 import dev.logicforge.compiler.ValidationIssue;
 import dev.logicforge.library.ComponentRegistry;
+import dev.logicforge.library.LibraryParameters;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.InputSourceState;
@@ -55,7 +57,9 @@ public final class CircuitEditor {
     private CompilationResult compilation;
     private Simulation simulation;
     private String compileError;
+    private List<ValidationIssue> lastValidationIssues = List.of();
     private boolean dirty;
+    private CircuitDocumentListener documentListener;
 
     public CircuitEditor(ComponentRegistry registry) {
         this.registry = registry;
@@ -68,12 +72,18 @@ public final class CircuitEditor {
     // ------------------------------------------------------------------
 
     public void setProject(CircuitProject newProject, boolean markDirty) {
+        if (document != null && documentListener != null) {
+            document.removeListener(documentListener);
+        }
         this.project = newProject;
         this.document = newProject.mainCircuit();
-        this.document.addListener(this::onDocumentChanged);
+        this.documentListener = this::onCircuitChanged;
+        this.document.addListener(documentListener);
         this.undoStack.clear();
         this.selection.clear();
         this.dirty = markDirty;
+        // Clear lastValidationIssues before recompiling
+        this.lastValidationIssues = List.of();
         recompile(Map.of());
         notifyChanged();
     }
@@ -166,7 +176,7 @@ public final class CircuitEditor {
     }
 
     public List<ValidationIssue> issues() {
-        return compilation == null ? List.of() : compilation.issues();
+        return lastValidationIssues;
     }
 
     public SimulationStatus status() {
@@ -236,11 +246,56 @@ public final class CircuitEditor {
         return inputStateOf(componentId).isPresent();
     }
 
+    /** Returns the input interaction type for a component, or NONE if not interactive. */
+    public dev.logicforge.circuit.component.InputInteraction inputInteraction(UUID componentId) {
+        return document.component(componentId)
+                .flatMap(instance -> registry.definition(instance.definitionId()))
+                .map(ComponentDefinition::inputInteraction)
+                .orElse(dev.logicforge.circuit.component.InputInteraction.NONE);
+    }
+
     /** Flips a toggle switch. Simulation state only — the project stays unmodified. */
     public void toggleInput(UUID componentId) {
         inputStateOf(componentId).ifPresent(state -> {
             LogicState current = state.value().singleBit();
             setInput(componentId, current == LogicState.ONE ? LogicState.ZERO : LogicState.ONE);
+        });
+    }
+
+    /**
+     * Handles a user interaction with an input component.
+     * For TOGGLE: toggles the state on click.
+     * For MOMENTARY: sets to active state on press, inactive on release.
+     * Respects the inverted parameter for both types.
+     */
+    public void handleInputInteraction(UUID componentId, boolean pressed) {
+        document.component(componentId).ifPresent(instance -> {
+            var defOpt = registry.definition(instance.definitionId());
+            if (defOpt.isEmpty()) {
+                return;
+            }
+            var def = defOpt.get();
+            var interaction = def.inputInteraction();
+            
+            // Get inverted parameter, defaulting to false if not present
+            boolean inverted = false;
+            if (instance.parameters().asMap().containsKey(LibraryParameters.INVERTED.key())) {
+                inverted = instance.parameters().getBoolean(LibraryParameters.INVERTED);
+            }
+            
+            if (interaction == dev.logicforge.circuit.component.InputInteraction.TOGGLE && !pressed) {
+                // Toggle on click (release after press)
+                inputStateOf(componentId).ifPresent(state -> {
+                    LogicState current = state.value().singleBit();
+                    setInput(componentId, current == LogicState.ONE ? LogicState.ZERO : LogicState.ONE);
+                });
+            } else if (interaction == dev.logicforge.circuit.component.InputInteraction.MOMENTARY) {
+                // Momentary: pressed = active, released = inactive
+                LogicState value = pressed
+                        ? (inverted ? LogicState.ZERO : LogicState.ONE)
+                        : (inverted ? LogicState.ONE : LogicState.ZERO);
+                setInput(componentId, value);
+            }
         });
     }
 
@@ -277,7 +332,7 @@ public final class CircuitEditor {
     // Compilation
     // ------------------------------------------------------------------
 
-    private void onDocumentChanged(CircuitDocument changed, CircuitChange change) {
+    private void onCircuitChanged(CircuitDocument changed, CircuitChange change) {
         dirty = true;
         if (change.affectsTopology()) {
             recompile(captureInputValues());
@@ -289,14 +344,19 @@ public final class CircuitEditor {
         try {
             compilation = compiler.compile(document);
             compileError = null;
+            lastValidationIssues = compilation.issues();
             simulation = new Simulation(compilation.circuit());
             restoreInputValues(previousInputs);
         } catch (CircuitCompileException failure) {
             compilation = null;
             simulation = null;
             compileError = failure.getMessage();
+            lastValidationIssues = failure.issues();
         } catch (SimulationOscillationException oscillation) {
+            compilation = null;
+            simulation = null;
             compileError = oscillation.getMessage();
+            lastValidationIssues = List.of();
         }
     }
 

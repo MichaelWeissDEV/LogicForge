@@ -101,6 +101,10 @@ public final class CircuitDocument {
     /** Replaces a component with an edited copy that has the same id. */
     public void replaceComponent(ComponentInstance instance) {
         ComponentInstance previous = requireComponent(instance.id());
+        if (previous.equals(instance)) {
+            // No-op replacement: instance is identical to previous, skip notification
+            return;
+        }
         components.put(instance.id(), instance);
         boolean reconfigured = !previous.parameters().equals(instance.parameters());
         notifyListeners(new CircuitChange(reconfigured

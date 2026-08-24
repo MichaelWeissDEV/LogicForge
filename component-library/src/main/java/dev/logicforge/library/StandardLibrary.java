@@ -3,6 +3,10 @@ package dev.logicforge.library;
 import static dev.logicforge.circuit.component.ComponentCategory.LOGIC;
 import static dev.logicforge.circuit.component.ComponentCategory.OUTPUTS;
 import static dev.logicforge.circuit.component.ComponentCategory.SOURCES;
+import static dev.logicforge.circuit.component.InputInteraction.MOMENTARY;
+import static dev.logicforge.circuit.component.InputInteraction.TOGGLE;
+
+import dev.logicforge.circuit.component.InputInteraction;
 
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
@@ -67,7 +71,7 @@ final class StandardLibrary {
         registry.register(new ComponentType(
                 definition("source.toggle", "Toggle Switch", SOURCES,
                         "Switches between 0 and 1 when clicked", List.of(LibraryParameters.INITIALLY_ON),
-                        PortLayouts.source(), List.of("switch", "input", "toggle")),
+                        PortLayouts.source(), List.of("switch", "input", "toggle"), TOGGLE),
                 values -> new UserInputBehavior(
                         values.getBoolean(LibraryParameters.INITIALLY_ON) ? LogicState.ONE : LogicState.ZERO,
                         false)));
@@ -76,7 +80,7 @@ final class StandardLibrary {
                 definition("source.button", "Push Button", SOURCES,
                         "Reads 1 while held down and 0 when released",
                         List.of(LibraryParameters.INVERTED), PortLayouts.source(),
-                        List.of("button", "momentary", "input", "push")),
+                        List.of("button", "momentary", "input", "push"), MOMENTARY),
                 values -> new UserInputBehavior(LogicState.ZERO,
                         values.getBoolean(LibraryParameters.INVERTED))));
     }
@@ -156,6 +160,12 @@ final class StandardLibrary {
     private static LibraryDefinition definition(String id, String displayName, ComponentCategory category,
                                                 String description, List<ParameterSpec<?>> parameters,
                                                 PortLayout layout, List<String> keywords) {
-        return new LibraryDefinition(id, displayName, category, description, parameters, layout, keywords);
+        return new LibraryDefinition(id, displayName, category, description, parameters, layout, keywords, InputInteraction.NONE);
+    }
+
+    private static LibraryDefinition definition(String id, String displayName, ComponentCategory category,
+                                                String description, List<ParameterSpec<?>> parameters,
+                                                PortLayout layout, List<String> keywords, InputInteraction inputInteraction) {
+        return new LibraryDefinition(id, displayName, category, description, parameters, layout, keywords, inputInteraction);
     }
 }

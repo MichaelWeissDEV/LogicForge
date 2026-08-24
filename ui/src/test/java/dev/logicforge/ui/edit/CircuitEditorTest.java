@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.logicforge.circuit.component.ParameterValues;
+import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
@@ -343,5 +344,24 @@ class CircuitEditorTest {
 
         editor.toggleInput(switchA.id());
         assertEquals(LogicState.ONE, editor.inputValueOf(switchA.id()).orElseThrow());
+    }
+
+    @Test
+    void oldDocumentListenersAreRemovedWhenSwitchingProjects() {
+        CircuitEditor editor = new CircuitEditor(ComponentRegistry.standard());
+        CircuitEditor editorForProjectB = new CircuitEditor(ComponentRegistry.standard());
+        
+        boolean[] projectACalled = {false};
+        editor.setProject(CircuitProject.empty("projectA"), false);
+        editor.document().addListener((doc, change) -> projectACalled[0] = true);
+        
+        // Switch to project B
+        editor.setProject(CircuitProject.empty("projectB"), false);
+        
+        // Modify project B's document - this should NOT trigger project A's listener
+        editor.execute(new AddComponentCommand(editor.document(), ComponentInstance.create(
+                "logic.and", new CircuitPoint(0, 0), ParameterValues.empty())));
+        
+        assertFalse(projectACalled[0], "Old document listener from project A should not be called when editing project B");
     }
 }

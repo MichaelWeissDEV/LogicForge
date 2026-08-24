@@ -198,13 +198,17 @@ public final class CircuitRenderer {
                               CanvasOverlay overlay, double opacity) {
         boolean selected = editor.selection().containsComponent(instance.id());
         boolean hovered = instance.id().equals(overlay.hoveredComponent());
+        
+        // Use preview position if this component is being moved
+        CircuitPoint effectivePosition = overlay.movingComponentPositions().getOrDefault(
+                instance.id(), instance.position());
 
         graphics.save();
         graphics.setGlobalAlpha(opacity);
 
-        drawPorts(graphics, instance, definition, viewport, overlay);
+        drawPorts(graphics, instance, definition, viewport, overlay, effectivePosition);
 
-        graphics.translate(instance.position().x(), instance.position().y());
+        graphics.translate(effectivePosition.x(), effectivePosition.y());
         graphics.rotate(instance.rotation().degrees());
         renderers.rendererFor(instance.definitionId()).drawSymbol(graphics,
                 new SymbolContext(instance, definition, definition.bodySize(instance.parameters()),
@@ -219,11 +223,26 @@ public final class CircuitRenderer {
 
     private void drawPorts(GraphicsContext graphics, ComponentInstance instance,
                            ComponentDefinition definition, ViewportTransform viewport,
-                           CanvasOverlay overlay) {
+                           CanvasOverlay overlay, CircuitPoint effectivePosition) {
         graphics.setLineWidth(Theme.WIRE_STROKE);
         for (PlacedPort placed : ComponentGeometry.ports(instance, definition)) {
-            CircuitPoint outer = placed.position();
-            CircuitPoint inner = placed.stubEnd(-dev.logicforge.library.PortLayout.PORT_STUB);
+            // Ports are relative to component position, so we need to adjust
+            CircuitPoint portPosRelative = placed.position();
+            CircuitPoint portPosAbsolute = new CircuitPoint(
+                    effectivePosition.x() + portPosRelative.x() - instance.position().x(),
+                    effectivePosition.y() + portPosRelative.y() - instance.position().y());
+            CircuitPoint outer = portPosAbsolute;
+            CircuitPoint inner = new CircuitPoint(
+                    outer.x() - dev.logicforge.library.PortLayout.PORT_STUB * directionX(placed.side()),
+                    outer.y() - dev.logicforge.library.PortLayout.PORT_STUB * directionY(placed.side()));
+            
+            // Actually, placed.position() already returns absolute position
+            // But we need to offset by the difference between effective and instance position
+            double dx = effectivePosition.x() - instance.position().x();
+            double dy = effectivePosition.y() - instance.position().y();
+            outer = new CircuitPoint(placed.position().x() + dx, placed.position().y() + dy);
+            inner = new CircuitPoint(inner.x() + dx, inner.y() + dy);
+            
             graphics.setStroke(signalColorOf(placed.reference()));
             graphics.strokeLine(inner.x(), inner.y(), outer.x(), outer.y());
 
@@ -235,16 +254,27 @@ public final class CircuitRenderer {
             graphics.fillOval(outer.x() - radius, outer.y() - radius, radius * 2, radius * 2);
 
             if (viewport.scale() >= PORT_LABEL_ZOOM) {
-                drawPortName(graphics, placed);
+                drawPortName(graphics, placed, dx, dy);
             }
         }
     }
+    
+    private double directionX(dev.logicforge.circuit.geometry.PortSide side) {
+        return side == dev.logicforge.circuit.geometry.PortSide.RIGHT ? 1 : 
+               side == dev.logicforge.circuit.geometry.PortSide.LEFT ? -1 : 0;
+    }
+    
+    private double directionY(dev.logicforge.circuit.geometry.PortSide side) {
+        return side == dev.logicforge.circuit.geometry.PortSide.TOP ? -1 :
+               side == dev.logicforge.circuit.geometry.PortSide.BOTTOM ? 1 : 0;
+    }
 
-    private void drawPortName(GraphicsContext graphics, PlacedPort placed) {
+    private void drawPortName(GraphicsContext graphics, PlacedPort placed, double dx, double dy) {
         graphics.setFill(Theme.TEXT_MUTED);
         graphics.setFont(Font.font(Theme.PIN_LABEL_SIZE));
         graphics.setTextBaseline(VPos.CENTER);
         CircuitPoint inside = placed.stubEnd(-dev.logicforge.library.PortLayout.PORT_STUB - 5);
+        inside = new CircuitPoint(inside.x() + dx, inside.y() + dy);
         switch (placed.side()) {
             case LEFT -> {
                 graphics.setTextAlign(TextAlignment.LEFT);

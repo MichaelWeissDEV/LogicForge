@@ -48,12 +48,24 @@ public final class CircuitCompiler {
     /**
      * Reports everything the compiler would notice, without handing out a runnable
      * circuit. Errors short-circuit the analysis, since net forming needs valid ports.
+     *
+     * <p>The returned issues include all validation problems found during analysis,
+     * including width mismatches and topology issues. The circuit is not compiled.
      */
     public List<ValidationIssue> validate(CircuitDocument document) {
-        Compilation compilation = new Compilation(document).analyse();
-        if (compilation.issues.stream().noneMatch(ValidationIssue::isError)) {
-            compilation.build();
+        Compilation compilation = new Compilation(document);
+        compilation.resolveComponents();
+        if (compilation.hasErrors()) {
+            return List.copyOf(compilation.issues);
         }
+        compilation.resolvePorts();
+        compilation.resolveConnections();
+        if (compilation.hasErrors()) {
+            return List.copyOf(compilation.issues);
+        }
+        compilation.formNets();
+        compilation.validateNetWidths();
+        compilation.validateNetTopology();
         return List.copyOf(compilation.issues);
     }
 
@@ -63,11 +75,37 @@ public final class CircuitCompiler {
      * @throws CircuitCompileException if the circuit contains errors
      */
     public CompilationResult compile(CircuitDocument document) {
-        Compilation compilation = new Compilation(document).analyse();
-        if (compilation.issues.stream().anyMatch(ValidationIssue::isError)) {
+        Compilation compilation = new Compilation(document);
+
+        // Phase 1: Resolve components
+        compilation.resolveComponents();
+        if (compilation.hasErrors()) {
             throw new CircuitCompileException(compilation.issues);
         }
-        return compilation.build();
+
+        // Phase 2: Resolve ports
+        compilation.resolvePorts();
+
+        // Phase 3: Resolve connections and merge into nets
+        compilation.resolveConnections();
+        if (compilation.hasErrors()) {
+            throw new CircuitCompileException(compilation.issues);
+        }
+
+        // Phase 4: Form nets from connected ports
+        compilation.formNets();
+
+        // Phase 5: Validate net widths (must pass before emit)
+        compilation.validateNetWidths();
+        if (compilation.hasErrors()) {
+            throw new CircuitCompileException(compilation.issues);
+        }
+
+        // Phase 6: Validate net topology (warnings only, not errors)
+        compilation.validateNetTopology();
+
+        // Phase 7: Emit - must not generate any new issues
+        return compilation.emit();
     }
 
     /** One compilation run. Everything it needs is local, so the compiler is reusable. */
@@ -76,26 +114,99 @@ public final class CircuitCompiler {
         private final CircuitDocument document;
         private final List<ValidationIssue> issues = new ArrayList<>();
 
-        /** Ports of all valid components, in document order; the index is the DSU element. */
-        private final Map<PortReference, Integer> portIndex = new LinkedHashMap<>();
-        private final List<PortSpec> portSpecs = new ArrayList<>();
+        // Resolved component data
         private final List<ComponentInstance> instances = new ArrayList<>();
         private final List<ComponentType> types = new ArrayList<>();
+
+        // Resolved port data
+        private final Map<PortReference, Integer> portIndex = new LinkedHashMap<>();
+        private final List<PortSpec> portSpecs = new ArrayList<>();
+        private final List<UUID> portComponentId = new ArrayList<>();
+        private final List<String> portName = new ArrayList<>();
+
+        // Connection tracking
         private final List<Connection> mergedConnections = new ArrayList<>();
+
+        // Net forming (DSU)
         private int[] parent = new int[0];
 
         Compilation(CircuitDocument document) {
             this.document = document;
         }
 
-        Compilation analyse() {
-            collectComponents();
+        boolean hasErrors() {
+            return issues.stream().anyMatch(ValidationIssue::isError);
+        }
+
+        // ========== PHASE 1: Resolve Components ==========
+
+        private void resolveComponents() {
+            for (ComponentInstance instance : document.components()) {
+                Optional<ComponentType> type = registry.find(instance.definitionId());
+                if (type.isEmpty()) {
+                    issues.add(ValidationIssue.error(
+                            "Unknown component type '" + instance.definitionId() + "'",
+                            instance.id(), null));
+                    continue;
+                }
+                instances.add(instance);
+                types.add(type.get());
+            }
+        }
+
+        // ========== PHASE 2: Resolve Ports ==========
+
+        private void resolvePorts() {
+            for (int i = 0; i < instances.size(); i++) {
+                ComponentInstance instance = instances.get(i);
+                ComponentType type = types.get(i);
+                for (PortSpec port : type.definition().ports(instance.parameters())) {
+                    PortReference reference = new PortReference(instance.id(), port.name());
+                    if (portIndex.putIfAbsent(reference, portIndex.size()) == null) {
+                        portSpecs.add(port);
+                        portComponentId.add(instance.id());
+                        portName.add(port.name());
+                    } else {
+                        issues.add(ValidationIssue.error("Duplicate port name '" + port.name() + "'",
+                                instance.id(), port.name()));
+                    }
+                }
+            }
+        }
+
+        // ========== PHASE 3: Resolve Connections ==========
+
+        private void resolveConnections() {
             parent = new int[portIndex.size()];
             for (int i = 0; i < parent.length; i++) {
                 parent[i] = i;
             }
-            mergeConnectedPorts();
-            return this;
+
+            for (Connection connection : document.connections()) {
+                Integer from = portIndex.get(connection.from());
+                Integer to = portIndex.get(connection.to());
+                if (from == null || to == null) {
+                    issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.WARNING,
+                            "Wire refers to a port that no longer exists and is ignored",
+                            connection.id()));
+                    continue;
+                }
+                PortDirection fromDirection = portSpecs.get(from).direction();
+                PortDirection toDirection = portSpecs.get(to).direction();
+                if (fromDirection == PortDirection.OUTPUT && toDirection == PortDirection.OUTPUT) {
+                    issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.WARNING,
+                            "Two outputs drive the same net; this is only meaningful with tri-state drivers",
+                            connection.id()));
+                }
+                union(from, to);
+                mergedConnections.add(connection);
+            }
+        }
+
+        // ========== PHASE 4: Form Nets ==========
+
+        private void formNets() {
+            // Already done via DSU in resolveConnections, nothing to do here
         }
 
         private void collectComponents() {
@@ -141,8 +252,67 @@ public final class CircuitCompiler {
             }
         }
 
-        CompilationResult build() {
-            // Group ports into nets, keeping the order in which they first appear.
+        // ========== PHASE 5: Validate Net Widths ==========
+
+        private void validateNetWidths() {
+            // Group ports into nets using DSU
+            Map<Integer, List<Integer>> groups = new LinkedHashMap<>();
+            for (int port = 0; port < parent.length; port++) {
+                groups.computeIfAbsent(find(port), key -> new ArrayList<>()).add(port);
+            }
+
+            // Validate each net's width consistency
+            for (List<Integer> group : groups.values()) {
+                BitWidth width = portSpecs.get(group.get(0)).width();
+                for (int port : group) {
+                    BitWidth other = portSpecs.get(port).width();
+                    if (!other.equals(width)) {
+                        PortReference reference = new PortReference(
+                                portComponentId.get(port), portName.get(port));
+                        issues.add(ValidationIssue.error(
+                                "Port " + reference.portName() + " is " + other
+                                        + " wide but shares a net with a " + width + " wide port",
+                                reference.componentId(), reference.portName()));
+                    }
+                }
+            }
+        }
+
+        // ========== PHASE 6: Validate Net Topology ==========
+
+        private void validateNetTopology() {
+            Map<Integer, List<Integer>> groups = new LinkedHashMap<>();
+            for (int port = 0; port < parent.length; port++) {
+                groups.computeIfAbsent(find(port), key -> new ArrayList<>()).add(port);
+            }
+
+            for (List<Integer> group : groups.values()) {
+                int drivers = 0;
+                int consumers = 0;
+                for (int port : group) {
+                    PortDirection direction = portSpecs.get(port).direction();
+                    if (direction.canDrive()) {
+                        drivers++;
+                    }
+                    if (direction.canRead()) {
+                        consumers++;
+                    }
+                }
+                if (drivers == 0 && consumers > 0) {
+                    // Report on the first port of this net
+                    PortReference ref = new PortReference(
+                            portComponentId.get(group.get(0)), portName.get(group.get(0)));
+                    issues.add(ValidationIssue.info(
+                            "Net has no driver and reads as X",
+                            ref.componentId(), ref.portName()));
+                }
+            }
+        }
+
+        // ========== PHASE 7: Emit CompiledCircuit ==========
+        // This must NOT generate any new validation issues
+
+        CompilationResult emit() {
             Map<Integer, List<Integer>> groups = new LinkedHashMap<>();
             for (int port = 0; port < parent.length; port++) {
                 groups.computeIfAbsent(find(port), key -> new ArrayList<>()).add(port);
@@ -151,10 +321,19 @@ public final class CircuitCompiler {
             CompiledCircuit.Builder builder = CompiledCircuit.builder();
             int[] netOfPort = new int[parent.length];
             List<List<PortReference>> portsByNet = new ArrayList<>();
-            List<PortReference> portsByIndex = List.copyOf(portIndex.keySet());
+            List<PortReference> portsByIndex = new ArrayList<>();
+
+            // Build port reference list
+            for (Map.Entry<PortReference, Integer> entry : portIndex.entrySet()) {
+                while (portsByIndex.size() <= entry.getValue()) {
+                    portsByIndex.add(null);
+                }
+                portsByIndex.set(entry.getValue(), entry.getKey());
+            }
 
             for (List<Integer> group : groups.values()) {
-                BitWidth width = widthOf(group, portsByIndex);
+                // Safe to get width from first port - already validated
+                BitWidth width = portSpecs.get(group.get(0)).width();
                 int netId = builder.addNet(width);
                 List<PortReference> netPorts = new ArrayList<>(group.size());
                 for (int port : group) {
@@ -162,7 +341,6 @@ public final class CircuitCompiler {
                     netPorts.add(portsByIndex.get(port));
                 }
                 portsByNet.add(netPorts);
-                reportNetShape(netId, group);
             }
 
             Map<UUID, Integer> componentIdByUuid = new LinkedHashMap<>();
@@ -176,7 +354,9 @@ public final class CircuitCompiler {
                 List<Integer> inputs = new ArrayList<>();
                 List<Integer> outputs = new ArrayList<>();
                 for (PortSpec port : ports) {
-                    int net = netOfPort[portIndex.get(new PortReference(instance.id(), port.name()))];
+                    PortReference ref = new PortReference(instance.id(), port.name());
+                    int portIdx = portIndex.get(ref);
+                    int net = netOfPort[portIdx];
                     if (port.direction().canRead()) {
                         inputs.add(net);
                     }
@@ -202,39 +382,6 @@ public final class CircuitCompiler {
             CircuitSourceMap sourceMap = new CircuitSourceMap(componentIdByUuid, uuidByComponentId,
                     netByPort, portsByNet, netByConnection);
             return new CompilationResult(builder.build(), sourceMap, issues);
-        }
-
-        /** All ports of a net must agree on their width; LogicForge never truncates silently. */
-        private BitWidth widthOf(List<Integer> group, List<PortReference> portsByIndex) {
-            BitWidth width = portSpecs.get(group.get(0)).width();
-            for (int port : group) {
-                BitWidth other = portSpecs.get(port).width();
-                if (!other.equals(width)) {
-                    PortReference reference = portsByIndex.get(port);
-                    issues.add(ValidationIssue.error("Port " + reference.portName() + " is " + other
-                                    + " wide but shares a net with a " + width + " wide port",
-                            reference.componentId(), reference.portName()));
-                }
-            }
-            return width;
-        }
-
-        private void reportNetShape(int netId, List<Integer> group) {
-            int drivers = 0;
-            int consumers = 0;
-            for (int port : group) {
-                PortDirection direction = portSpecs.get(port).direction();
-                if (direction.canDrive()) {
-                    drivers++;
-                }
-                if (direction.canRead()) {
-                    consumers++;
-                }
-            }
-            if (drivers == 0 && consumers > 0) {
-                issues.add(new ValidationIssue(ValidationIssue.Severity.INFO,
-                        "Net " + netId + " has no driver and reads as X", null, null, null));
-            }
         }
 
         private int find(int element) {

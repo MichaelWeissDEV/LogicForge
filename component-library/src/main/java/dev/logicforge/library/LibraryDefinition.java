@@ -2,6 +2,7 @@ package dev.logicforge.library;
 
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ComponentDefinition;
+import dev.logicforge.circuit.component.InputInteraction;
 import dev.logicforge.circuit.component.ParameterSpec;
 import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.component.PortSpec;
@@ -20,7 +21,8 @@ public record LibraryDefinition(
         String description,
         List<ParameterSpec<?>> parameters,
         PortLayout portLayout,
-        List<String> searchKeywords) implements ComponentDefinition {
+        List<String> searchKeywords,
+        InputInteraction inputInteraction) implements ComponentDefinition {
 
     public LibraryDefinition {
         parameters = List.copyOf(parameters);
@@ -35,5 +37,10 @@ public record LibraryDefinition(
     @Override
     public CircuitSize bodySize(ParameterValues values) {
         return portLayout.bodySize(values);
+    }
+
+    @Override
+    public InputInteraction inputInteraction() {
+        return inputInteraction;
     }
 }

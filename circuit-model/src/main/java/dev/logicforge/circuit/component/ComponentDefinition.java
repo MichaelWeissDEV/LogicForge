@@ -50,4 +50,12 @@ public interface ComponentDefinition {
     default List<String> searchKeywords() {
         return List.of();
     }
+
+    /**
+     * The interaction type for user-driven components.
+     * Default is {@link InputInteraction#NONE} for non-interactive components.
+     */
+    default InputInteraction inputInteraction() {
+        return InputInteraction.NONE;
+    }
 }

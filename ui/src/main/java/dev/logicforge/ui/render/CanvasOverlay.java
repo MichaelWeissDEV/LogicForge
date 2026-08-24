@@ -3,7 +3,9 @@ package dev.logicforge.ui.render;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PlacedPort;
 import dev.logicforge.circuit.geometry.CircuitBounds;
+import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.ui.wiring.WireRoute;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,26 +21,32 @@ public record CanvasOverlay(
         CircuitBounds selectionRectangle,
         WireRoute previewWire,
         PlacedPort wireOrigin,
-        ComponentInstance ghost) {
+        ComponentInstance ghost,
+        Map<UUID, CircuitPoint> movingComponentPositions) {
 
     public static final CanvasOverlay EMPTY =
-            new CanvasOverlay(null, null, null, null, null, null);
+            new CanvasOverlay(null, null, null, null, null, null, Map.of());
 
     public CanvasOverlay withHover(UUID component, PlacedPort port) {
-        return new CanvasOverlay(component, port, selectionRectangle, previewWire, wireOrigin, ghost);
+        return new CanvasOverlay(component, port, selectionRectangle, previewWire, wireOrigin, ghost, movingComponentPositions);
     }
 
     public CanvasOverlay withSelectionRectangle(CircuitBounds rectangle) {
-        return new CanvasOverlay(hoveredComponent, hoveredPort, rectangle, previewWire, wireOrigin, ghost);
+        return new CanvasOverlay(hoveredComponent, hoveredPort, rectangle, previewWire, wireOrigin, ghost, movingComponentPositions);
     }
 
     public CanvasOverlay withPreviewWire(PlacedPort origin, WireRoute route) {
-        return new CanvasOverlay(hoveredComponent, hoveredPort, selectionRectangle, route, origin, ghost);
+        return new CanvasOverlay(hoveredComponent, hoveredPort, selectionRectangle, route, origin, ghost, movingComponentPositions);
     }
 
     public CanvasOverlay withGhost(ComponentInstance instance) {
         return new CanvasOverlay(hoveredComponent, hoveredPort, selectionRectangle, previewWire,
-                wireOrigin, instance);
+                wireOrigin, instance, movingComponentPositions);
+    }
+
+    public CanvasOverlay withMovingComponents(Map<UUID, CircuitPoint> positions) {
+        return new CanvasOverlay(hoveredComponent, hoveredPort, selectionRectangle, previewWire,
+                wireOrigin, ghost, positions);
     }
 
     public Optional<PlacedPort> hoveredPortOption() {
