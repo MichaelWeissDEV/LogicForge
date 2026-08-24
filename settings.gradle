@@ -1,0 +1,10 @@
+rootProject.name = 'logicforge'
+
+include 'logic-core'
+include 'circuit-model'
+include 'simulation-core'
+include 'component-library'
+include 'circuit-compiler'
+include 'project-format'
+include 'ui'
+include 'app'

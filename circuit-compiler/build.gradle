@@ -1,0 +1,9 @@
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    api project(':circuit-model')
+    api project(':simulation-core')
+    api project(':component-library')
+}

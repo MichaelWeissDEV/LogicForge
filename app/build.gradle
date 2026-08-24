@@ -1,0 +1,18 @@
+plugins {
+    id 'java-library'
+    id 'application'
+    id 'org.openjfx.javafxplugin'
+}
+
+dependencies {
+    implementation project(':ui')
+}
+
+javafx {
+    version = '25.0.1'
+    modules = ['javafx.controls', 'javafx.graphics']
+}
+
+application {
+    mainClass = 'dev.logicforge.app.LogicForgeApp'
+}
