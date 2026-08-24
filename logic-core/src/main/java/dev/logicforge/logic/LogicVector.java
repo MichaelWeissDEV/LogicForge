@@ -16,10 +16,11 @@ import java.util.OptionalLong;
  */
 public final class LogicVector {
 
-    private static final LogicVector[] SINGLE_BIT = new LogicVector[LogicState.values().length];
+    private static final LogicState[] STATES = LogicState.values();
+    private static final LogicVector[] SINGLE_BIT = new LogicVector[STATES.length];
 
     static {
-        for (LogicState state : LogicState.values()) {
+        for (LogicState state : STATES) {
             SINGLE_BIT[state.ordinal()] = new LogicVector(new byte[]{(byte) state.ordinal()});
         }
     }
@@ -124,7 +125,7 @@ public final class LogicVector {
         if (index < 0 || index >= bits.length) {
             throw new IndexOutOfBoundsException("Bit " + index + " of a " + bits.length + "-bit vector");
         }
-        return LogicState.values()[bits[index]];
+        return STATES[bits[index]];
     }
 
     /** Convenience accessor for the common one-bit case. */
@@ -132,7 +133,7 @@ public final class LogicVector {
         if (bits.length != 1) {
             throw new WidthMismatchException(1, bits.length);
         }
-        return LogicState.values()[bits[0]];
+        return STATES[bits[0]];
     }
 
     /** A copy of this vector with the bit at {@code index} replaced. */
@@ -169,7 +170,7 @@ public final class LogicVector {
     /** {@code true} if every bit is {@code 0} or {@code 1}. */
     public boolean isFullyDefined() {
         for (byte bit : bits) {
-            if (!LogicState.values()[bit].isDefined()) {
+            if (!STATES[bit].isDefined()) {
                 return false;
             }
         }
@@ -219,7 +220,7 @@ public final class LogicVector {
     public String toBinaryString() {
         StringBuilder text = new StringBuilder(bits.length);
         for (int i = bits.length - 1; i >= 0; i--) {
-            text.append(LogicState.values()[bits[i]].symbol());
+            text.append(STATES[bits[i]].symbol());
         }
         return text.toString();
     }
