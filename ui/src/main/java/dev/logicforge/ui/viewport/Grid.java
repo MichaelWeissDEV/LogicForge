@@ -30,8 +30,8 @@ public final class Grid {
         return Math.ceil(worldStart / SPACING) * SPACING;
     }
 
-    public static boolean isMajorLine(double worldCoordinate) {
-        double step = SPACING * MAJOR_EVERY;
-        return Math.abs(Math.IEEEremainder(worldCoordinate, step)) < SPACING / 2;
+    /** {@code true} if a coordinate falls on a line drawn at {@code step} intervals. */
+    public static boolean isOnLine(double worldCoordinate, double step) {
+        return Math.abs(Math.IEEEremainder(worldCoordinate, step)) < 1e-6;
     }
 }

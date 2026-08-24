@@ -65,6 +65,7 @@ public final class CircuitCanvasView extends Region {
     private final CircuitRenderer renderer;
     private final HitTester hitTester;
     private final CanvasContextMenu contextMenu = new CanvasContextMenu(this);
+    private final javafx.scene.control.Tooltip portTooltip = new javafx.scene.control.Tooltip();
     private final ComponentDropTarget dropTarget;
 
     private CanvasOverlay overlay = CanvasOverlay.EMPTY;
@@ -88,6 +89,8 @@ public final class CircuitCanvasView extends Region {
         setFocusTraversable(true);
         editor.addChangeListener(this::redraw);
         editor.selection().addListener(this::redraw);
+        portTooltip.setShowDelay(javafx.util.Duration.millis(350));
+        javafx.scene.control.Tooltip.install(this, portTooltip);
         installMouseHandlers();
         installKeyHandlers();
         installDragAndDrop();
@@ -391,23 +394,20 @@ public final class CircuitCanvasView extends Region {
         return component.isPresent() ? Cursor.OPEN_HAND : Cursor.DEFAULT;
     }
 
-    /** A compact port description: name, direction, width and the value on it. */
+    /**
+     * A compact port description: name, direction, width and the value on it. The tooltip
+     * is one long-lived object whose text is updated — a new one per mouse move would
+     * restart its show delay on every pixel of movement.
+     */
     private void updateTooltip(Optional<PlacedPort> port) {
         if (port.isEmpty()) {
-            javafx.scene.control.Tooltip.uninstall(this, null);
-            setAccessibleText(null);
+            portTooltip.hide();
+            portTooltip.setText("");
             return;
         }
         PlacedPort placed = port.get();
-        String value = editor.valueAt(placed.reference())
-                .map(Object::toString)
-                .orElse("-");
-        javafx.scene.control.Tooltip tooltip = new javafx.scene.control.Tooltip(
-                placed.spec().name() + "\n"
-                        + describe(placed) + "\n"
-                        + "Current: " + value);
-        tooltip.setShowDelay(javafx.util.Duration.millis(350));
-        javafx.scene.control.Tooltip.install(this, tooltip);
+        String value = editor.valueAt(placed.reference()).map(Object::toString).orElse("–");
+        portTooltip.setText(placed.spec().name() + "\n" + describe(placed) + "\nCurrent: " + value);
     }
 
     private String describe(PlacedPort placed) {
@@ -486,15 +486,28 @@ public final class CircuitCanvasView extends Region {
         if (editor.clipboard().isEmpty()) {
             return;
         }
-        CircuitClipboard.Fragment fragment = editor.clipboard().prepareForPaste(PASTE_OFFSET, PASTE_OFFSET);
+        insert(editor.clipboard().prepareForPaste(PASTE_OFFSET, PASTE_OFFSET));
+    }
+
+    private void insert(CircuitClipboard.Fragment fragment) {
         editor.execute(new PasteCommand(editor.document(), fragment.components(), fragment.connections()));
         editor.selection().setSelection(
                 fragment.components().stream().map(ComponentInstance::id).toList(), List.of());
     }
 
+    /** {@code true} while the canvas has the keyboard focus. */
+    public boolean hasKeyboardFocus() {
+        return isFocused();
+    }
+
+    /** Duplicates the selection in place, leaving whatever is on the clipboard alone. */
     public void duplicateSelection() {
-        copySelection();
-        paste();
+        CircuitClipboard.Fragment copied = new CircuitClipboard()
+                .copy(editor.document(), editor.selection().components());
+        if (copied.isEmpty()) {
+            return;
+        }
+        insert(CircuitClipboard.prepareForPaste(copied, PASTE_OFFSET, PASTE_OFFSET));
     }
 
     // ------------------------------------------------------------ drag & drop

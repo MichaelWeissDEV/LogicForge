@@ -90,23 +90,19 @@ public final class CircuitRenderer {
             return;
         }
         for (double x = Grid.firstLineAtOrAfter(visible.x()); x <= visible.maxX(); x += step) {
-            if (skipMultiplesOf > 0 && isMultiple(x, skipMultiplesOf)) {
+            if (skipMultiplesOf > 0 && Grid.isOnLine(x, skipMultiplesOf)) {
                 continue;
             }
             double screenX = Math.floor(viewport.worldToScreen(new CircuitPoint(x, 0)).x()) + 0.5;
             graphics.strokeLine(screenX, 0, screenX, height);
         }
         for (double y = Grid.firstLineAtOrAfter(visible.y()); y <= visible.maxY(); y += step) {
-            if (skipMultiplesOf > 0 && isMultiple(y, skipMultiplesOf)) {
+            if (skipMultiplesOf > 0 && Grid.isOnLine(y, skipMultiplesOf)) {
                 continue;
             }
             double screenY = Math.floor(viewport.worldToScreen(new CircuitPoint(0, y)).y()) + 0.5;
             graphics.strokeLine(0, screenY, width, screenY);
         }
-    }
-
-    private static boolean isMultiple(double value, double step) {
-        return Math.abs(Math.IEEEremainder(value, step)) < 1e-6;
     }
 
     // ----------------------------------------------------------------- wires

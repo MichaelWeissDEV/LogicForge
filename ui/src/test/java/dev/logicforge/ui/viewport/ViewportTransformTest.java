@@ -127,7 +127,7 @@ class ViewportTransformTest {
         assertEquals(new CircuitPoint(0, 0), Grid.snap(new CircuitPoint(3, -3)));
         assertEquals(8, Grid.firstLineAtOrAfter(1.5), EPSILON);
         assertEquals(-8, Grid.firstLineAtOrAfter(-8), EPSILON);
-        assertTrue(Grid.isMajorLine(32));
-        assertTrue(!Grid.isMajorLine(24));
+        assertTrue(Grid.isOnLine(32, Grid.SPACING * Grid.MAJOR_EVERY));
+        assertTrue(!Grid.isOnLine(24, Grid.SPACING * Grid.MAJOR_EVERY));
     }
 }

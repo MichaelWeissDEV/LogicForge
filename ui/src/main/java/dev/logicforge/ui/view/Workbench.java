@@ -35,6 +35,7 @@ public final class Workbench extends BorderPane {
     private final Button undoButton = toolButton("Undo");
     private final Button redoButton = toolButton("Redo");
     private final ToggleButton runButton = new ToggleButton("Pause");
+    private final Button stepButton = toolButton("Step");
 
     public Workbench(Stage stage) {
         this.editor = new CircuitEditor(ComponentRegistry.standard());
@@ -76,7 +77,6 @@ public final class Workbench extends BorderPane {
 
         runButton.getStyleClass().add("tool-button");
         runButton.setOnAction(event -> toggleRunning());
-        Button stepButton = toolButton("Step");
         stepButton.setOnAction(event -> editor.step());
         Button resetButton = toolButton("Reset");
         resetButton.setOnAction(event -> editor.resetSimulation());
@@ -112,6 +112,8 @@ public final class Workbench extends BorderPane {
         boolean running = editor.isRunning();
         runButton.setSelected(!running);
         runButton.setText(running ? "Pause" : "Run");
+        // Stepping is only meaningful while the simulation is paused.
+        stepButton.setDisable(running);
     }
 
     private static Button toolButton(String text) {
@@ -140,14 +142,24 @@ public final class Workbench extends BorderPane {
                 new KeyCodeCombination(KeyCode.Z, KeyCombination.SHORTCUT_DOWN, KeyCombination.SHIFT_DOWN),
                 editor::redo);
         accelerator(scene, KeyCode.Y, editor::redo);
-        accelerator(scene, KeyCode.C, canvas::copySelection);
-        accelerator(scene, KeyCode.V, canvas::paste);
-        accelerator(scene, KeyCode.D, canvas::duplicateSelection);
+        // Editing shortcuts must not fire while the user is typing in a text field.
+        canvasAccelerator(scene, KeyCode.C, canvas::copySelection);
+        canvasAccelerator(scene, KeyCode.V, canvas::paste);
+        canvasAccelerator(scene, KeyCode.D, canvas::duplicateSelection);
         accelerator(scene, KeyCode.F, palette::focusSearch);
         accelerator(scene, KeyCode.PLUS, canvas::zoomIn);
         accelerator(scene, KeyCode.EQUALS, canvas::zoomIn);
         accelerator(scene, KeyCode.MINUS, canvas::zoomOut);
         accelerator(scene, KeyCode.DIGIT0, canvas::resetZoom);
+    }
+
+    /** An accelerator that only acts when the canvas, not a text field, has the focus. */
+    private void canvasAccelerator(Scene scene, KeyCode code, Runnable action) {
+        scene.getAccelerators().put(new KeyCodeCombination(code, KeyCombination.SHORTCUT_DOWN), () -> {
+            if (canvas.hasKeyboardFocus()) {
+                action.run();
+            }
+        });
     }
 
     private void accelerator(Scene scene, KeyCode code, Runnable action) {
