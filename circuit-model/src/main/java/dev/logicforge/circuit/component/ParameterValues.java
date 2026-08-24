@@ -19,7 +19,25 @@ public final class ParameterValues {
     private final Map<String, Object> values;
 
     private ParameterValues(Map<String, Object> values) {
-        this.values = Collections.unmodifiableMap(new TreeMap<>(values));
+        Map<String, Object> normalized = new TreeMap<>();
+        values.forEach((key, value) -> normalized.put(key, normalize(value)));
+        this.values = Collections.unmodifiableMap(normalized);
+    }
+
+    /**
+     * Stores numbers in one canonical shape. JSON has a single number type, so a value
+     * written as {@code 4} comes back as a double; normalising here keeps a loaded project
+     * equal to the one that was saved.
+     */
+    private static Object normalize(Object value) {
+        if (value instanceof Number number) {
+            double asDouble = number.doubleValue();
+            if (asDouble == Math.rint(asDouble) && !Double.isInfinite(asDouble)) {
+                return (int) asDouble;
+            }
+            return asDouble;
+        }
+        return value;
     }
 
     public static ParameterValues empty() {
