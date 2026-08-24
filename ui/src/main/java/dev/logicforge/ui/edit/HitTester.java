@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Finds what is under the cursor.
@@ -25,14 +26,18 @@ import java.util.function.Function;
  */
 public final class HitTester {
 
-    private final CircuitDocument document;
+    private final Supplier<CircuitDocument> documents;
     private final Function<String, Optional<ComponentDefinition>> definitions;
     private final WireRouter router;
 
-    public HitTester(CircuitDocument document,
+    /**
+     * @param documents the circuit to search; a supplier rather than a fixed reference so
+     *                  that opening another project does not leave stale hit testing behind
+     */
+    public HitTester(Supplier<CircuitDocument> documents,
                      Function<String, Optional<ComponentDefinition>> definitions,
                      WireRouter router) {
-        this.document = document;
+        this.documents = documents;
         this.definitions = definitions;
         this.router = router;
     }
@@ -41,7 +46,7 @@ public final class HitTester {
     public Optional<PlacedPort> portAt(CircuitPoint point, double tolerance) {
         PlacedPort best = null;
         double bestDistance = tolerance;
-        for (ComponentInstance instance : reversed(document.components())) {
+        for (ComponentInstance instance : reversed(document().components())) {
             Optional<ComponentDefinition> definition = definitions.apply(instance.definitionId());
             if (definition.isEmpty()) {
                 continue;
@@ -59,7 +64,7 @@ public final class HitTester {
 
     /** The topmost component whose body contains {@code point}. */
     public Optional<ComponentInstance> componentAt(CircuitPoint point) {
-        for (ComponentInstance instance : reversed(document.components())) {
+        for (ComponentInstance instance : reversed(document().components())) {
             Optional<ComponentDefinition> definition = definitions.apply(instance.definitionId());
             if (definition.isPresent()
                     && ComponentGeometry.bodyBounds(instance, definition.get()).contains(point)) {
@@ -73,7 +78,7 @@ public final class HitTester {
     public Optional<Connection> connectionAt(CircuitPoint point, double tolerance) {
         Connection best = null;
         double bestDistance = tolerance;
-        for (Connection connection : document.connections()) {
+        for (Connection connection : document().connections()) {
             Optional<double[]> distance = distanceTo(connection, point);
             if (distance.isPresent() && distance.get()[0] <= bestDistance) {
                 best = connection;
@@ -96,7 +101,7 @@ public final class HitTester {
     /** Components fully inside a rectangle, as a rubber-band selection collects them. */
     public List<UUID> componentsIn(CircuitBounds area) {
         List<UUID> found = new ArrayList<>();
-        for (ComponentInstance instance : document.components()) {
+        for (ComponentInstance instance : document().components()) {
             Optional<ComponentDefinition> definition = definitions.apply(instance.definitionId());
             if (definition.isPresent()
                     && area.contains(ComponentGeometry.bodyBounds(instance, definition.get()))) {
@@ -110,7 +115,7 @@ public final class HitTester {
     public List<UUID> connectionsIn(CircuitBounds area) {
         List<UUID> components = componentsIn(area);
         List<UUID> found = new ArrayList<>();
-        for (Connection connection : document.connections()) {
+        for (Connection connection : document().connections()) {
             if (components.contains(connection.from().componentId())
                     && components.contains(connection.to().componentId())) {
                 found.add(connection.id());
@@ -120,9 +125,13 @@ public final class HitTester {
     }
 
     public Optional<PlacedPort> port(UUID componentId, String portName) {
-        return document.component(componentId).flatMap(instance ->
+        return document().component(componentId).flatMap(instance ->
                 definitions.apply(instance.definitionId())
                         .flatMap(definition -> ComponentGeometry.port(instance, definition, portName)));
+    }
+
+    private CircuitDocument document() {
+        return documents.get();
     }
 
     private static List<ComponentInstance> reversed(java.util.Collection<ComponentInstance> components) {

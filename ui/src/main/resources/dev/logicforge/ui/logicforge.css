@@ -1,0 +1,329 @@
+/*
+ * LogicForge — dark theme.
+ *
+ * The tokens at the top are the same ones the canvas renderer uses (see Theme.java).
+ * Controls are styled from these variables only; no view sets a colour of its own.
+ */
+.root {
+    -lf-background: #15181d;
+    -lf-surface: #191d23;
+    -lf-surface-raised: #1f242c;
+    -lf-border: #2a303a;
+    -lf-text-primary: #e6e9ef;
+    -lf-text-secondary: #98a2b3;
+    -lf-text-muted: #667085;
+    -lf-accent: #5b9dff;
+    -lf-warning: #f59e0b;
+    -lf-error: #ef4444;
+
+    -fx-background-color: -lf-background;
+    -fx-font-size: 12.5px;
+    -fx-text-fill: -lf-text-primary;
+    -fx-focus-color: -lf-accent;
+    -fx-faint-focus-color: transparent;
+}
+
+.label {
+    -fx-text-fill: -lf-text-primary;
+}
+
+.text-secondary {
+    -fx-text-fill: -lf-text-secondary;
+}
+
+.text-muted {
+    -fx-text-fill: -lf-text-muted;
+}
+
+/* ----------------------------------------------------------- Toolbar */
+
+.toolbar {
+    -fx-background-color: -lf-surface;
+    -fx-border-color: transparent transparent -lf-border transparent;
+    -fx-border-width: 1px;
+    -fx-padding: 8 12 8 12;
+    -fx-spacing: 6;
+}
+
+.toolbar .app-title {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -lf-text-primary;
+    -fx-padding: 0 12 0 2;
+}
+
+.tool-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5px;
+    -fx-text-fill: -lf-text-secondary;
+    -fx-padding: 5 11 5 11;
+    -fx-cursor: hand;
+}
+
+.tool-button:hover {
+    -fx-background-color: -lf-surface-raised;
+    -fx-text-fill: -lf-text-primary;
+}
+
+.tool-button:pressed,
+.tool-button:selected {
+    -fx-background-color: derive(-lf-accent, -55%);
+    -fx-text-fill: -lf-text-primary;
+}
+
+.tool-button:disabled {
+    -fx-opacity: 0.38;
+}
+
+.toolbar-separator {
+    -fx-background-color: -lf-border;
+    -fx-min-width: 1;
+    -fx-max-width: 1;
+    -fx-min-height: 18;
+    -fx-margin: 0 6 0 6;
+}
+
+/* ------------------------------------------------------------ Panels */
+
+.side-panel {
+    -fx-background-color: -lf-surface;
+    -fx-padding: 0;
+}
+
+.panel-header {
+    -fx-text-fill: -lf-text-muted;
+    -fx-font-size: 10.5px;
+    -fx-padding: 12 14 6 14;
+}
+
+.panel-body {
+    -fx-padding: 4 10 12 10;
+    -fx-spacing: 8;
+}
+
+.split-pane {
+    -fx-background-color: -lf-border;
+    -fx-padding: 0;
+}
+
+.split-pane > .split-pane-divider {
+    -fx-background-color: -lf-border;
+    -fx-padding: 0 0.5 0 0.5;
+}
+
+/* ----------------------------------------------------------- Palette */
+
+.search-field {
+    -fx-background-color: -lf-surface-raised;
+    -fx-background-radius: 5px;
+    -fx-text-fill: -lf-text-primary;
+    -fx-prompt-text-fill: -lf-text-muted;
+    -fx-padding: 6 10 6 10;
+    -fx-border-color: transparent;
+}
+
+.search-field:focused {
+    -fx-border-color: -lf-accent;
+    -fx-border-radius: 5px;
+}
+
+.palette-list {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+}
+
+.palette-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -lf-text-primary;
+    -fx-padding: 5 10 5 10;
+    -fx-background-radius: 5px;
+    -fx-cursor: hand;
+}
+
+.palette-list .list-cell:filled:hover {
+    -fx-background-color: -lf-surface-raised;
+}
+
+.palette-list .list-cell:filled:selected {
+    -fx-background-color: derive(-lf-accent, -60%);
+}
+
+.palette-category {
+    -fx-text-fill: -lf-text-muted;
+    -fx-font-size: 10.5px;
+    -fx-padding: 10 10 2 10;
+}
+
+.palette-item-name {
+    -fx-text-fill: -lf-text-primary;
+}
+
+.palette-item-hint {
+    -fx-text-fill: -lf-text-muted;
+    -fx-font-size: 11px;
+}
+
+/* --------------------------------------------------------- Inspector */
+
+.inspector-title {
+    -fx-font-size: 15px;
+    -fx-text-fill: -lf-text-primary;
+}
+
+.inspector-subtitle {
+    -fx-text-fill: -lf-text-muted;
+    -fx-font-size: 11.5px;
+    -fx-wrap-text: true;
+}
+
+.property-label {
+    -fx-text-fill: -lf-text-secondary;
+    -fx-font-size: 11.5px;
+}
+
+.text-field, .spinner, .combo-box, .spinner .text-field {
+    -fx-background-color: -lf-surface-raised;
+    -fx-background-radius: 5px;
+    -fx-text-fill: -lf-text-primary;
+    -fx-border-color: transparent;
+    -fx-padding: 4 8 4 8;
+}
+
+.combo-box .list-cell {
+    -fx-text-fill: -lf-text-primary;
+    -fx-background-color: transparent;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: -lf-surface-raised;
+    -fx-border-color: -lf-border;
+}
+
+.combo-box-popup .list-cell:filled:hover {
+    -fx-background-color: derive(-lf-accent, -60%);
+}
+
+.spinner .increment-arrow-button,
+.spinner .decrement-arrow-button {
+    -fx-background-color: transparent;
+}
+
+.spinner .increment-arrow,
+.spinner .decrement-arrow {
+    -fx-background-color: -lf-text-secondary;
+}
+
+.check-box {
+    -fx-text-fill: -lf-text-primary;
+}
+
+.check-box .box {
+    -fx-background-color: -lf-surface-raised;
+    -fx-border-color: -lf-border;
+    -fx-background-radius: 3px;
+}
+
+.check-box:selected .mark {
+    -fx-background-color: -lf-accent;
+}
+
+/* --------------------------------------------------------- Statusbar */
+
+.status-bar {
+    -fx-background-color: -lf-surface;
+    -fx-border-color: -lf-border transparent transparent transparent;
+    -fx-border-width: 1px;
+    -fx-padding: 5 14 5 14;
+    -fx-spacing: 18;
+}
+
+.status-item {
+    -fx-text-fill: -lf-text-muted;
+    -fx-font-size: 11.5px;
+}
+
+.status-warning {
+    -fx-text-fill: -lf-warning;
+}
+
+.status-error {
+    -fx-text-fill: -lf-error;
+}
+
+/* ------------------------------------------------------- Scroll bars */
+
+.scroll-bar {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .track {
+    -fx-background-color: transparent;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: -lf-border;
+    -fx-background-radius: 4px;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: derive(-lf-border, 30%);
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-opacity: 0;
+    -fx-padding: 0;
+}
+
+.scroll-pane, .scroll-pane > .viewport {
+    -fx-background-color: transparent;
+}
+
+/* ------------------------------------------------------------ Dialogs */
+
+.dialog-pane {
+    -fx-background-color: -lf-surface;
+}
+
+.dialog-pane .label {
+    -fx-text-fill: -lf-text-primary;
+}
+
+.dialog-pane .button {
+    -fx-background-color: -lf-surface-raised;
+    -fx-text-fill: -lf-text-primary;
+    -fx-background-radius: 5px;
+    -fx-padding: 5 14 5 14;
+}
+
+.dialog-pane .button:hover {
+    -fx-background-color: derive(-lf-accent, -55%);
+}
+
+.context-menu {
+    -fx-background-color: -lf-surface-raised;
+    -fx-border-color: -lf-border;
+    -fx-background-radius: 5px;
+    -fx-padding: 4;
+}
+
+.menu-item {
+    -fx-padding: 5 14 5 10;
+    -fx-background-radius: 4px;
+}
+
+.menu-item .label {
+    -fx-text-fill: -lf-text-primary;
+}
+
+.menu-item:focused {
+    -fx-background-color: derive(-lf-accent, -55%);
+}
+
+.tooltip {
+    -fx-background-color: -lf-surface-raised;
+    -fx-text-fill: -lf-text-primary;
+    -fx-border-color: -lf-border;
+    -fx-background-radius: 5px;
+    -fx-font-size: 11.5px;
+}

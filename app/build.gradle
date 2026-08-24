@@ -10,9 +10,25 @@ dependencies {
 
 javafx {
     version = '25.0.1'
-    modules = ['javafx.controls', 'javafx.graphics']
+    // javafx.swing is only needed by the development screenshot task.
+    modules = ['javafx.controls', 'javafx.graphics', 'javafx.swing']
 }
 
 application {
     mainClass = 'dev.logicforge.app.LogicForgeApp'
+    // JavaFX loads its native libraries itself; granting native access keeps the
+    // start-up free of warnings on Java 25.
+    applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics']
+}
+
+/**
+ * Renders the workbench with a demo circuit into a PNG, without a visible window.
+ * A development aid for checking the look of the editor; not part of the application.
+ */
+tasks.register('screenshot', JavaExec) {
+    group = 'verification'
+    description = 'Renders the workbench into build/screenshot.png'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.logicforge.app.WorkbenchScreenshot'
+    args = [project.findProperty('out') ?: "${layout.buildDirectory.get()}/screenshot.png"]
 }

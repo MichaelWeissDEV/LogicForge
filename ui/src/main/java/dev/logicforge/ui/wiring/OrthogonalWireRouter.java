@@ -21,6 +21,12 @@ public final class OrthogonalWireRouter implements WireRouter {
     /** How far a wire runs straight out of a port before it may turn. */
     private static final double LEAD_OUT = Grid.SPACING * 2;
 
+    /** How far past the lead-out the turning corridor sits. */
+    private static final double CORRIDOR_DISTANCE = Grid.SPACING * 2;
+
+    /** Number of alternating corridors used to keep unrelated wires apart. */
+    private static final int CORRIDOR_LANES = 4;
+
     @Override
     public WireRoute route(PlacedPort from, PlacedPort to, List<CircuitPoint> waypoints) {
         List<CircuitPoint> points = new ArrayList<>();
@@ -63,19 +69,24 @@ public final class OrthogonalWireRouter implements WireRouter {
         boolean endHorizontal = endSide.isHorizontal();
 
         if (startHorizontal && endHorizontal) {
+            if (start.y() == end.y()) {
+                return List.of(); // straight run, no corners at all
+            }
             if (leavesTowards(startSide, end.x() - start.x()) && leavesTowards(endSide, start.x() - end.x())) {
-                // Facing each other: one vertical run halfway between them.
-                double middle = Grid.snap((start.x() + end.x()) / 2);
-                return List.of(new CircuitPoint(middle, start.y()), new CircuitPoint(middle, end.y()));
+                double corridor = corridorX(start, end, startSide);
+                return List.of(new CircuitPoint(corridor, start.y()), new CircuitPoint(corridor, end.y()));
             }
             // Pointing the same way or away: go around via a horizontal run in between.
             double middle = Grid.snap((start.y() + end.y()) / 2);
             return List.of(new CircuitPoint(start.x(), middle), new CircuitPoint(end.x(), middle));
         }
         if (!startHorizontal && !endHorizontal) {
+            if (start.x() == end.x()) {
+                return List.of();
+            }
             if (leavesTowards(startSide, end.y() - start.y()) && leavesTowards(endSide, start.y() - end.y())) {
-                double middle = Grid.snap((start.y() + end.y()) / 2);
-                return List.of(new CircuitPoint(start.x(), middle), new CircuitPoint(end.x(), middle));
+                double corridor = corridorY(start, end, startSide);
+                return List.of(new CircuitPoint(start.x(), corridor), new CircuitPoint(end.x(), corridor));
             }
             double middle = Grid.snap((start.x() + end.x()) / 2);
             return List.of(new CircuitPoint(middle, start.y()), new CircuitPoint(middle, end.y()));
@@ -84,6 +95,40 @@ public final class OrthogonalWireRouter implements WireRouter {
         return startHorizontal
                 ? List.of(new CircuitPoint(end.x(), start.y()))
                 : List.of(new CircuitPoint(start.x(), end.y()));
+    }
+
+    /**
+     * The x position of the vertical run between two horizontally facing ports.
+     *
+     * <p>The corridor sits just after the source, not halfway, so that every wire leaving
+     * the same output shares it — which is exactly what one wants, because those wires are
+     * the same net. Wires from different sources are pushed into different lanes so that
+     * two unrelated signals never appear to run along the same line. If the target is very
+     * close, the corridor falls back to the midpoint.
+     */
+    private static double corridorX(CircuitPoint start, CircuitPoint end, PortSide startSide) {
+        double direction = Math.signum(startSide.outwards().x());
+        double preferred = start.x() + direction * (CORRIDOR_DISTANCE + lane(start));
+        double middle = (start.x() + end.x()) / 2;
+        boolean beyondTarget = direction > 0 ? preferred > middle : preferred < middle;
+        return Grid.snap(beyondTarget ? middle : preferred);
+    }
+
+    private static double corridorY(CircuitPoint start, CircuitPoint end, PortSide startSide) {
+        double direction = Math.signum(startSide.outwards().y());
+        double preferred = start.y() + direction * (CORRIDOR_DISTANCE + lane(start));
+        double middle = (start.y() + end.y()) / 2;
+        boolean beyondTarget = direction > 0 ? preferred > middle : preferred < middle;
+        return Grid.snap(beyondTarget ? middle : preferred);
+    }
+
+    /**
+     * A small, stable offset derived from where the wire starts. Wires from one port
+     * always get the same lane; wires from different ports usually get different ones.
+     */
+    private static double lane(CircuitPoint start) {
+        long steps = Math.round(start.x() / Grid.SPACING) * 7 + Math.round(start.y() / Grid.SPACING) * 3;
+        return Math.floorMod(steps, CORRIDOR_LANES) * Grid.SPACING;
     }
 
     /** {@code true} if a wire leaving this side heads in the given direction. */

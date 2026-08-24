@@ -1,0 +1,342 @@
+package dev.logicforge.ui.render;
+
+import dev.logicforge.circuit.component.ComponentDefinition;
+import dev.logicforge.circuit.document.CircuitDocument;
+import dev.logicforge.circuit.document.ComponentGeometry;
+import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.PlacedPort;
+import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.geometry.CircuitBounds;
+import dev.logicforge.circuit.geometry.CircuitPoint;
+import dev.logicforge.logic.LogicState;
+import dev.logicforge.ui.edit.CircuitEditor;
+import dev.logicforge.ui.viewport.Grid;
+import dev.logicforge.ui.viewport.ViewportTransform;
+import dev.logicforge.ui.wiring.WireRoute;
+import dev.logicforge.ui.wiring.WireRouter;
+import java.util.Optional;
+import java.util.OptionalInt;
+import javafx.geometry.VPos;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.TextAlignment;
+
+/**
+ * Draws the circuit onto a single canvas, in layers: grid, wires, components, overlay.
+ *
+ * <p>Everything is painted in circuit coordinates — the viewport transform is applied to
+ * the graphics context once — so the renderer never converts coordinates itself. Only what
+ * is inside the visible area is drawn.
+ */
+public final class CircuitRenderer {
+
+    private static final double LABEL_OFFSET = 14;
+    private static final double PORT_LABEL_ZOOM = 1.6;
+
+    private final CircuitEditor editor;
+    private final RendererRegistry renderers;
+    private final WireRouter router;
+
+    public CircuitRenderer(CircuitEditor editor, RendererRegistry renderers, WireRouter router) {
+        this.editor = editor;
+        this.renderers = renderers;
+        this.router = router;
+    }
+
+    public void render(GraphicsContext graphics, double width, double height,
+                       ViewportTransform viewport, CanvasOverlay overlay) {
+        graphics.setFill(Theme.CANVAS_BACKGROUND);
+        graphics.fillRect(0, 0, width, height);
+
+        CircuitBounds visible = viewport.visibleWorldBounds(width, height);
+        drawGrid(graphics, width, height, viewport, visible);
+
+        graphics.save();
+        graphics.translate(viewport.translationX(), viewport.translationY());
+        graphics.scale(viewport.scale(), viewport.scale());
+
+        drawWires(graphics, visible);
+        drawComponents(graphics, visible, viewport, overlay);
+        drawOverlay(graphics, overlay, viewport);
+
+        graphics.restore();
+    }
+
+    // ------------------------------------------------------------------ grid
+
+    private void drawGrid(GraphicsContext graphics, double width, double height,
+                          ViewportTransform viewport, CircuitBounds visible) {
+        double scale = viewport.scale();
+        boolean drawMinor = scale >= 0.7;
+        double step = Grid.SPACING;
+        double majorStep = Grid.SPACING * Grid.MAJOR_EVERY;
+
+        graphics.setLineWidth(1);
+        if (drawMinor) {
+            graphics.setStroke(Theme.GRID_MINOR);
+            strokeGridLines(graphics, viewport, visible, width, height, step, majorStep);
+        }
+        graphics.setStroke(Theme.GRID_MAJOR);
+        strokeGridLines(graphics, viewport, visible, width, height, majorStep, 0);
+    }
+
+    /** Draws lines every {@code step} units, skipping those that a stronger line covers. */
+    private void strokeGridLines(GraphicsContext graphics, ViewportTransform viewport,
+                                 CircuitBounds visible, double width, double height,
+                                 double step, double skipMultiplesOf) {
+        if (viewport.worldToScreenLength(step) < 4) {
+            return;
+        }
+        for (double x = Grid.firstLineAtOrAfter(visible.x()); x <= visible.maxX(); x += step) {
+            if (skipMultiplesOf > 0 && isMultiple(x, skipMultiplesOf)) {
+                continue;
+            }
+            double screenX = Math.floor(viewport.worldToScreen(new CircuitPoint(x, 0)).x()) + 0.5;
+            graphics.strokeLine(screenX, 0, screenX, height);
+        }
+        for (double y = Grid.firstLineAtOrAfter(visible.y()); y <= visible.maxY(); y += step) {
+            if (skipMultiplesOf > 0 && isMultiple(y, skipMultiplesOf)) {
+                continue;
+            }
+            double screenY = Math.floor(viewport.worldToScreen(new CircuitPoint(0, y)).y()) + 0.5;
+            graphics.strokeLine(0, screenY, width, screenY);
+        }
+    }
+
+    private static boolean isMultiple(double value, double step) {
+        return Math.abs(Math.IEEEremainder(value, step)) < 1e-6;
+    }
+
+    // ----------------------------------------------------------------- wires
+
+    private void drawWires(GraphicsContext graphics, CircuitBounds visible) {
+        CircuitDocument document = editor.document();
+        graphics.setLineWidth(Theme.WIRE_STROKE);
+
+        for (Connection connection : document.connections()) {
+            Optional<PlacedPort> from = port(connection.from());
+            Optional<PlacedPort> to = port(connection.to());
+            if (from.isEmpty() || to.isEmpty()) {
+                continue;
+            }
+            WireRoute route = router.route(from.get(), to.get(), connection.waypoints());
+            graphics.setStroke(wireColor(connection));
+            if (editor.selection().containsConnection(connection.id())) {
+                graphics.setLineWidth(Theme.WIRE_STROKE + 1.4);
+                graphics.setStroke(Theme.SELECTION);
+            }
+            strokeRoute(graphics, route);
+            graphics.setLineWidth(Theme.WIRE_STROKE);
+        }
+        drawJunctions(graphics);
+    }
+
+    private Color wireColor(Connection connection) {
+        OptionalInt net = editor.netOfConnection(connection.id());
+        if (net.isEmpty()) {
+            return Theme.WIRE_UNPOWERED;
+        }
+        if (editor.hasDriverConflict(net.getAsInt())) {
+            return Theme.SIGNAL_CONFLICT;
+        }
+        return editor.valueOfConnection(connection.id())
+                .map(value -> Theme.signalColor(value.getBit(0)))
+                .orElse(Theme.WIRE_UNPOWERED);
+    }
+
+    private void strokeRoute(GraphicsContext graphics, WireRoute route) {
+        graphics.beginPath();
+        CircuitPoint start = route.points().get(0);
+        graphics.moveTo(start.x(), start.y());
+        for (int i = 1; i < route.points().size(); i++) {
+            graphics.lineTo(route.points().get(i).x(), route.points().get(i).y());
+        }
+        graphics.stroke();
+    }
+
+    /**
+     * A filled dot marks ports where several wires of the same net meet. Wires that merely
+     * cross get nothing, so a junction can never be mistaken for a crossing.
+     */
+    private void drawJunctions(GraphicsContext graphics) {
+        CircuitDocument document = editor.document();
+        for (ComponentInstance instance : document.components()) {
+            Optional<ComponentDefinition> definition = editor.definitionOf(instance);
+            if (definition.isEmpty()) {
+                continue;
+            }
+            for (PlacedPort placed : ComponentGeometry.ports(instance, definition.get())) {
+                if (document.connectionsAt(placed.reference()).size() < 2) {
+                    continue;
+                }
+                graphics.setFill(signalColorOf(placed.reference()));
+                graphics.fillOval(placed.position().x() - Theme.JUNCTION_RADIUS,
+                        placed.position().y() - Theme.JUNCTION_RADIUS,
+                        Theme.JUNCTION_RADIUS * 2, Theme.JUNCTION_RADIUS * 2);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ components
+
+    private void drawComponents(GraphicsContext graphics, CircuitBounds visible,
+                                ViewportTransform viewport, CanvasOverlay overlay) {
+        for (ComponentInstance instance : editor.document().components()) {
+            Optional<ComponentDefinition> definition = editor.definitionOf(instance);
+            if (definition.isEmpty()) {
+                continue;
+            }
+            CircuitBounds bounds = ComponentGeometry.bodyBounds(instance, definition.get());
+            if (!visible.grownBy(64).intersects(bounds)) {
+                continue; // outside the viewport
+            }
+            drawComponent(graphics, instance, definition.get(), viewport, overlay, 1.0);
+        }
+    }
+
+    /** Draws one component: its ports, its symbol and its label. */
+    public void drawComponent(GraphicsContext graphics, ComponentInstance instance,
+                              ComponentDefinition definition, ViewportTransform viewport,
+                              CanvasOverlay overlay, double opacity) {
+        boolean selected = editor.selection().containsComponent(instance.id());
+        boolean hovered = instance.id().equals(overlay.hoveredComponent());
+
+        graphics.save();
+        graphics.setGlobalAlpha(opacity);
+
+        drawPorts(graphics, instance, definition, viewport, overlay);
+
+        graphics.translate(instance.position().x(), instance.position().y());
+        graphics.rotate(instance.rotation().degrees());
+        renderers.rendererFor(instance.definitionId()).drawSymbol(graphics,
+                new SymbolContext(instance, definition, definition.bodySize(instance.parameters()),
+                        selected, hovered, portName -> valueOf(instance, portName)));
+        graphics.restore();
+
+        if (selected) {
+            drawSelectionOutline(graphics, ComponentGeometry.bodyBounds(instance, definition));
+        }
+        drawLabel(graphics, instance, definition, opacity);
+    }
+
+    private void drawPorts(GraphicsContext graphics, ComponentInstance instance,
+                           ComponentDefinition definition, ViewportTransform viewport,
+                           CanvasOverlay overlay) {
+        graphics.setLineWidth(Theme.WIRE_STROKE);
+        for (PlacedPort placed : ComponentGeometry.ports(instance, definition)) {
+            CircuitPoint outer = placed.position();
+            CircuitPoint inner = placed.stubEnd(-dev.logicforge.library.PortLayout.PORT_STUB);
+            graphics.setStroke(signalColorOf(placed.reference()));
+            graphics.strokeLine(inner.x(), inner.y(), outer.x(), outer.y());
+
+            boolean highlighted = overlay.hoveredPortOption()
+                    .map(port -> port.reference().equals(placed.reference()))
+                    .orElse(false);
+            double radius = highlighted ? Theme.PORT_RADIUS * 1.8 : Theme.PORT_RADIUS;
+            graphics.setFill(highlighted ? Theme.PORT_HIGHLIGHT : Theme.PORT);
+            graphics.fillOval(outer.x() - radius, outer.y() - radius, radius * 2, radius * 2);
+
+            if (viewport.scale() >= PORT_LABEL_ZOOM) {
+                drawPortName(graphics, placed);
+            }
+        }
+    }
+
+    private void drawPortName(GraphicsContext graphics, PlacedPort placed) {
+        graphics.setFill(Theme.TEXT_MUTED);
+        graphics.setFont(Font.font(Theme.PIN_LABEL_SIZE));
+        graphics.setTextBaseline(VPos.CENTER);
+        CircuitPoint inside = placed.stubEnd(-dev.logicforge.library.PortLayout.PORT_STUB - 5);
+        switch (placed.side()) {
+            case LEFT -> {
+                graphics.setTextAlign(TextAlignment.LEFT);
+                graphics.fillText(placed.spec().name(), inside.x() + 2, inside.y());
+            }
+            case RIGHT -> {
+                graphics.setTextAlign(TextAlignment.RIGHT);
+                graphics.fillText(placed.spec().name(), inside.x() - 2, inside.y());
+            }
+            default -> {
+                graphics.setTextAlign(TextAlignment.CENTER);
+                graphics.fillText(placed.spec().name(), inside.x(), inside.y());
+            }
+        }
+    }
+
+    private void drawSelectionOutline(GraphicsContext graphics, CircuitBounds bounds) {
+        CircuitBounds outline = bounds.grownBy(4);
+        graphics.setStroke(Theme.SELECTION);
+        graphics.setLineWidth(1.2);
+        graphics.setLineDashes(4, 3);
+        graphics.strokeRoundRect(outline.x(), outline.y(), outline.width(), outline.height(), 4, 4);
+        graphics.setLineDashes();
+    }
+
+    /** Labels are drawn upright, whatever rotation the component has. */
+    private void drawLabel(GraphicsContext graphics, ComponentInstance instance,
+                           ComponentDefinition definition, double opacity) {
+        if (instance.label().isBlank()) {
+            return;
+        }
+        CircuitBounds bounds = ComponentGeometry.bodyBounds(instance, definition);
+        graphics.save();
+        graphics.setGlobalAlpha(opacity);
+        graphics.setFill(Theme.TEXT_SECONDARY);
+        graphics.setFont(Font.font(Theme.LABEL_SIZE));
+        graphics.setTextAlign(TextAlignment.CENTER);
+        graphics.setTextBaseline(VPos.TOP);
+        graphics.fillText(instance.label(), bounds.center().x(), bounds.maxY() + LABEL_OFFSET / 2);
+        graphics.restore();
+    }
+
+    // --------------------------------------------------------------- overlay
+
+    private void drawOverlay(GraphicsContext graphics, CanvasOverlay overlay,
+                             ViewportTransform viewport) {
+        if (overlay.previewWire() != null) {
+            graphics.setStroke(Theme.PORT_HIGHLIGHT);
+            graphics.setLineWidth(Theme.WIRE_STROKE);
+            graphics.setLineDashes(5, 4);
+            strokeRoute(graphics, overlay.previewWire());
+            graphics.setLineDashes();
+        }
+        if (overlay.ghost() != null) {
+            editor.definitionOf(overlay.ghost()).ifPresent(definition ->
+                    drawComponent(graphics, overlay.ghost(), definition, viewport, CanvasOverlay.EMPTY, 0.45));
+        }
+        if (overlay.selectionRectangle() != null) {
+            CircuitBounds rectangle = overlay.selectionRectangle();
+            graphics.setFill(Theme.SELECTION_FILL);
+            graphics.setStroke(Theme.SELECTION);
+            graphics.setLineWidth(1);
+            graphics.fillRect(rectangle.x(), rectangle.y(), rectangle.width(), rectangle.height());
+            graphics.strokeRect(rectangle.x(), rectangle.y(), rectangle.width(), rectangle.height());
+        }
+    }
+
+    // --------------------------------------------------------------- helpers
+
+    private Optional<PlacedPort> port(PortReference reference) {
+        return editor.document().component(reference.componentId()).flatMap(instance ->
+                editor.definitionOf(instance).flatMap(definition ->
+                        ComponentGeometry.port(instance, definition, reference.portName())));
+    }
+
+    private Color signalColorOf(PortReference reference) {
+        OptionalInt net = editor.netOf(reference);
+        if (net.isPresent() && editor.hasDriverConflict(net.getAsInt())) {
+            return Theme.SIGNAL_CONFLICT;
+        }
+        return editor.valueAt(reference)
+                .map(value -> Theme.signalColor(value.getBit(0)))
+                .orElse(Theme.WIRE_UNPOWERED);
+    }
+
+    private LogicState valueOf(ComponentInstance instance, String portName) {
+        return editor.valueAt(new PortReference(instance.id(), portName))
+                .map(value -> value.getBit(0))
+                .orElse(LogicState.HIGH_IMPEDANCE);
+    }
+}
