@@ -216,14 +216,75 @@ public final class Simulation {
         return totalCycles;
     }
 
+    /**
+     * Returns the timestamp of the next scheduled event, or empty if the queue is empty.
+     *
+     * @return the next scheduled time, or empty if no events are pending
+     */
+    public java.util.OptionalLong nextScheduledTime() {
+        return queue.isEmpty() ? java.util.OptionalLong.empty() : java.util.OptionalLong.of(queue.peek().time());
+    }
+
+    /**
+     * Returns the current simulation timestamp.
+     *
+     * @return the current time
+     */
+    public long currentTime() {
+        return time;
+    }
+
+    /**
+     * Returns the current delta cycle within the current timestamp.
+     *
+     * @return the current delta cycle
+     */
+    public int currentDeltaCycle() {
+        return deltaCycle;
+    }
+
+    /**
+     * Propagates until the circuit is stable at the current timestamp.
+     * This processes all events at the current time through all delta cycles,
+     * but does not advance to future timestamps.
+     *
+     * @return the number of delta cycles processed at the current timestamp
+     * @throws SimulationOscillationException if the circuit oscillates at this timestamp
+     */
+    public int runUntilStableAtCurrentTime() {
+        long startTime = time;
+        int cyclesAtStart = deltaCyclesAtCurrentTime;
+        int totalCycles = 0;
+        
+        while (!queue.isEmpty() && queue.peek().time() == startTime) {
+            step();
+            totalCycles++;
+            
+            if (deltaCyclesAtCurrentTime > maxDeltaCycles) {
+                status = SimulationStatus.OSCILLATING;
+                queue.clear();
+                oscillation = new SimulationOscillationException(totalCycles, List.copyOf(lastChangedNets));
+                throw oscillation;
+            }
+        }
+        
+        if (time == startTime) {
+            status = SimulationStatus.STABLE;
+        }
+        return totalCycles;
+    }
+
     /** Details of the last detected oscillation, while {@link #status()} reports one. */
     public java.util.Optional<SimulationOscillationException> oscillation() {
         return java.util.Optional.ofNullable(oscillation);
     }
 
     /**
-     * Sets the value a user-driven component (a switch, a button) puts out. This is a
-     * simulation input, not a document edit.
+     * Sets the value a user-driven component (a switch, a button) puts out. This is an
+     * external stimulus that advances simulation time.
+     *
+     * @param componentId the runtime id of the component to set
+     * @param value the value to set
      */
     public void setInput(int componentId, LogicVector value) {
         if (!(states[componentId] instanceof InputSourceState source)) {
@@ -242,6 +303,38 @@ public final class Simulation {
 
     public void setInput(int componentId, LogicState value) {
         setInput(componentId, LogicVector.single(value));
+    }
+
+    /**
+     * Restores the value of a user-driven component without advancing simulation time.
+     * This is used when re-compiling a circuit to preserve the user's switch settings,
+     * which is not an external stimulus but an internal state restoration.
+     *
+     * @param componentId the runtime id of the component to restore
+     * @param value the value to restore
+     */
+    public void restoreInputState(int componentId, LogicVector value) {
+        if (!(states[componentId] instanceof InputSourceState source)) {
+            throw new SimulationException("Component " + componentId + " ("
+                    + circuit.component(componentId).definitionId() + ") is not a user driven input");
+        }
+        source.setValue(value);
+        // Do NOT advance time - this is state restoration, not an external stimulus
+        evaluate(componentId, 0);
+        status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
+        if (running) {
+            runUntilStable();
+        }
+    }
+
+    /**
+     * Restores the value of a user-driven component without advancing simulation time.
+     *
+     * @param componentId the runtime id of the component to restore
+     * @param value the value to restore
+     */
+    public void restoreInputState(int componentId, LogicState value) {
+        restoreInputState(componentId, LogicVector.single(value));
     }
 
     /**

@@ -379,7 +379,7 @@ public final class CircuitEditor {
             OptionalInt runtimeId = compilation.sourceMap().componentId(componentUuid);
             if (runtimeId.isPresent()
                     && simulation.stateOf(runtimeId.getAsInt()) instanceof InputSourceState) {
-                guarded(() -> simulation.setInput(runtimeId.getAsInt(), value));
+                guarded(() -> simulation.restoreInputState(runtimeId.getAsInt(), value));
             }
         });
     }
