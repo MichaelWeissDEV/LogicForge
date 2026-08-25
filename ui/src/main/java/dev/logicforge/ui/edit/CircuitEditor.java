@@ -62,9 +62,8 @@ public final class CircuitEditor {
 
     private CircuitProject project;
     private CircuitDocument document;
-    private String activeCircuitName;
-    private String activeHierarchyPath;
-    private final Deque<NavigationContext> navigationStack = new ArrayDeque<>();
+    private CircuitViewContext view;
+    private final Deque<CircuitViewContext> navigationStack = new ArrayDeque<>();
     private CompilationResult compilation;
     private Simulation simulation;
     private String compileError;
@@ -96,14 +95,14 @@ public final class CircuitEditor {
         }
         this.project = newProject;
         this.document = newProject.mainCircuit();
-        this.activeCircuitName = CircuitProject.MAIN_CIRCUIT;
-        this.activeHierarchyPath = CircuitProject.MAIN_CIRCUIT;
+        this.view = new CircuitViewContext(CircuitProject.MAIN_CIRCUIT,
+                Optional.of(CircuitProject.MAIN_CIRCUIT));
         this.navigationStack.clear();
         this.documentListener = this::onCircuitChanged;
         this.project.circuits().forEach(circuit -> circuit.addListener(documentListener));
         this.undoStacks.clear();
         this.project.circuitNames().forEach(name -> undoStacks.put(name, new UndoStack()));
-        this.undoStack = undoStacks.get(activeCircuitName);
+        this.undoStack = undoStacks.get(view.circuitName());
         this.selection.clear();
         this.dirty = markDirty;
         // Clear lastValidationIssues before recompiling
@@ -121,12 +120,22 @@ public final class CircuitEditor {
     }
 
     public String activeCircuitName() {
-        return activeCircuitName;
+        return view.circuitName();
     }
 
-    /** Hierarchical instance path when entered through an instance; definition name otherwise. */
-    public String activeHierarchyPath() {
-        return activeHierarchyPath;
+    /**
+     * Hierarchy instance path when the current circuit was reached through a concrete
+     * instance (main -&gt; cpuA -&gt; ...); empty when it was opened directly as a definition,
+     * which may back zero, one or many live instances and therefore has no single runtime
+     * state to show.
+     */
+    public Optional<String> activeInstancePath() {
+        return view.instancePath();
+    }
+
+    /** {@code true} while viewing a definition with no concrete running instance selected. */
+    public boolean isDefinitionMode() {
+        return view.instancePath().isEmpty();
     }
 
     public boolean canNavigateBack() {
@@ -134,16 +143,16 @@ public final class CircuitEditor {
     }
 
     public List<String> navigationLabels() {
-        List<String> labels = navigationStack.stream().map(NavigationContext::circuitName)
+        List<String> labels = navigationStack.stream().map(CircuitViewContext::circuitName)
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         java.util.Collections.reverse(labels);
-        labels.add(activeCircuitName);
+        labels.add(view.circuitName());
         return List.copyOf(labels);
     }
 
-    /** Opens a definition directly from the project tree. */
+    /** Opens a definition directly from the project tree: no runtime instance is implied. */
     public void openCircuit(String circuitName) {
-        switchActiveCircuit(circuitName, circuitName, true);
+        switchActiveCircuit(circuitName, Optional.empty(), true);
     }
 
     /** Opens a selected subcircuit while retaining enough context for Back and signal paths. */
@@ -155,30 +164,36 @@ public final class CircuitEditor {
         if (project.circuit(child).isEmpty()) {
             return;
         }
-        navigationStack.push(new NavigationContext(activeCircuitName, activeHierarchyPath));
-        switchActiveCircuit(child, activeHierarchyPath + "/" + instance.id(), false);
+        navigationStack.push(view);
+        Optional<String> childPath = view.instancePath().map(path -> path + "/" + instance.id());
+        switchActiveCircuit(child, childPath, false);
     }
 
     public void navigateBack() {
         if (navigationStack.isEmpty()) {
             return;
         }
-        NavigationContext parent = navigationStack.pop();
-        switchActiveCircuit(parent.circuitName(), parent.hierarchyPath(), false);
+        CircuitViewContext parent = navigationStack.pop();
+        switchActiveCircuit(parent.circuitName(), parent.instancePath(), false);
     }
 
-    private void switchActiveCircuit(String circuitName, String hierarchyPath, boolean clearNavigation) {
+    private void switchActiveCircuit(String circuitName, Optional<String> instancePath,
+                                     boolean clearNavigation) {
         CircuitDocument next = project.circuit(circuitName).orElseThrow(() ->
                 new IllegalArgumentException("Unknown circuit '" + circuitName + "'"));
         if (clearNavigation) {
             navigationStack.clear();
         }
-        activeCircuitName = circuitName;
-        activeHierarchyPath = hierarchyPath;
+        view = new CircuitViewContext(circuitName, instancePath);
         document = next;
         undoStack = undoStacks.computeIfAbsent(circuitName, ignored -> new UndoStack());
         selection.clear();
         notifyChanged();
+    }
+
+    /** Resolver from components/endpoints local to the open circuit to the live runtime. */
+    private HierarchyRuntimeContext hierarchyContext() {
+        return new HierarchyRuntimeContext(compilation, view.instancePath());
     }
 
     public CircuitDocument addCircuit(String circuitName) {
@@ -203,14 +218,14 @@ public final class CircuitEditor {
         if (history != null) {
             undoStacks.put(target, history);
         }
-        if (activeCircuitName.equals(oldName)) {
-            activeCircuitName = target;
+        if (view.circuitName().equals(oldName)) {
+            view = new CircuitViewContext(target, view.instancePath());
             document = project.circuit(target).orElseThrow();
             undoStack = undoStacks.get(target);
         }
-        List<NavigationContext> updatedNavigation = navigationStack.stream()
+        List<CircuitViewContext> updatedNavigation = navigationStack.stream()
                 .map(context -> context.circuitName().equals(oldName)
-                        ? new NavigationContext(target, context.hierarchyPath()) : context)
+                        ? new CircuitViewContext(target, context.instancePath()) : context)
                 .toList();
         navigationStack.clear();
         updatedNavigation.forEach(navigationStack::addLast);
@@ -226,10 +241,10 @@ public final class CircuitEditor {
         project.removeCircuit(circuitName);
         undoStacks.remove(circuitName);
         navigationStack.removeIf(context -> context.circuitName().equals(circuitName));
-        if (activeCircuitName.equals(circuitName)) {
+        if (view.circuitName().equals(circuitName)) {
             navigationStack.clear();
-            activeCircuitName = CircuitProject.MAIN_CIRCUIT;
-            activeHierarchyPath = CircuitProject.MAIN_CIRCUIT;
+            view = new CircuitViewContext(CircuitProject.MAIN_CIRCUIT,
+                    Optional.of(CircuitProject.MAIN_CIRCUIT));
             document = project.mainCircuit();
             undoStack = undoStacks.get(CircuitProject.MAIN_CIRCUIT);
             selection.clear();
@@ -414,8 +429,9 @@ public final class CircuitEditor {
         }
         if (endpoint.slice() instanceof PortSlice.Range range) {
             LogicState[] bits = new LogicState[range.width()];
+            HierarchyRuntimeContext hierarchy = hierarchyContext();
             for (int offset = 0; offset < bits.length; offset++) {
-                OptionalInt bitNet = compilation.sourceMap().netOf(
+                OptionalInt bitNet = hierarchy.resolveNet(
                         PortEndpoint.bit(endpoint.port(), range.lsb() + offset));
                 if (bitNet.isEmpty()) {
                     return Optional.empty();
@@ -434,32 +450,42 @@ public final class CircuitEditor {
         if (simulation == null || compilation == null) {
             return Optional.empty();
         }
-        OptionalInt net = compilation.sourceMap().netOfConnection(connectionId);
+        OptionalInt net = netOfConnection(connectionId);
         return net.isPresent() ? Optional.of(simulation.readNet(net.getAsInt())) : Optional.empty();
     }
 
     public OptionalInt netOf(PortReference port) {
-        if (compilation == null) return OptionalInt.empty();
-        OptionalInt direct = compilation.sourceMap().netOf(port);
-        return direct.isPresent() ? direct : netOf(PortEndpoint.whole(port));
+        return hierarchyContext().resolveNet(port);
     }
 
     public OptionalInt netOf(PortEndpoint endpoint) {
-        if (compilation == null) return OptionalInt.empty();
-        OptionalInt direct = compilation.sourceMap().netOf(endpoint);
-        return direct.isPresent() ? direct : compilation.hierarchySourceMap().netId(
-                dev.logicforge.compiler.CircuitFlattener.endpointPath(
-                        document.metadata().name(), endpoint));
+        return hierarchyContext().resolveNet(endpoint);
     }
 
+    /** Resolves an absolute hierarchy path (e.g. from a stable analyzer watch) directly. */
     public OptionalInt netOfHierarchyPath(String endpointPath) {
         return compilation == null ? OptionalInt.empty()
                 : compilation.hierarchySourceMap().netId(endpointPath);
     }
 
+    /**
+     * The net a wire belongs to. Root-level connection ids pass straight through the flat
+     * source map; a connection local to a nested circuit has no such direct mapping (only
+     * root wire ids survive flattening unchanged), so it is resolved via either endpoint
+     * through the hierarchy instance instead.
+     */
     public OptionalInt netOfConnection(UUID connectionId) {
-        return compilation == null ? OptionalInt.empty()
-                : compilation.sourceMap().netOfConnection(connectionId);
+        if (compilation == null) {
+            return OptionalInt.empty();
+        }
+        OptionalInt direct = compilation.sourceMap().netOfConnection(connectionId);
+        if (direct.isPresent()) {
+            return direct;
+        }
+        Optional<dev.logicforge.circuit.document.Connection> connection =
+                document.connection(connectionId);
+        return connection.isPresent() ? hierarchyContext().resolveNet(connection.get().from())
+                : OptionalInt.empty();
     }
 
     public boolean hasDriverConflict(int netId) {
@@ -469,7 +495,7 @@ public final class CircuitEditor {
     /** Returns the width in bits of the net carrying this connection, or 0 if unknown. */
     public int netWidth(UUID connectionId) {
         if (compilation == null) return 0;
-        OptionalInt net = compilation.sourceMap().netOfConnection(connectionId);
+        OptionalInt net = netOfConnection(connectionId);
         if (net.isEmpty()) return 0;
         return compilation.circuit().net(net.getAsInt()).width().bits();
     }
@@ -536,7 +562,7 @@ public final class CircuitEditor {
         if (simulation == null || compilation == null) {
             return;
         }
-        OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
         if (runtimeId.isEmpty()) {
             return;
         }
@@ -552,7 +578,7 @@ public final class CircuitEditor {
         if (simulation == null || compilation == null) {
             return Optional.empty();
         }
-        OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
         if (runtimeId.isEmpty()) {
             return Optional.empty();
         }
@@ -679,20 +705,20 @@ public final class CircuitEditor {
 
     public java.util.Optional<dev.logicforge.simulation.MemorySnapshot> memorySnapshot(java.util.UUID componentId) {
         if (simulation == null || compilation == null) return java.util.Optional.empty();
-        java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        java.util.OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
         if (runtimeId.isEmpty()) return java.util.Optional.empty();
         return simulation.memorySnapshot(runtimeId.getAsInt());
     }
 
     public long memoryRevision(UUID componentId) {
         if (simulation == null || compilation == null) return -1;
-        OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
         return runtimeId.isEmpty() ? -1 : simulation.memoryRevision(runtimeId.getAsInt());
     }
 
     public java.util.Optional<dev.logicforge.simulation.ComponentDebugSnapshot> debugSnapshot(UUID componentId) {
         if (simulation == null || compilation == null) return java.util.Optional.empty();
-        OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
         if (runtimeId.isEmpty()) return java.util.Optional.empty();
         var snapshot = simulation.debugSnapshot(runtimeId.getAsInt());
         return snapshot.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(snapshot);
@@ -711,7 +737,7 @@ public final class CircuitEditor {
                 return;
             }
             if (simulation == null || compilation == null) return;
-            java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+            java.util.OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
             if (runtimeId.isEmpty()) return;
             guarded(() -> simulation.writeMemoryWord(runtimeId.getAsInt(), address, value));
             notifyChanged();
@@ -726,7 +752,7 @@ public final class CircuitEditor {
                 return;
             }
             if (simulation == null || compilation == null) return;
-            OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+            OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
             if (runtimeId.isEmpty()) return;
             int id = runtimeId.getAsInt();
             for (int address = 0; address < words.size(); address++) {
@@ -760,6 +786,11 @@ public final class CircuitEditor {
         changeListeners.forEach(Runnable::run);
     }
 
-    private record NavigationContext(String circuitName, String hierarchyPath) {
+    /**
+     * Which circuit definition is open, and — when reached by descending into a concrete
+     * instance rather than opened directly from the project tree — the hierarchy instance
+     * path identifying which one of its (possibly several) runtime copies is live.
+     */
+    private record CircuitViewContext(String circuitName, Optional<String> instancePath) {
     }
 }

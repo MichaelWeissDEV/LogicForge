@@ -43,12 +43,20 @@ public final class LogicAnalyzerController {
         resync();
     }
 
+    /** {@code false} while viewing a definition with no concrete running instance selected. */
+    public boolean canWatch() {
+        return editor.activeInstancePath().isPresent();
+    }
+
     public void addSignal(PortEndpoint reference, String label) {
-        String path = hierarchyPath(reference);
-        if (watched.stream().anyMatch(signal -> signal.hierarchyPath().equals(path))) {
+        Optional<String> path = hierarchyPath(reference);
+        if (path.isEmpty()) {
             return;
         }
-        watched.add(new WatchedSignal(reference, path, label));
+        if (watched.stream().anyMatch(signal -> signal.hierarchyPath().equals(path.get()))) {
+            return;
+        }
+        watched.add(new WatchedSignal(reference, path.get(), label));
         resync();
     }
 
@@ -150,19 +158,36 @@ public final class LogicAnalyzerController {
         notifyListeners();
     }
 
+    /**
+     * Resolves by the canonical hierarchy path captured when the watch was added, falling
+     * back only to the flat, instance-agnostic source map — never to whatever circuit
+     * happens to be open right now. The flat map's fallback is safe because it is keyed by
+     * runtime UUIDs that only ever equal a root-level component's own local UUID (a nested
+     * instance's local UUID is never a key there), so it covers root-level cases the
+     * hierarchy path map does not — such as a single bit of an otherwise whole-wired bus,
+     * which was never itself a connection endpoint — without ever resolving to a different
+     * instance. A watch whose instance genuinely disappeared (the subcircuit was removed,
+     * or recompilation no longer has that path) still correctly goes unresolved rather than
+     * silently re-binding to a different instance's signal of the same local shape.
+     */
     private java.util.OptionalInt resolveNet(WatchedSignal signal) {
         java.util.OptionalInt hierarchical = editor.netOfHierarchyPath(signal.hierarchyPath());
-        return hierarchical.isPresent() ? hierarchical : editor.netOf(signal.reference());
+        if (hierarchical.isPresent()) {
+            return hierarchical;
+        }
+        return editor.compilation()
+                .map(compilation -> compilation.sourceMap().netOf(signal.reference()))
+                .orElse(java.util.OptionalInt.empty());
     }
 
-    private String hierarchyPath(PortEndpoint endpoint) {
+    private Optional<String> hierarchyPath(PortEndpoint endpoint) {
         String suffix = switch (endpoint.slice()) {
             case PortSlice.Whole ignored -> endpoint.portName();
             case PortSlice.Bit bit -> endpoint.portName() + "[" + bit.index() + "]";
             case PortSlice.Range range -> endpoint.portName() + "[" + range.msb()
                     + ":" + range.lsb() + "]";
         };
-        return editor.activeHierarchyPath() + "/" + endpoint.componentId() + "." + suffix;
+        return editor.activeInstancePath().map(path -> path + "/" + endpoint.componentId() + "." + suffix);
     }
 
     private void notifyListeners() {

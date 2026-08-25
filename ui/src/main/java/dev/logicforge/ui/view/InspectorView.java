@@ -114,7 +114,8 @@ public final class InspectorView extends VBox {
             body.getChildren().add(readOnly("Source circuit", child));
             String segment = instance.label().isBlank() ? instance.id().toString() : instance.label();
             body.getChildren().add(readOnly("Instance path",
-                    editor.activeHierarchyPath() + "/" + segment));
+                    editor.activeInstancePath().map(path -> path + "/" + segment)
+                            .orElse(segment + " (not instantiated)")));
             Button open = new Button("Open Internals");
             open.setOnAction(event -> editor.openSubcircuit(instance));
             body.getChildren().add(open);
@@ -245,6 +246,11 @@ public final class InspectorView extends VBox {
     /** The live value of every pin, while the circuit compiles and a simulation exists. */
     private void showState(ComponentInstance instance, ComponentDefinition component) {
         if (editor.simulation().isEmpty()) {
+            return;
+        }
+        if (editor.isDefinitionMode()) {
+            body.getChildren().add(spacer());
+            body.getChildren().add(subtitle("Definition view — no runtime instance selected"));
             return;
         }
         List<PortSpec> ports = component.ports(instance.parameters());
