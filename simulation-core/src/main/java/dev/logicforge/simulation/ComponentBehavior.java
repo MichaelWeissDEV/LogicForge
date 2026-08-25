@@ -28,6 +28,14 @@ public interface ComponentBehavior {
         return state.memorySnapshot();
     }
 
+    default long memoryRevision(ComponentRuntimeState state) {
+        return state.memoryRevision();
+    }
+
+    default ComponentDebugSnapshot debugSnapshot(ComponentRuntimeState state) {
+        return state.debugSnapshot();
+    }
+
     /** Updates runtime memory when supported. Project-backed ROM is edited by the editor. */
     default void writeMemoryWord(ComponentRuntimeState state, int address, LogicVector value) {
         state.writeMemoryWord(address, value);

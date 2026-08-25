@@ -24,13 +24,22 @@ import javafx.stage.FileChooser;
 /** A window displaying the contents of a RAM or ROM component. */
 public final class MemoryView extends Stage {
 
+    private static final int PAGE_SIZE = 256;
+
     private final CircuitEditor editor;
     private final UUID componentId;
     private final TableView<MemoryRow> table = new TableView<>();
     private final ObservableList<MemoryRow> rows = FXCollections.observableArrayList();
     private final TextField jumpField = new TextField();
+    private final Label pageLabel = new Label();
+    private final Runnable editorListener = this::refresh;
     
     private int dataWidth = 8; // default, updated from snapshot
+    private int memorySize;
+    private int pageStart;
+    private long lastRevision = Long.MIN_VALUE;
+    private int lastReadAddress = -1;
+    private int lastWriteAddress = -1;
 
     public MemoryView(CircuitEditor editor, UUID componentId, String title) {
         this.editor = editor;
@@ -68,7 +77,21 @@ public final class MemoryView extends Stage {
         table.setItems(rows);
         table.getColumns().addAll(addrCol, hexCol, binCol);
         table.setEditable(true);
-        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        table.setRowFactory(ignored -> new TableRow<>() {
+            @Override protected void updateItem(MemoryRow row, boolean empty) {
+                super.updateItem(row, empty);
+                if (empty || row == null) {
+                    setStyle("");
+                } else if (row.address() == lastWriteAddress) {
+                    setStyle("-fx-background-color: rgba(255, 170, 60, 0.25);");
+                } else if (row.address() == lastReadAddress) {
+                    setStyle("-fx-background-color: rgba(80, 160, 255, 0.20);");
+                } else {
+                    setStyle("");
+                }
+            }
+        });
         
         Label jumpLabel = new Label("Jump to:");
         jumpField.setPromptText("hex address");
@@ -76,13 +99,20 @@ public final class MemoryView extends Stage {
         jumpField.setOnAction(e -> jumpToAddress());
         Button jumpBtn = new Button("Go");
         jumpBtn.setOnAction(e -> jumpToAddress());
+        Button previous = new Button("Previous Page");
+        previous.setOnAction(e -> changePage(-PAGE_SIZE));
+        Button next = new Button("Next Page");
+        next.setOnAction(e -> changePage(PAGE_SIZE));
+        Button refreshButton = new Button("Refresh");
+        refreshButton.setOnAction(e -> refresh(true));
         Button loadBtn = new Button("Load .bin");
         loadBtn.setOnAction(e -> loadBinary());
         Button saveBtn = new Button("Save .bin");
         saveBtn.setOnAction(e -> saveBinary());
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox jumpBar = new HBox(4, jumpLabel, jumpField, jumpBtn, spacer, loadBtn, saveBtn);
+        HBox jumpBar = new HBox(4, previous, next, pageLabel, jumpLabel, jumpField, jumpBtn,
+                refreshButton, spacer, loadBtn, saveBtn);
         jumpBar.setPadding(new Insets(4));
         
         VBox content = new VBox(jumpBar, table);
@@ -91,35 +121,67 @@ public final class MemoryView extends Stage {
         Scene scene = new Scene(content, 420, 500);
         setScene(scene);
         
-        editor.addChangeListener(this::refresh);
-        refresh();
+        editor.addChangeListener(editorListener);
+        setOnHidden(event -> editor.removeChangeListener(editorListener));
+        refresh(true);
     }
     
     private void refresh() {
+        refresh(false);
+    }
+
+    private void refresh(boolean force) {
+        long revision = editor.memoryRevision(componentId);
+        if (!force && revision >= 0 && revision == lastRevision) {
+            return;
+        }
         Optional<MemorySnapshot> snap = editor.memorySnapshot(componentId);
         if (snap.isEmpty()) {
             rows.clear();
+            memorySize = 0;
             return;
         }
         MemorySnapshot snapshot = snap.get();
-        dataWidth = snapshot.size() > 0 ? snapshot.wordAt(0).width() : 8;
+        lastRevision = snapshot.revision();
+        dataWidth = snapshot.wordWidth();
+        memorySize = snapshot.size();
+        lastReadAddress = snapshot.lastReadAddress();
+        lastWriteAddress = snapshot.lastWriteAddress();
+        pageStart = Math.max(0, Math.min(pageStart,
+                Math.max(0, ((memorySize - 1) / PAGE_SIZE) * PAGE_SIZE)));
         
-        int addrWidth = Integer.toHexString(snapshot.size() - 1).length();
+        int addrWidth = Math.max(1, Integer.toHexString(Math.max(0, snapshot.size() - 1)).length());
         
-        List<MemoryRow> newRows = new ArrayList<>(snapshot.size());
-        for (int i = 0; i < snapshot.size(); i++) {
+        int pageEnd = Math.min(snapshot.size(), pageStart + PAGE_SIZE);
+        List<MemoryRow> newRows = new ArrayList<>(Math.max(0, pageEnd - pageStart));
+        for (int i = pageStart; i < pageEnd; i++) {
             newRows.add(new MemoryRow(i, addrWidth, snapshot.wordAt(i), dataWidth));
         }
         rows.setAll(newRows);
+        pageLabel.setText(memorySize == 0 ? "Empty"
+                : String.format("%X–%X / %X", pageStart, Math.max(pageStart, pageEnd - 1), memorySize - 1));
+        table.refresh();
+    }
+
+    private void changePage(int delta) {
+        int target = Math.max(0, Math.min(pageStart + delta,
+                Math.max(0, ((memorySize - 1) / PAGE_SIZE) * PAGE_SIZE)));
+        if (target != pageStart) {
+            pageStart = target;
+            refresh(true);
+        }
     }
     
     private void jumpToAddress() {
         String text = jumpField.getText().trim();
         try {
             int addr = Integer.parseUnsignedInt(text, 16);
-            if (addr >= 0 && addr < rows.size()) {
-                table.scrollTo(addr);
-                table.getSelectionModel().select(addr);
+            if (addr >= 0 && addr < memorySize) {
+                pageStart = (addr / PAGE_SIZE) * PAGE_SIZE;
+                refresh(true);
+                int row = addr - pageStart;
+                table.scrollTo(row);
+                table.getSelectionModel().select(row);
             }
         } catch (NumberFormatException e) {
             // ignore
@@ -133,7 +195,7 @@ public final class MemoryView extends Stage {
         try {
             byte[] bytes = Files.readAllBytes(file.toPath());
             int bytesPerWord = (dataWidth + 7) / 8;
-            int wordCount = Math.min(rows.size(), (bytes.length + bytesPerWord - 1) / bytesPerWord);
+            int wordCount = Math.min(memorySize, (bytes.length + bytesPerWord - 1) / bytesPerWord);
             List<LogicVector> words = new ArrayList<>(wordCount);
             for (int word = 0; word < wordCount; word++) {
                 long value = 0;

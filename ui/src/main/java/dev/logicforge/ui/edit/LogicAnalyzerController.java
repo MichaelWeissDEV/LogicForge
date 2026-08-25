@@ -27,7 +27,7 @@ import java.util.Set;
 public final class LogicAnalyzerController {
 
     /** A signal the user chose to watch, identified the way the rest of the editor does. */
-    public record WatchedSignal(PortEndpoint reference, String label) {
+    public record WatchedSignal(PortEndpoint reference, String hierarchyPath, String label) {
     }
 
     private final CircuitEditor editor;
@@ -44,10 +44,11 @@ public final class LogicAnalyzerController {
     }
 
     public void addSignal(PortEndpoint reference, String label) {
-        if (isWatching(reference)) {
+        String path = hierarchyPath(reference);
+        if (watched.stream().anyMatch(signal -> signal.hierarchyPath().equals(path))) {
             return;
         }
-        watched.add(new WatchedSignal(reference, label));
+        watched.add(new WatchedSignal(reference, path, label));
         resync();
     }
 
@@ -61,6 +62,12 @@ public final class LogicAnalyzerController {
         }
     }
 
+    public void removeSignal(WatchedSignal watchedSignal) {
+        if (watched.remove(watchedSignal)) {
+            resync();
+        }
+    }
+
     public boolean isWatching(PortEndpoint reference) {
         return watched.stream().anyMatch(signal -> signal.reference().equals(reference));
     }
@@ -70,15 +77,20 @@ public final class LogicAnalyzerController {
     }
 
     public Optional<SignalTrace> traceFor(PortEndpoint reference) {
+        return watched.stream().filter(signal -> signal.reference().equals(reference)).findFirst()
+                .flatMap(this::traceFor);
+    }
+
+    public Optional<SignalTrace> traceFor(WatchedSignal signal) {
         if (recorder == null) {
             return Optional.empty();
         }
-        java.util.OptionalInt netId = editor.netOf(reference);
+        java.util.OptionalInt netId = resolveNet(signal);
         if (netId.isEmpty()) {
             return Optional.empty();
         }
         Optional<SignalTrace> trace = recorder.trace(netId.getAsInt());
-        if (trace.isPresent() && reference.slice() instanceof PortSlice.Bit bit
+        if (trace.isPresent() && signal.reference().slice() instanceof PortSlice.Bit bit
                 && trace.get().width().bits() > 1) {
             return Optional.of(trace.get().bit(bit.index()));
         }
@@ -123,7 +135,7 @@ public final class LogicAnalyzerController {
         if (recorder != null) {
             Set<Integer> desiredNets = new LinkedHashSet<>();
             for (WatchedSignal signal : watched) {
-                editor.netOf(signal.reference()).ifPresent(desiredNets::add);
+                resolveNet(signal).ifPresent(desiredNets::add);
             }
             for (SignalTrace trace : recorder.traces()) {
                 if (!desiredNets.contains(trace.netId())) {
@@ -131,11 +143,26 @@ public final class LogicAnalyzerController {
                 }
             }
             for (WatchedSignal signal : watched) {
-                editor.netOf(signal.reference())
+                resolveNet(signal)
                         .ifPresent(netId -> recorder.watch(netId, signal.label()));
             }
         }
         notifyListeners();
+    }
+
+    private java.util.OptionalInt resolveNet(WatchedSignal signal) {
+        java.util.OptionalInt hierarchical = editor.netOfHierarchyPath(signal.hierarchyPath());
+        return hierarchical.isPresent() ? hierarchical : editor.netOf(signal.reference());
+    }
+
+    private String hierarchyPath(PortEndpoint endpoint) {
+        String suffix = switch (endpoint.slice()) {
+            case PortSlice.Whole ignored -> endpoint.portName();
+            case PortSlice.Bit bit -> endpoint.portName() + "[" + bit.index() + "]";
+            case PortSlice.Range range -> endpoint.portName() + "[" + range.msb()
+                    + ":" + range.lsb() + "]";
+        };
+        return editor.activeHierarchyPath() + "/" + endpoint.componentId() + "." + suffix;
     }
 
     private void notifyListeners() {

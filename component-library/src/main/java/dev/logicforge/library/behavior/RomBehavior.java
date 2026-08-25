@@ -53,4 +53,12 @@ public record RomBehavior(BitWidth dataWidth, LogicVector[] contents) implements
     public MemorySnapshot memorySnapshot(ComponentRuntimeState state) {
         return new MemorySnapshot(contents);
     }
+
+    @Override public long memoryRevision(ComponentRuntimeState state) { return 0; }
+
+    @Override
+    public dev.logicforge.simulation.ComponentDebugSnapshot debugSnapshot(ComponentRuntimeState state) {
+        return new dev.logicforge.simulation.ComponentDebugSnapshot(
+                java.util.Map.of(), java.util.List.of(), memorySnapshot(state), java.util.Map.of());
+    }
 }

@@ -100,6 +100,49 @@ class CircuitEditorTest {
     }
 
     @Test
+    void analyzerDistinguishesSignalsFromTwoInstancesOfTheSameChild() {
+        CircuitDocument child = inverterChild("Inverter");
+        ComponentInstance nestedNot = child.components().stream()
+                .filter(component -> component.definitionId().equals("logic.not"))
+                .findFirst().orElseThrow();
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance sourceA = ComponentInstance.create("source.toggle",
+                new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance sourceB = ComponentInstance.create("source.toggle",
+                new CircuitPoint(0, 100), ParameterValues.empty());
+        ComponentInstance first = SubcircuitSupport.instantiate("Inverter", new CircuitPoint(120, 0));
+        ComponentInstance second = SubcircuitSupport.instantiate("Inverter", new CircuitPoint(120, 100));
+        main.addComponent(sourceA);
+        main.addComponent(sourceB);
+        main.addComponent(first);
+        main.addComponent(second);
+        main.addConnection(Connection.create(new PortReference(sourceA.id(), "OUT"),
+                new PortReference(first.id(), "A")));
+        main.addConnection(Connection.create(new PortReference(sourceB.id(), "OUT"),
+                new PortReference(second.id(), "A")));
+        CircuitProject project = CircuitProject.of("analyzer hierarchy", main);
+        project.putCircuit(child);
+        editor.setProject(project, false);
+        editor.toggleInput(sourceB.id());
+        LogicAnalyzerController analyzer = new LogicAnalyzerController(editor);
+        PortEndpoint nestedOutput = PortEndpoint.whole(new PortReference(nestedNot.id(), "Y"));
+
+        editor.openSubcircuit(first);
+        analyzer.addSignal(nestedOutput, "first.Y");
+        editor.navigateBack();
+        editor.openSubcircuit(second);
+        analyzer.addSignal(nestedOutput, "second.Y");
+
+        assertEquals(2, analyzer.watchedSignals().size());
+        assertFalse(analyzer.watchedSignals().get(0).hierarchyPath()
+                .equals(analyzer.watchedSignals().get(1).hierarchyPath()));
+        assertEquals(LogicVector.ONE, analyzer.traceFor(analyzer.watchedSignals().get(0))
+                .orElseThrow().transitions().get(0).value());
+        assertEquals(LogicVector.ZERO, analyzer.traceFor(analyzer.watchedSignals().get(1))
+                .orElseThrow().transitions().get(0).value());
+    }
+
+    @Test
     void buildingAndRunningTheClassicSwitchAndGateCircuit() {
         ComponentInstance switchA = add("source.toggle", 0, 0);
         ComponentInstance switchB = add("source.toggle", 0, 100);

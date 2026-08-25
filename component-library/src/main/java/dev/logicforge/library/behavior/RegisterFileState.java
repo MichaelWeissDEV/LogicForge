@@ -4,7 +4,9 @@ import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.ComponentRuntimeState;
+import dev.logicforge.simulation.ComponentDebugSnapshot;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * The stored words of a register file, plus the clock level last observed for rising-edge
@@ -42,6 +44,12 @@ final class RegisterFileState implements ComponentRuntimeState {
             this.lastClock = s.lastClock();
         }
         // else: incompatible — keep reset state
+    }
+
+    @Override
+    public ComponentDebugSnapshot debugSnapshot() {
+        return new ComponentDebugSnapshot(java.util.Map.of(), List.of(registers.clone()),
+                null, java.util.Map.of());
     }
 
     record Snapshot(LogicVector[] registers, BitWidth width, int count, LogicState lastClock) {}

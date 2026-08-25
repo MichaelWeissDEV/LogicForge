@@ -505,6 +505,16 @@ public final class Simulation {
                 component.behavior().memorySnapshot(states[componentId]));
     }
 
+    public long memoryRevision(int componentId) {
+        CompiledComponent component = circuit.component(componentId);
+        return component.behavior().memoryRevision(states[componentId]);
+    }
+
+    public ComponentDebugSnapshot debugSnapshot(int componentId) {
+        CompiledComponent component = circuit.component(componentId);
+        return component.behavior().debugSnapshot(states[componentId]);
+    }
+
     /** Writes runtime-backed memory and refreshes outputs at the current timestamp. */
     public void writeMemoryWord(int componentId, int address, LogicVector value) {
         CompiledComponent component = circuit.component(componentId);

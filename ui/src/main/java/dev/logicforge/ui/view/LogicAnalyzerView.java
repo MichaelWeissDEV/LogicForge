@@ -172,8 +172,8 @@ public final class LogicAnalyzerView extends BorderPane {
     }
 
     /** Removes a watched signal; called from the row's own remove button. */
-    private void remove(PortEndpoint reference) {
-        controller.removeSignal(reference);
+    private void remove(LogicAnalyzerController.WatchedSignal signal) {
+        controller.removeSignal(signal);
     }
 
     private void redraw() {
@@ -219,7 +219,7 @@ public final class LogicAnalyzerView extends BorderPane {
             name.getStyleClass().add("property-label");
             name.setMinWidth(70);
 
-            Optional<SignalTrace> trace = controller.traceFor(signal.reference());
+            Optional<SignalTrace> trace = controller.traceFor(signal);
             Label value = new Label(trace.flatMap(this::currentValue)
                     .map(v -> displayValue(v, busMode))
                     .orElse("–"));
@@ -229,7 +229,7 @@ public final class LogicAnalyzerView extends BorderPane {
 
             Button removeButton = new Button("✕");
             removeButton.getStyleClass().add("tool-button");
-            removeButton.setOnAction(event -> remove(signal.reference()));
+            removeButton.setOnAction(event -> remove(signal));
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -292,7 +292,7 @@ public final class LogicAnalyzerView extends BorderPane {
     private long timeSpan(List<LogicAnalyzerController.WatchedSignal> signals, long now) {
         long earliest = now;
         for (LogicAnalyzerController.WatchedSignal signal : signals) {
-            Optional<SignalTrace> trace = controller.traceFor(signal.reference());
+            Optional<SignalTrace> trace = controller.traceFor(signal);
             if (trace.isPresent() && !trace.get().isEmpty()) {
                 earliest = Math.min(earliest, trace.get().transitions().get(0).time());
             }

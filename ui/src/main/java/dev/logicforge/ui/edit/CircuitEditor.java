@@ -452,6 +452,11 @@ public final class CircuitEditor {
                         document.metadata().name(), endpoint));
     }
 
+    public OptionalInt netOfHierarchyPath(String endpointPath) {
+        return compilation == null ? OptionalInt.empty()
+                : compilation.hierarchySourceMap().netId(endpointPath);
+    }
+
     public OptionalInt netOfConnection(UUID connectionId) {
         return compilation == null ? OptionalInt.empty()
                 : compilation.sourceMap().netOfConnection(connectionId);
@@ -679,6 +684,20 @@ public final class CircuitEditor {
         return simulation.memorySnapshot(runtimeId.getAsInt());
     }
 
+    public long memoryRevision(UUID componentId) {
+        if (simulation == null || compilation == null) return -1;
+        OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        return runtimeId.isEmpty() ? -1 : simulation.memoryRevision(runtimeId.getAsInt());
+    }
+
+    public java.util.Optional<dev.logicforge.simulation.ComponentDebugSnapshot> debugSnapshot(UUID componentId) {
+        if (simulation == null || compilation == null) return java.util.Optional.empty();
+        OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        if (runtimeId.isEmpty()) return java.util.Optional.empty();
+        var snapshot = simulation.debugSnapshot(runtimeId.getAsInt());
+        return snapshot.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(snapshot);
+    }
+
     public void writeMemoryWord(java.util.UUID componentId, int address, dev.logicforge.logic.LogicVector value) {
         document.component(componentId).ifPresent(instance -> {
             if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
@@ -731,6 +750,10 @@ public final class CircuitEditor {
 
     public void addChangeListener(Runnable listener) {
         changeListeners.add(listener);
+    }
+
+    public void removeChangeListener(Runnable listener) {
+        changeListeners.remove(listener);
     }
 
     private void notifyChanged() {

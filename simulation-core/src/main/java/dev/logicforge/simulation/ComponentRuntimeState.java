@@ -44,6 +44,19 @@ public interface ComponentRuntimeState {
         return null;
     }
 
+    /** Cheap monotonic memory/access revision, or {@code -1} for non-memory state. */
+    default long memoryRevision() {
+        return -1;
+    }
+
+    /** Generic live state exposed without UI casts to component-specific state classes. */
+    default ComponentDebugSnapshot debugSnapshot() {
+        MemorySnapshot memory = memorySnapshot();
+        return memory == null ? ComponentDebugSnapshot.EMPTY
+                : new ComponentDebugSnapshot(java.util.Map.of(), java.util.List.of(), memory,
+                java.util.Map.of());
+    }
+
     /**
      * Writes a word to position {@code address} in this component's memory, if it has one.
      */

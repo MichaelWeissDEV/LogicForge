@@ -10,10 +10,24 @@ import dev.logicforge.logic.LogicVector;
  * internals. The constructor defensively copies the array so the caller's copy of the
  * state cannot be mutated through this snapshot.
  */
-public record MemorySnapshot(LogicVector[] words) {
+public record MemorySnapshot(LogicVector[] words, long revision, int wordWidth,
+                             int lastReadAddress, int lastWriteAddress,
+                             LogicVector lastWrittenValue) {
 
     public MemorySnapshot {
         words = words.clone();
+        if (revision < 0 || wordWidth < 1) {
+            throw new IllegalArgumentException("Invalid memory snapshot metadata");
+        }
+    }
+
+    public MemorySnapshot(LogicVector[] words) {
+        this(words, 0, words.length == 0 ? 1 : words[0].width(), -1, -1, null);
+    }
+
+    @Override
+    public LogicVector[] words() {
+        return words.clone();
     }
 
     /** Number of words in this memory. */
