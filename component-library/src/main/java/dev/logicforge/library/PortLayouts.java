@@ -10,6 +10,7 @@ import dev.logicforge.circuit.geometry.PortSide;
 import dev.logicforge.logic.BitWidth;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 /**
  * The handful of port arrangements the standard library needs. Sharing them keeps every
@@ -143,6 +144,67 @@ public final class PortLayouts {
                 inputNames.stream().map(PortDef::new).toList(),
                 outputNames.stream().map(PortDef::new).toList(),
                 GATE_WIDTH);
+    }
+
+    /** A port for {@link #dynamicBox} whose width can depend on the instance's parameters. */
+    public record DynamicPortDef(String name, Function<ParameterValues, BitWidth> width, String description) {
+
+        /** A plain single-bit port: CLK, EN, LOAD, RESET and the like. */
+        public static DynamicPortDef fixed(String name) {
+            return new DynamicPortDef(name, values -> BitWidth.ONE, "");
+        }
+
+        public static DynamicPortDef fixed(String name, String description) {
+            return new DynamicPortDef(name, values -> BitWidth.ONE, description);
+        }
+
+        /** A bus port whose width is the current value of {@code widthParam}. */
+        public static DynamicPortDef bus(String name, ParameterSpec.IntegerParameter widthParam) {
+            return new DynamicPortDef(name, values -> BitWidth.of(values.getInt(widthParam)), "");
+        }
+
+        public static DynamicPortDef bus(String name, ParameterSpec.IntegerParameter widthParam,
+                                         String description) {
+            return new DynamicPortDef(name, values -> BitWidth.of(values.getInt(widthParam)), description);
+        }
+    }
+
+    /**
+     * {@link #box}, but for components whose port widths depend on their parameters —
+     * registers, counters and other bus-shaped ICs whose DATA/COUNT width follows a
+     * configurable {@code width} parameter while their control lines (CLK, LOAD, RESET)
+     * stay a single bit.
+     */
+    public static PortLayout dynamicBox(List<DynamicPortDef> inputs, List<DynamicPortDef> outputs, double width) {
+        return new PortLayout() {
+
+            @Override
+            public List<PortSpec> ports(ParameterValues values) {
+                CircuitSize body = bodySize(values);
+                List<PortSpec> ports = new ArrayList<>(inputs.size() + outputs.size());
+                for (int i = 0; i < inputs.size(); i++) {
+                    double y = (i - (inputs.size() - 1) / 2.0) * PORT_SPACING;
+                    DynamicPortDef def = inputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.INPUT, def.width().apply(values),
+                            new CircuitPoint(-body.halfWidth() - PORT_STUB, y), PortSide.LEFT,
+                            def.description()));
+                }
+                for (int i = 0; i < outputs.size(); i++) {
+                    double y = (i - (outputs.size() - 1) / 2.0) * PORT_SPACING;
+                    DynamicPortDef def = outputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.OUTPUT, def.width().apply(values),
+                            new CircuitPoint(body.halfWidth() + PORT_STUB, y), PortSide.RIGHT,
+                            def.description()));
+                }
+                return ports;
+            }
+
+            @Override
+            public CircuitSize bodySize(ParameterValues values) {
+                int rows = Math.max(inputs.size(), outputs.size());
+                return new CircuitSize(width, Math.max(48, rows * PORT_SPACING + PORT_SPACING));
+            }
+        };
     }
 
     private static PortSpec inputPort(String name, CircuitSize body, double y) {

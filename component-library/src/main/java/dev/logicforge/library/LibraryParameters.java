@@ -47,6 +47,10 @@ public final class LibraryParameters {
     public static final ParameterSpec.EnumParameter CLOCK_EDGE =
             new ParameterSpec.EnumParameter("edge", "Clock Edge", "rising", List.of("rising", "falling"));
 
+    /** Bit width of a bus-shaped component: registers, counters, buses, memories. */
+    public static final ParameterSpec.IntegerParameter WIDTH =
+            new ParameterSpec.IntegerParameter("width", "Width", 8, 1, 64);
+
     private LibraryParameters() {
     }
 }
