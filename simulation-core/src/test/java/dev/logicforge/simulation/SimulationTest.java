@@ -337,4 +337,93 @@ class SimulationTest {
         assertEquals(SimulationStatus.OSCILLATING, simulation.status());
         assertTrue(simulation.oscillation().isPresent());
     }
+
+    @Test
+    void aSelfPerpetuatingComponentDoesNotHangConstructionOrReset() {
+        // A clock-like component reschedules itself forever. Building and resetting the
+        // simulation must not try to drain that queue to completion.
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int clk = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.oscillator", "OSC", TestBehaviors.periodicToggle(500), NONE, new int[]{clk});
+        Simulation simulation = new Simulation(builder.build());
+
+        assertEquals(0, simulation.time(), "settling stayed at time zero");
+        assertEquals(LogicVector.ZERO, simulation.readNet(clk));
+        assertEquals(SimulationStatus.STABLE, simulation.status(), "stable at the current instant");
+        assertTrue(simulation.isStableAtCurrentTime());
+        assertFalse(simulation.isStable(), "a future edge is still queued");
+        assertEquals(java.util.OptionalLong.of(500), simulation.nextScheduledTime());
+
+        simulation.reset();
+        assertEquals(0, simulation.time(), "reset did not hang draining the oscillator's future events");
+        assertEquals(java.util.OptionalLong.of(500), simulation.nextScheduledTime());
+    }
+
+    @Test
+    void wakeupWithoutInputChangeAdvancesAFreeRunningOscillator() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int clk = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.oscillator", "OSC", TestBehaviors.periodicToggle(500), NONE, new int[]{clk});
+        Simulation simulation = new Simulation(builder.build());
+
+        assertEquals(LogicVector.ZERO, simulation.readNet(clk));
+
+        assertTrue(simulation.advanceToNextEvent());
+        assertEquals(500, simulation.time());
+        assertEquals(LogicVector.ONE, simulation.readNet(clk), "the oscillator toggled on its own wakeup");
+        assertEquals(java.util.OptionalLong.of(1000), simulation.nextScheduledTime());
+
+        assertTrue(simulation.advanceToNextEvent());
+        assertEquals(1000, simulation.time());
+        assertEquals(LogicVector.ZERO, simulation.readNet(clk));
+
+        long reached = simulation.runUntil(2100);
+        assertEquals(2000, reached, "runUntil stops at the last event at or before the target");
+        assertEquals(LogicVector.ZERO, simulation.readNet(clk));
+        assertEquals(java.util.OptionalLong.of(2500), simulation.nextScheduledTime());
+    }
+
+    @Test
+    void runUntilStableAtCurrentTimeDetectsOscillationDirectly() {
+        // Regression test for the counter-ownership bug: this entry point must itself
+        // advance the delta-cycle counter, not merely read one maintained elsewhere.
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int loop = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.flipping", "OSC", TestBehaviors.ALWAYS_FLIPPING,
+                new int[]{loop}, new int[]{loop});
+        Simulation simulation = new Simulation(builder.build());
+        simulation.setRunning(false);
+        simulation.reset();
+
+        assertThrows(SimulationOscillationException.class, simulation::runUntilStableAtCurrentTime);
+    }
+
+    @Test
+    void driveOutputAtSchedulesAFutureValueChange() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int out = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.delayed", "D", context -> {
+            if (context.time() == 0) {
+                context.driveOutput(0, LogicVector.ZERO);
+                context.driveOutputAt(0, 100, LogicVector.ONE);
+            }
+        }, NONE, new int[]{out});
+        Simulation simulation = new Simulation(builder.build());
+
+        assertEquals(LogicVector.ZERO, simulation.readNet(out));
+        assertEquals(java.util.OptionalLong.of(100), simulation.nextScheduledTime());
+
+        simulation.advanceToNextEvent();
+        assertEquals(100, simulation.time());
+        assertEquals(LogicVector.ONE, simulation.readNet(out));
+    }
+
+    @Test
+    void schedulingApiRejectsNonFutureTimes() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int out = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.bad", "B", context -> context.scheduleWakeup(context.time()),
+                NONE, new int[]{out});
+        assertThrows(SimulationException.class, () -> new Simulation(builder.build()));
+    }
 }

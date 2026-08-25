@@ -70,6 +70,31 @@ final class BehaviorHarness implements ComponentContext {
     }
 
     @Override
+    public void driveOutputAfter(int index, long delay, LogicVector value) {
+        if (delay <= 0) {
+            throw new IllegalArgumentException("delay must be positive, was " + delay);
+        }
+        outputs[index] = value;
+    }
+
+    @Override
+    public void driveOutputAt(int index, long time, LogicVector value) {
+        if (time <= 0) {
+            throw new IllegalArgumentException("time must be after the current time, was " + time);
+        }
+        outputs[index] = value;
+    }
+
+    @Override
+    public void scheduleWakeup(long time) {
+        if (time <= 0) {
+            throw new IllegalArgumentException("time must be after the current time, was " + time);
+        }
+        // The harness evaluates a behaviour once at a fixed time 0; there is no queue to
+        // schedule a future wakeup on.
+    }
+
+    @Override
     public long time() {
         return 0;
     }

@@ -4,6 +4,7 @@ import dev.logicforge.logic.LogicOperations;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.TreeSet;
@@ -25,6 +26,19 @@ import java.util.TreeSet;
  * <p>Only components attached to nets that actually changed are evaluated; nothing is
  * recomputed wholesale.
  *
+ * <h2>Time</h2>
+ *
+ * {@code time} is physical simulation time in picoseconds; {@code deltaCycle} orders
+ * events that share the same {@code time}, e.g. a chain of combinational gates settling.
+ * A component schedules a same-time reaction with {@link ComponentContext#driveOutput},
+ * a future reaction with {@link ComponentContext#driveOutputAfter}/{@code driveOutputAt},
+ * and a self-triggered re-evaluation (a clock's next edge) with
+ * {@link ComponentContext#scheduleWakeup}. {@link #setInput} is the one exception: a user
+ * stimulus always advances time by exactly one picosecond, which is negligible next to any
+ * realistic clock period (1 MHz is already 10<sup>6</sup> ps) but means a circuit driven by
+ * an extremely long run of user clicks could in principle catch up with a very fast virtual
+ * clock; this is not a concern for the interactive use this simulator targets.
+ *
  * <h2>Determinism</h2>
  *
  * Events are ordered by time, then delta cycle, then a strictly increasing sequence
@@ -38,6 +52,15 @@ import java.util.TreeSet;
  * constants and switches drive their values and the gates settle. A net nobody drives
  * stays {@code Z} and reads as {@code X} at any gate input — an unconnected input is never
  * silently treated as {@code 0}.
+ *
+ * <h2>Stable at current time vs. no future events</h2>
+ *
+ * A circuit can be perfectly settled <em>right now</em> while still having future work
+ * queued — a running clock always does. {@link #status()} and the {@code runUntilStable*}
+ * methods therefore only ever settle up to the current instant; they never block waiting
+ * for a self-perpetuating component to stop scheduling itself. Use
+ * {@link #nextScheduledTime()} or {@link #isStable()} to ask about the future separately,
+ * and {@link #advanceToNextEvent()} / {@link #runUntil(long)} to move virtual time forward.
  */
 public final class Simulation {
 
@@ -48,7 +71,9 @@ public final class Simulation {
     private final LogicVector[] netValues;
     private final LogicVector[] driverValues;
     private final ComponentRuntimeState[] states;
-    private final PriorityQueue<SimulationEvent> queue = new PriorityQueue<>();
+    /** Time of the pending wakeup per component, or -1; avoids queueing exact duplicates. */
+    private final long[] pendingWakeupAt;
+    private final PriorityQueue<TimelineEntry> queue = new PriorityQueue<>();
     private final List<SimulationObserver> observers = new ArrayList<>();
     private final List<Integer> lastChangedNets = new ArrayList<>();
     private final EvaluationContext context = new EvaluationContext();
@@ -58,7 +83,6 @@ public final class Simulation {
     private long time;
     private int deltaCycle;
     private int deltaCyclesAtCurrentTime;
-    private long lastOscillationCheckTime;
     private boolean running = true;
     private SimulationStatus status = SimulationStatus.STABLE;
     private SimulationOscillationException oscillation;
@@ -68,6 +92,7 @@ public final class Simulation {
         this.netValues = new LogicVector[circuit.netCount()];
         this.driverValues = new LogicVector[circuit.driverCount()];
         this.states = new ComponentRuntimeState[circuit.componentCount()];
+        this.pendingWakeupAt = new long[circuit.componentCount()];
         for (int id = 0; id < circuit.componentCount(); id++) {
             states[id] = circuit.component(id).behavior().createState();
         }
@@ -85,7 +110,9 @@ public final class Simulation {
     /**
      * Returns to the initial state: nets undriven, component state at its power-on value,
      * every component evaluated once. While the simulation is running this also settles
-     * the circuit; while it is paused the resulting events wait for {@link #step()}.
+     * the circuit at time zero; while it is paused the resulting events wait for
+     * {@link #step()}. A component that schedules future work (a clock) leaves that work
+     * pending in the queue rather than being run out to completion.
      */
     public void reset() {
         queue.clear();
@@ -95,7 +122,7 @@ public final class Simulation {
         time = 0;
         deltaCycle = 0;
         deltaCyclesAtCurrentTime = 0;
-        lastOscillationCheckTime = -1;
+        Arrays.fill(pendingWakeupAt, -1);
         for (int netId = 0; netId < netValues.length; netId++) {
             netValues[netId] = undriven(netId);
         }
@@ -119,7 +146,7 @@ public final class Simulation {
 
     private void stabilizeAfterReset() {
         try {
-            runUntilStable();
+            runUntilStableAtCurrentTime();
         } catch (SimulationOscillationException oscillation) {
             // A circuit can be built oscillating; that is a state to display, not a
             // failure to construct the simulation. Explicit runs still report it.
@@ -129,8 +156,9 @@ public final class Simulation {
 
     /**
      * Processes one delta cycle: applies every event scheduled for the earliest pending
-     * (time, delta), resolves the nets they touch and evaluates the components that read
-     * a net which actually changed.
+     * (time, delta) — driver value changes and component wakeups alike — resolves the
+     * nets that changed and evaluates the components that read one or requested this
+     * wakeup.
      *
      * @return {@code false} if there was nothing left to do
      */
@@ -139,27 +167,35 @@ public final class Simulation {
             status = SimulationStatus.STABLE;
             return false;
         }
-        SimulationEvent next = queue.peek();
+        TimelineEntry next = queue.peek();
         long newTime = next.time();
         int newDeltaCycle = next.deltaCycle();
-        
-        // Check if we've moved to a new timestamp
+
         if (newTime != time) {
             deltaCyclesAtCurrentTime = 0;
-            lastOscillationCheckTime = newTime;
         }
-        
         time = newTime;
         deltaCycle = newDeltaCycle;
+        deltaCyclesAtCurrentTime++;
 
         TreeSet<Integer> dirtyNets = new TreeSet<>();
+        TreeSet<Integer> toEvaluate = new TreeSet<>();
         while (!queue.isEmpty() && queue.peek().time() == time && queue.peek().deltaCycle() == deltaCycle) {
-            SimulationEvent event = queue.poll();
-            driverValues[event.driverId()] = event.value();
-            dirtyNets.add(event.netId());
+            TimelineEntry entry = queue.poll();
+            switch (entry) {
+                case SimulationEvent event -> {
+                    driverValues[event.driverId()] = event.value();
+                    dirtyNets.add(event.netId());
+                }
+                case WakeupEvent wakeup -> {
+                    if (pendingWakeupAt[wakeup.componentId()] == wakeup.time()) {
+                        pendingWakeupAt[wakeup.componentId()] = -1;
+                    }
+                    toEvaluate.add(wakeup.componentId());
+                }
+            }
         }
 
-        TreeSet<Integer> toEvaluate = new TreeSet<>();
         lastChangedNets.clear();
         for (int netId : dirtyNets) {
             LogicVector resolved = resolveNet(netId);
@@ -183,7 +219,11 @@ public final class Simulation {
     }
 
     /**
-     * Propagates until nothing is left to do.
+     * Propagates until the queue is completely empty, including every future event a
+     * self-perpetuating component (a clock) schedules for itself. Since such a component
+     * never stops rescheduling, this must only be called on circuits known not to contain
+     * one; prefer {@link #runUntilStableAtCurrentTime()} or {@link #runUntil(long)}
+     * otherwise.
      *
      * @return the number of delta cycles it took
      * @throws SimulationOscillationException if the circuit does not settle within
@@ -194,26 +234,75 @@ public final class Simulation {
         while (!queue.isEmpty()) {
             step();
             totalCycles++;
-            
-            // Track delta cycles at the current timestamp
-            if (time == lastOscillationCheckTime) {
-                deltaCyclesAtCurrentTime++;
-            } else {
-                deltaCyclesAtCurrentTime = 1;
-                lastOscillationCheckTime = time;
-            }
-            
-            // Check for oscillation: too many delta cycles at the SAME timestamp
-            if (deltaCyclesAtCurrentTime > maxDeltaCycles) {
-                status = SimulationStatus.OSCILLATING;
-                queue.clear();
-                oscillation = new SimulationOscillationException(totalCycles, List.copyOf(lastChangedNets));
-                throw oscillation;
-            }
+            checkOscillation(totalCycles);
         }
         status = SimulationStatus.STABLE;
         oscillation = null;
         return totalCycles;
+    }
+
+    /**
+     * Propagates until the circuit is stable at the current timestamp: every event
+     * scheduled for {@link #time()} is processed, through as many delta cycles as it
+     * takes, but the simulation never advances to a later timestamp. A future event (a
+     * clock's next edge) is left pending.
+     *
+     * @return the number of delta cycles processed at the current timestamp
+     * @throws SimulationOscillationException if the circuit oscillates at this timestamp
+     */
+    public int runUntilStableAtCurrentTime() {
+        return runUntilTimeBoundary(time);
+    }
+
+    /**
+     * Jumps directly to the next scheduled time, wherever that may be, and stabilizes
+     * there. This is how a clocked circuit is advanced through virtual time without
+     * single-stepping every intervening delta cycle.
+     *
+     * @return {@code false} if there was no future event to advance to
+     * @throws SimulationOscillationException if the circuit oscillates at that time
+     */
+    public boolean advanceToNextEvent() {
+        if (queue.isEmpty()) {
+            return false;
+        }
+        runUntilTimeBoundary(queue.peek().time());
+        return true;
+    }
+
+    /**
+     * Repeatedly advances to the next scheduled event until simulation time reaches or
+     * passes {@code targetTime}, or no events remain.
+     *
+     * @return the simulation time reached, which may be before {@code targetTime} if the
+     *         queue ran out of events
+     */
+    public long runUntil(long targetTime) {
+        while (!queue.isEmpty() && queue.peek().time() <= targetTime) {
+            advanceToNextEvent();
+        }
+        return time;
+    }
+
+    private int runUntilTimeBoundary(long targetTime) {
+        int cycles = 0;
+        while (!queue.isEmpty() && queue.peek().time() == targetTime) {
+            step();
+            cycles++;
+            checkOscillation(cycles);
+        }
+        status = SimulationStatus.STABLE;
+        oscillation = null;
+        return cycles;
+    }
+
+    private void checkOscillation(int cyclesSoFar) {
+        if (deltaCyclesAtCurrentTime > maxDeltaCycles) {
+            status = SimulationStatus.OSCILLATING;
+            queue.clear();
+            oscillation = new SimulationOscillationException(cyclesSoFar, List.copyOf(lastChangedNets));
+            throw oscillation;
+        }
     }
 
     /**
@@ -243,37 +332,6 @@ public final class Simulation {
         return deltaCycle;
     }
 
-    /**
-     * Propagates until the circuit is stable at the current timestamp.
-     * This processes all events at the current time through all delta cycles,
-     * but does not advance to future timestamps.
-     *
-     * @return the number of delta cycles processed at the current timestamp
-     * @throws SimulationOscillationException if the circuit oscillates at this timestamp
-     */
-    public int runUntilStableAtCurrentTime() {
-        long startTime = time;
-        int cyclesAtStart = deltaCyclesAtCurrentTime;
-        int totalCycles = 0;
-        
-        while (!queue.isEmpty() && queue.peek().time() == startTime) {
-            step();
-            totalCycles++;
-            
-            if (deltaCyclesAtCurrentTime > maxDeltaCycles) {
-                status = SimulationStatus.OSCILLATING;
-                queue.clear();
-                oscillation = new SimulationOscillationException(totalCycles, List.copyOf(lastChangedNets));
-                throw oscillation;
-            }
-        }
-        
-        if (time == startTime) {
-            status = SimulationStatus.STABLE;
-        }
-        return totalCycles;
-    }
-
     /** Details of the last detected oscillation, while {@link #status()} reports one. */
     public java.util.Optional<SimulationOscillationException> oscillation() {
         return java.util.Optional.ofNullable(oscillation);
@@ -297,7 +355,7 @@ public final class Simulation {
         evaluate(componentId, 0);
         status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
         if (running) {
-            runUntilStable();
+            runUntilStableAtCurrentTime();
         }
     }
 
@@ -323,7 +381,7 @@ public final class Simulation {
         evaluate(componentId, 0);
         status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
         if (running) {
-            runUntilStable();
+            runUntilStableAtCurrentTime();
         }
     }
 
@@ -338,13 +396,14 @@ public final class Simulation {
     }
 
     /**
-     * While running, changes settle immediately. While paused, they queue up and only
-     * {@link #step()} advances the circuit — which is what breakpoints will later need.
+     * While running, changes settle immediately, up to the current instant. While paused,
+     * they queue up and only {@link #step()} advances the circuit — which is what
+     * breakpoints will later need.
      */
     public void setRunning(boolean shouldRun) {
         this.running = shouldRun;
         if (shouldRun && !queue.isEmpty()) {
-            runUntilStable();
+            runUntilStableAtCurrentTime();
         }
     }
 
@@ -397,8 +456,14 @@ public final class Simulation {
         return status;
     }
 
+    /** {@code true} if no event is scheduled at all, at the current time or later. */
     public boolean isStable() {
         return queue.isEmpty();
+    }
+
+    /** {@code true} if nothing is left to process at the current instant specifically. */
+    public boolean isStableAtCurrentTime() {
+        return queue.isEmpty() || queue.peek().time() != time;
     }
 
     public long time() {
@@ -485,6 +550,44 @@ public final class Simulation {
                 return;
             }
             queue.add(new SimulationEvent(time, scheduleDelta, sequence++, driver.netId(), driverId, value));
+        }
+
+        @Override
+        public void driveOutputAfter(int index, long delay, LogicVector value) {
+            if (delay <= 0) {
+                throw new SimulationException("driveOutputAfter delay must be positive, was " + delay);
+            }
+            scheduleDriverEvent(index, time + delay, value);
+        }
+
+        @Override
+        public void driveOutputAt(int index, long eventTime, LogicVector value) {
+            if (eventTime <= time) {
+                throw new SimulationException(
+                        "driveOutputAt requires a time after the current time (" + time + "), was " + eventTime);
+            }
+            scheduleDriverEvent(index, eventTime, value);
+        }
+
+        private void scheduleDriverEvent(int index, long eventTime, LogicVector value) {
+            int driverId = component.outputDrivers()[index];
+            CompiledDriver driver = circuit.driver(driverId);
+            value.requireWidth(circuit.net(driver.netId()).width());
+            queue.add(new SimulationEvent(eventTime, 0, sequence++, driver.netId(), driverId, value));
+        }
+
+        @Override
+        public void scheduleWakeup(long wakeupTime) {
+            if (wakeupTime <= time) {
+                throw new SimulationException(
+                        "scheduleWakeup requires a time after the current time (" + time + "), was " + wakeupTime);
+            }
+            int componentId = component.id();
+            if (pendingWakeupAt[componentId] == wakeupTime) {
+                return;
+            }
+            pendingWakeupAt[componentId] = wakeupTime;
+            queue.add(new WakeupEvent(wakeupTime, 0, sequence++, componentId));
         }
 
         @Override

@@ -66,6 +66,51 @@ final class TestBehaviors {
         context.driveOutput(0, LogicVector.single(value));
     };
 
+    /**
+     * A minimal free-running oscillator: toggles its single output every
+     * {@code halfPeriod} picoseconds using {@link ComponentContext#scheduleWakeup},
+     * without reading any input. Models the shape a clock generator behaviour takes.
+     */
+    static ComponentBehavior periodicToggle(long halfPeriod) {
+        return new ComponentBehavior() {
+
+            @Override
+            public void evaluate(ComponentContext context) {
+                OscillatorState state = (OscillatorState) context.state();
+                long now = context.time();
+                if (now >= state.nextEdgeAt) {
+                    state.level = state.level == LogicState.ZERO ? LogicState.ONE : LogicState.ZERO;
+                    state.nextEdgeAt = now + halfPeriod;
+                }
+                context.driveOutput(0, LogicVector.single(state.level));
+                context.scheduleWakeup(state.nextEdgeAt);
+            }
+
+            @Override
+            public ComponentRuntimeState createState() {
+                return new OscillatorState(halfPeriod);
+            }
+        };
+    }
+
+    static final class OscillatorState implements ComponentRuntimeState {
+
+        private final long halfPeriod;
+        private LogicState level;
+        private long nextEdgeAt;
+
+        OscillatorState(long halfPeriod) {
+            this.halfPeriod = halfPeriod;
+            reset();
+        }
+
+        @Override
+        public void reset() {
+            level = LogicState.ZERO;
+            nextEdgeAt = halfPeriod;
+        }
+    }
+
     static final class SwitchState implements InputSourceState {
 
         private final LogicState initial;
