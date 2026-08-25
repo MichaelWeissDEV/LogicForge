@@ -230,26 +230,9 @@ public record AluBehavior(BitWidth width) implements ComponentBehavior {
         context.driveOutput(OUT_NEGATIVE, LogicVector.UNKNOWN);
     }
 
-    /**
-     * Computes the ZERO flag:
-     * <ul>
-     *   <li>ONE     if every bit is ZERO</li>
-     *   <li>ZERO    if any bit is ONE</li>
-     *   <li>UNKNOWN if any bit is unknown and none are ONE</li>
-     * </ul>
-     */
+    /** Computes the ZERO flag; see {@link ZeroDetectorBehavior#zeroFlag}. */
     private static LogicVector zeroFlag(LogicVector result) {
-        boolean hasUnknown = false;
-        for (int i = 0; i < result.width(); i++) {
-            LogicState bit = result.getBit(i);
-            if (bit == ONE) {
-                return LogicVector.ZERO;
-            }
-            if (bit != ZERO) {
-                hasUnknown = true;
-            }
-        }
-        return hasUnknown ? LogicVector.UNKNOWN : LogicVector.ONE;
+        return ZeroDetectorBehavior.zeroFlag(result);
     }
 
     /** This is a combinational component — no persistent state. */

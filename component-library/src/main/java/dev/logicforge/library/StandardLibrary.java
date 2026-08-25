@@ -28,6 +28,7 @@ import dev.logicforge.library.behavior.DLatchBehavior;
 import dev.logicforge.library.behavior.DecoderBehavior;
 import dev.logicforge.library.behavior.DemuxBehavior;
 import dev.logicforge.library.behavior.EncoderBehavior;
+import dev.logicforge.library.behavior.FlagsRegisterBehavior;
 import dev.logicforge.library.behavior.FullAdderBehavior;
 import dev.logicforge.library.behavior.HalfAdderBehavior;
 import dev.logicforge.library.behavior.IncrementDecrementBehavior;
@@ -35,6 +36,7 @@ import dev.logicforge.library.behavior.JkFlipFlopBehavior;
 import dev.logicforge.library.behavior.JoinerBehavior;
 import dev.logicforge.library.behavior.MuxBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
+import dev.logicforge.library.behavior.OverflowDetectorBehavior;
 import dev.logicforge.library.behavior.ParityBehavior;
 import dev.logicforge.library.behavior.PriorityEncoderBehavior;
 import dev.logicforge.library.behavior.RamBehavior;
@@ -42,6 +44,8 @@ import dev.logicforge.library.behavior.RegisterBehavior;
 import dev.logicforge.library.behavior.RomBehavior;
 import dev.logicforge.library.behavior.ShiftBehavior;
 import dev.logicforge.library.behavior.ShiftRegisterBehavior;
+import dev.logicforge.library.behavior.SignDetectorBehavior;
+import dev.logicforge.library.behavior.SignedComparatorBehavior;
 import dev.logicforge.library.behavior.SinkBehavior;
 import dev.logicforge.library.behavior.SplitterBehavior;
 import dev.logicforge.library.behavior.SrLatchBehavior;
@@ -51,6 +55,7 @@ import dev.logicforge.library.behavior.TriStateBehavior;
 import dev.logicforge.library.behavior.UnaryGateBehavior;
 import dev.logicforge.library.behavior.UserInputBehavior;
 import dev.logicforge.library.behavior.WideTriStateBehavior;
+import dev.logicforge.library.behavior.ZeroDetectorBehavior;
 import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicOperation;
 import dev.logicforge.logic.LogicState;
@@ -329,6 +334,25 @@ final class StandardLibrary {
                         BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values), false)));
 
         registry.register(new ComponentType(
+                definition("sequential.flags_register", "Flags Register", SEQUENTIAL,
+                        "Latches Z, C, N and V on the clock edge while LOAD is 1, holding a "
+                                + "combinational ALU's condition codes for later branch decisions",
+                        List.of(LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.fixed("Z", "Zero flag"),
+                                        PortLayouts.DynamicPortDef.fixed("C", "Carry flag"),
+                                        PortLayouts.DynamicPortDef.fixed("N", "Negative flag"),
+                                        PortLayouts.DynamicPortDef.fixed("V", "Overflow flag"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("LOAD",
+                                                "While high, FLAGS captures Z/C/N/V on the active clock edge")),
+                                List.of(new PortLayouts.DynamicPortDef("FLAGS", v -> BitWidth.of(4),
+                                        "Stored condition codes, 4 bits: bit0=Z, bit1=C, bit2=N, bit3=V")),
+                                REGISTER_WIDTH),
+                        List.of("flags", "condition codes", "status register", "z", "c", "n", "v")),
+                values -> new FlagsRegisterBehavior(isRisingEdge(values))));
+
+        registry.register(new ComponentType(
                 definition("sequential.register_reset", "Register (Reset)", SEQUENTIAL,
                         "Parallel register with an asynchronous RESET that clears Q to zero",
                         List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
@@ -526,6 +550,20 @@ final class StandardLibrary {
                                 REGISTER_WIDTH),
                         List.of("comparator", "compare", "lt", "eq", "gt")),
                 values -> ComparatorBehavior.INSTANCE));
+
+        registry.register(new ComponentType(
+                definition("routing.comparator_signed", "Signed Comparator", ROUTING,
+                        "Two's-complement signed comparison of A and B",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "First operand"),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH, "Second operand")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("LT", "1 if A < B (signed)"),
+                                        PortLayouts.DynamicPortDef.fixed("EQ", "1 if A = B"),
+                                        PortLayouts.DynamicPortDef.fixed("GT", "1 if A > B (signed)")),
+                                REGISTER_WIDTH),
+                        List.of("comparator", "compare", "signed", "lt", "eq", "gt")),
+                values -> new SignedComparatorBehavior(busWidth(values))));
 
         // --- Bus utilities ------------------------------------------------
         registry.register(new ComponentType(
@@ -765,6 +803,45 @@ final class StandardLibrary {
                                 REGISTER_WIDTH),
                         List.of("parity", "checksum", "error")),
                 values -> new ParityBehavior(true)));
+
+        // --- Condition-code / flag helpers ---------------------------------
+        registry.register(new ComponentType(
+                definition("arithmetic.zero_detector", "Zero Detector", ARITHMETIC,
+                        "ZERO is 1 iff every bit of A is 0",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Value to test")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("ZERO", "1 if A is all zero bits")),
+                                REGISTER_WIDTH),
+                        List.of("zero", "flag", "condition code", "z")),
+                values -> new ZeroDetectorBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.sign_detector", "Sign Detector", ARITHMETIC,
+                        "NEGATIVE is A's most significant bit, read as a two's-complement sign",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Value to test")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("NEGATIVE", "A's sign bit")),
+                                REGISTER_WIDTH),
+                        List.of("negative", "sign", "flag", "condition code", "n")),
+                values -> new SignDetectorBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.overflow_detector", "Overflow Detector", ARITHMETIC,
+                        "Signed overflow of an addition or subtraction computed elsewhere: OVERFLOW is 1 "
+                                + "when RESULT's sign cannot be correct for signed operands of this width",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.OVERFLOW_OPERATION),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "First operand"),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH, "Second operand"),
+                                        PortLayouts.DynamicPortDef.bus("RESULT", LibraryParameters.WIDTH,
+                                                "Already-computed A+B (or A-B) to check")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("OVERFLOW", "1 if the signed result overflowed")),
+                                REGISTER_WIDTH),
+                        List.of("overflow", "flag", "condition code", "v", "signed")),
+                values -> new OverflowDetectorBehavior(busWidth(values),
+                        values.get(LibraryParameters.OVERFLOW_OPERATION).equals("sub"))));
     }
 
     private static void registerShift(ComponentRegistry registry, String id, String name, String description,

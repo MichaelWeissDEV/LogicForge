@@ -148,4 +148,106 @@ class RoutingArithmeticBehaviorTest {
         assertEquals(LogicVector.ONE, simulation.readNet(eq));
         assertEquals(LogicVector.ZERO, simulation.readNet(gt));
     }
+
+    @Test
+    void signedComparatorReadsOperandsAsTwosComplement() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int b = builder.addNet(WIDTH8);
+        int lt = builder.addNet(BitWidth.ONE);
+        int eq = builder.addNet(BitWidth.ONE);
+        int gt = builder.addNet(BitWidth.ONE);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        int bSrc = builder.addComponent("test.b", "B", new BusSource(WIDTH8), NONE, new int[]{b});
+        builder.addComponent("routing.comparator_signed", "CMP", new SignedComparatorBehavior(WIDTH8),
+                new int[]{a, b}, new int[]{lt, eq, gt});
+        Simulation simulation = new Simulation(builder.build());
+
+        // 0xFF is unsigned 255 but signed -1; unsigned it would read greater than 5.
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0xFF, 8));
+        simulation.setInput(bSrc, LogicVector.fromUnsignedLong(5, 8));
+        assertEquals(LogicVector.ONE, simulation.readNet(lt), "-1 < 5 when read as signed");
+        assertEquals(LogicVector.ZERO, simulation.readNet(gt));
+    }
+
+    @Test
+    void zeroDetectorFindsAllZeroBits() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int zero = builder.addNet(BitWidth.ONE);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        builder.addComponent("arithmetic.zero_detector", "Z", new ZeroDetectorBehavior(WIDTH8),
+                new int[]{a}, new int[]{zero});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0, 8));
+        assertEquals(LogicVector.ONE, simulation.readNet(zero));
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(1, 8));
+        assertEquals(LogicVector.ZERO, simulation.readNet(zero));
+    }
+
+    @Test
+    void signDetectorReadsTheMostSignificantBit() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int negative = builder.addNet(BitWidth.ONE);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        builder.addComponent("arithmetic.sign_detector", "N", new SignDetectorBehavior(WIDTH8),
+                new int[]{a}, new int[]{negative});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0x80, 8));
+        assertEquals(LogicVector.ONE, simulation.readNet(negative));
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0x7F, 8));
+        assertEquals(LogicVector.ZERO, simulation.readNet(negative));
+    }
+
+    @Test
+    void overflowDetectorFlagsSignedAdditionOverflow() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int b = builder.addNet(WIDTH8);
+        int result = builder.addNet(WIDTH8);
+        int overflow = builder.addNet(BitWidth.ONE);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        int bSrc = builder.addComponent("test.b", "B", new BusSource(WIDTH8), NONE, new int[]{b});
+        int resultSrc = builder.addComponent("test.result", "RESULT", new BusSource(WIDTH8), NONE, new int[]{result});
+        builder.addComponent("arithmetic.overflow_detector", "V", new OverflowDetectorBehavior(WIDTH8, false),
+                new int[]{a, b, result}, new int[]{overflow});
+        Simulation simulation = new Simulation(builder.build());
+
+        // 0x7F (+127) + 0x01 (+1) = 0x80 (-128 signed): two positives producing a negative.
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0x7F, 8));
+        simulation.setInput(bSrc, LogicVector.fromUnsignedLong(0x01, 8));
+        simulation.setInput(resultSrc, LogicVector.fromUnsignedLong(0x80, 8));
+        assertEquals(LogicVector.ONE, simulation.readNet(overflow));
+
+        // 0x01 + 0x01 = 0x02: no overflow.
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0x01, 8));
+        simulation.setInput(resultSrc, LogicVector.fromUnsignedLong(0x02, 8));
+        assertEquals(LogicVector.ZERO, simulation.readNet(overflow));
+    }
+
+    @Test
+    void overflowDetectorFlagsSignedSubtractionOverflow() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int b = builder.addNet(WIDTH8);
+        int result = builder.addNet(WIDTH8);
+        int overflow = builder.addNet(BitWidth.ONE);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        int bSrc = builder.addComponent("test.b", "B", new BusSource(WIDTH8), NONE, new int[]{b});
+        int resultSrc = builder.addComponent("test.result", "RESULT", new BusSource(WIDTH8), NONE, new int[]{result});
+        builder.addComponent("arithmetic.overflow_detector", "V", new OverflowDetectorBehavior(WIDTH8, true),
+                new int[]{a, b, result}, new int[]{overflow});
+        Simulation simulation = new Simulation(builder.build());
+
+        // -128 (0x80) - 1 (0x01) = -129, wraps to 0x7F (+127 signed): overflow.
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0x80, 8));
+        simulation.setInput(bSrc, LogicVector.fromUnsignedLong(0x01, 8));
+        simulation.setInput(resultSrc, LogicVector.fromUnsignedLong(0x7F, 8));
+        assertEquals(LogicVector.ONE, simulation.readNet(overflow));
+    }
 }
