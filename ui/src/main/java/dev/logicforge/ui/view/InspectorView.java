@@ -107,6 +107,18 @@ public final class InspectorView extends VBox {
         body.getChildren().add(title(component.displayName()));
         body.getChildren().add(readOnly("Category", component.category().displayName()));
         body.getChildren().add(subtitle(component.description()));
+        if (dev.logicforge.circuit.document.SubcircuitSupport
+                .isInstanceDefinition(instance.definitionId())) {
+            String child = dev.logicforge.circuit.document.SubcircuitSupport
+                    .circuitName(instance.definitionId());
+            body.getChildren().add(readOnly("Source circuit", child));
+            String segment = instance.label().isBlank() ? instance.id().toString() : instance.label();
+            body.getChildren().add(readOnly("Instance path",
+                    editor.activeHierarchyPath() + "/" + segment));
+            Button open = new Button("Open Internals");
+            open.setOnAction(event -> editor.openSubcircuit(instance));
+            body.getChildren().add(open);
+        }
         body.getChildren().add(spacer());
 
         body.getChildren().add(propertyLabel("Port display"));

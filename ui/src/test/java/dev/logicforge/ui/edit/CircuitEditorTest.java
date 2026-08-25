@@ -6,11 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.document.CircuitProject;
+import dev.logicforge.circuit.document.CircuitDocument;
+import dev.logicforge.circuit.document.CircuitMetadata;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.library.ComponentRegistry;
@@ -37,6 +40,64 @@ import org.junit.jupiter.api.Test;
 class CircuitEditorTest {
 
     private final CircuitEditor editor = new CircuitEditor(ComponentRegistry.standard());
+
+    @Test
+    void switchingActiveCircuitClearsSelectionWithoutMutatingDocuments() {
+        CircuitProject project = CircuitProject.empty("navigation");
+        CircuitDocument child = project.addCircuit("ALU8");
+        ComponentInstance gate = ComponentInstance.create("logic.not",
+                new CircuitPoint(0, 0), ParameterValues.empty());
+        project.mainCircuit().addComponent(gate);
+        CircuitDocument mainBefore = project.mainCircuit().copy();
+        CircuitDocument childBefore = child.copy();
+        editor.setProject(project, false);
+        editor.selection().selectComponent(gate.id());
+
+        editor.openCircuit("ALU8");
+
+        assertEquals("ALU8", editor.activeCircuitName());
+        assertTrue(editor.selection().isEmpty());
+        assertTrue(project.mainCircuit().structurallyEquals(mainBefore));
+        assertTrue(child.structurallyEquals(childBefore));
+    }
+
+    @Test
+    void childTopologyEditRecompilesMainAndPreservesRootInputState() {
+        CircuitDocument child = inverterChild("Inverter");
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance source = ComponentInstance.create("source.toggle",
+                new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance instance = SubcircuitSupport.instantiate(
+                "Inverter", new CircuitPoint(120, 0));
+        ComponentInstance led = ComponentInstance.create("output.led",
+                new CircuitPoint(240, 0), ParameterValues.empty());
+        main.addComponent(source);
+        main.addComponent(instance);
+        main.addComponent(led);
+        main.addConnection(Connection.create(new PortReference(source.id(), "OUT"),
+                new PortReference(instance.id(), "A")));
+        main.addConnection(Connection.create(new PortReference(instance.id(), "Y"),
+                new PortReference(led.id(), "IN")));
+        CircuitProject project = CircuitProject.of("child edit", main);
+        project.putCircuit(child);
+        editor.setProject(project, false);
+        editor.toggleInput(source.id());
+        assertEquals(LogicVector.ZERO, editor.valueAt(new PortReference(led.id(), "IN")).orElseThrow());
+        var before = editor.simulation().orElseThrow();
+
+        editor.openSubcircuit(instance);
+        child.addComponent(ComponentInstance.create("source.zero",
+                new CircuitPoint(400, 200), ParameterValues.empty()));
+
+        assertFalse(before == editor.simulation().orElseThrow());
+        assertEquals(LogicVector.ONE, editor.inputValueOf(source.id()).map(LogicVector::single)
+                .orElseThrow());
+        assertEquals(LogicVector.ZERO, editor.valueAt(new PortReference(led.id(), "IN")).orElseThrow());
+        assertTrue(editor.isDirty());
+        assertEquals("Inverter", editor.activeCircuitName());
+        editor.navigateBack();
+        assertEquals("main", editor.activeCircuitName());
+    }
 
     @Test
     void buildingAndRunningTheClassicSwitchAndGateCircuit() {
@@ -462,6 +523,30 @@ class CircuitEditorTest {
     }
 
     // ------------------------------------------------------------------
+
+    private static CircuitDocument inverterChild(String name) {
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata(name, ""));
+        ParameterValues inputParameters = ParameterValues.defaultsOf(List.of(
+                        SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                .with(SubcircuitSupport.INTERFACE_NAME, "A");
+        ParameterValues outputParameters = ParameterValues.defaultsOf(List.of(
+                        SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                .with(SubcircuitSupport.INTERFACE_NAME, "Y");
+        ComponentInstance input = ComponentInstance.create(SubcircuitSupport.INPUT_DEFINITION_ID,
+                new CircuitPoint(0, 0), inputParameters);
+        ComponentInstance not = ComponentInstance.create("logic.not",
+                new CircuitPoint(100, 0), ParameterValues.empty());
+        ComponentInstance output = ComponentInstance.create(SubcircuitSupport.OUTPUT_DEFINITION_ID,
+                new CircuitPoint(200, 0), outputParameters);
+        child.addComponent(input);
+        child.addComponent(not);
+        child.addComponent(output);
+        child.addConnection(Connection.create(new PortReference(input.id(), "OUT"),
+                new PortReference(not.id(), "A")));
+        child.addConnection(Connection.create(new PortReference(not.id(), "Y"),
+                new PortReference(output.id(), "IN")));
+        return child;
+    }
 
     private ComponentInstance add(String definitionId, double x, double y) {
         return add(definitionId, x, y,

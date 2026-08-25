@@ -46,8 +46,10 @@ public final class CircuitFlattener {
         private final CircuitDocument flat;
         private final Map<Node, Node> parent = new LinkedHashMap<>();
         private final Map<ComponentKey, ComponentInstance> primitiveByKey = new HashMap<>();
-        private final Map<ComponentKey, Map<String, Node>> subcircuitPorts = new HashMap<>();
+        private final Map<ComponentKey, Map<String, InterfaceBinding>> subcircuitPorts = new HashMap<>();
         private final Set<ComponentKey> interfaceComponents = new java.util.HashSet<>();
+        private final Map<ComponentKey, InterfaceBinding> interfaceByComponent = new HashMap<>();
+        private final Map<InterfaceBinding, List<EndpointTarget>> interfaceAdapters = new HashMap<>();
         private final Map<Node, PortEndpoint> flatEndpointByNode = new LinkedHashMap<>();
         private final Map<UUID, Node> rootConnectionNode = new LinkedHashMap<>();
         private final Map<String, UUID> componentUuidByPath = new LinkedHashMap<>();
@@ -69,7 +71,7 @@ public final class CircuitFlattener {
             return new FlatteningResult(flat, componentUuidByPath, flatEndpointByPath);
         }
 
-        private Map<String, Node> visit(String circuitName, String path, boolean root) {
+        private Map<String, InterfaceBinding> visit(String circuitName, String path, boolean root) {
             if (circuitStack.contains(circuitName)) {
                 throw new IllegalArgumentException("Recursive subcircuit cycle: "
                         + String.join(" -> ", circuitStack) + " -> " + circuitName);
@@ -78,12 +80,15 @@ public final class CircuitFlattener {
                     new IllegalArgumentException("Unknown child circuit '" + circuitName + "'"));
             circuitStack.addLast(circuitName);
 
-            Map<String, Node> interfaces = new LinkedHashMap<>();
+            Map<String, InterfaceBinding> interfaces = new LinkedHashMap<>();
             for (SubcircuitSupport.InterfacePort port : SubcircuitSupport.interfacePorts(document)) {
                 ComponentKey key = new ComponentKey(path, port.componentId());
                 interfaceComponents.add(key);
-                interfaces.put(port.name(), node(path, port.componentId(), port.internalPortName(),
-                        PortSlice.Whole.INSTANCE));
+                InterfaceBinding binding = new InterfaceBinding(path, port.componentId(),
+                        port.internalPortName(), port.width().bits());
+                interfaces.put(port.name(), binding);
+                interfaceByComponent.put(key, binding);
+                interfaceNode(binding, PortSlice.Whole.INSTANCE);
             }
 
             for (ComponentInstance component : document.components()) {
@@ -94,11 +99,11 @@ public final class CircuitFlattener {
                 if (SubcircuitSupport.isInstanceDefinition(component.definitionId())) {
                     String childName = SubcircuitSupport.circuitName(component.definitionId());
                     String childPath = path + "/" + component.id();
-                    Map<String, Node> childPorts = visit(childName, childPath, false);
+                    Map<String, InterfaceBinding> childPorts = visit(childName, childPath, false);
                     subcircuitPorts.put(key, childPorts);
-                    for (Map.Entry<String, Node> port : childPorts.entrySet()) {
+                    for (Map.Entry<String, InterfaceBinding> port : childPorts.entrySet()) {
                         union(node(path, component.id(), port.getKey(), PortSlice.Whole.INSTANCE),
-                                port.getValue());
+                                interfaceNode(port.getValue(), PortSlice.Whole.INSTANCE));
                     }
                 } else {
                     UUID flatId = root ? component.id() : deterministicId(path, component.id());
@@ -110,6 +115,8 @@ public final class CircuitFlattener {
             }
 
             for (Connection connection : document.connections()) {
+                registerInterfaceAdapter(path, connection.from(), connection.to());
+                registerInterfaceAdapter(path, connection.to(), connection.from());
                 Node from = endpointNode(path, connection.from());
                 Node to = endpointNode(path, connection.to());
                 union(from, to);
@@ -124,24 +131,19 @@ public final class CircuitFlattener {
         private Node endpointNode(String path, PortEndpoint endpoint) {
             ComponentKey key = new ComponentKey(path, endpoint.componentId());
             if (interfaceComponents.contains(key)) {
-                if (endpoint.isBit()) {
-                    throw new IllegalArgumentException(
-                            "First hierarchy iteration requires whole interface wiring: " + endpoint);
-                }
-                return node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
+                return interfaceNode(interfaceByComponent.get(key), endpoint.slice());
             }
-            Map<String, Node> childPorts = subcircuitPorts.get(key);
+            Map<String, InterfaceBinding> childPorts = subcircuitPorts.get(key);
             if (childPorts != null) {
-                if (endpoint.isBit()) {
-                    throw new IllegalArgumentException(
-                            "First hierarchy iteration requires whole subcircuit wiring: " + endpoint);
-                }
-                Node port = childPorts.get(endpoint.portName());
+                InterfaceBinding port = childPorts.get(endpoint.portName());
                 if (port == null) {
                     throw new IllegalArgumentException("Subcircuit has no interface port '"
                             + endpoint.portName() + "'");
                 }
-                return node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
+                validateSlice(endpoint.slice(), port.width(), endpoint.toString());
+                Node parentNode = node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
+                union(parentNode, interfaceNode(port, endpoint.slice()));
+                return parentNode;
             }
 
             ComponentInstance primitive = primitiveByKey.get(key);
@@ -151,6 +153,45 @@ public final class CircuitFlattener {
                         new PortReference(primitive.id(), endpoint.portName()), endpoint.slice()));
             }
             return node;
+        }
+
+        /**
+         * Remembers the common interface-to-internal-bus pattern. If a parent later binds
+         * only a bit/range, the same slice is projected onto that internal endpoint.
+         */
+        private void registerInterfaceAdapter(String path, PortEndpoint possibleInterface,
+                                              PortEndpoint other) {
+            InterfaceBinding binding = interfaceByComponent.get(
+                    new ComponentKey(path, possibleInterface.componentId()));
+            if (binding == null || !possibleInterface.isWhole()) {
+                return;
+            }
+            interfaceAdapters.computeIfAbsent(binding, ignored -> new ArrayList<>())
+                    .add(new EndpointTarget(path, other));
+        }
+
+        private Node interfaceNode(InterfaceBinding binding, PortSlice slice) {
+            validateSlice(slice, binding.width(), binding.internalPortName());
+            Node result = node(binding.path(), binding.componentId(),
+                    binding.internalPortName(), slice);
+            if (!(slice instanceof PortSlice.Whole)) {
+                for (EndpointTarget target : interfaceAdapters.getOrDefault(binding, List.of())) {
+                    PortEndpoint projected = new PortEndpoint(target.endpoint().port(), slice);
+                    union(result, endpointNode(target.path(), projected));
+                }
+            }
+            return result;
+        }
+
+        private static void validateSlice(PortSlice slice, int width, String endpoint) {
+            if (slice instanceof PortSlice.Bit bit && bit.index() >= width) {
+                throw new IllegalArgumentException("Bit " + bit.index()
+                        + " is outside hierarchy interface " + endpoint);
+            }
+            if (slice instanceof PortSlice.Range range && range.msb() >= width) {
+                throw new IllegalArgumentException("Range " + range.msb() + ":" + range.lsb()
+                        + " is outside hierarchy interface " + endpoint);
+            }
         }
 
         private void emitConnections() {
@@ -235,6 +276,13 @@ public final class CircuitFlattener {
     private record ComponentKey(String path, UUID componentId) {
     }
 
+    private record InterfaceBinding(String path, UUID componentId, String internalPortName,
+                                    int width) {
+    }
+
+    private record EndpointTarget(String path, PortEndpoint endpoint) {
+    }
+
     private record Node(String path, UUID componentId, String portName, PortSlice slice) {
     }
 
@@ -255,7 +303,11 @@ public final class CircuitFlattener {
     }
 
     private static String endpointSuffix(PortEndpoint endpoint) {
-        return endpoint.slice() instanceof PortSlice.Bit bit
-                ? endpoint.portName() + "[" + bit.index() + "]" : endpoint.portName();
+        return switch (endpoint.slice()) {
+            case PortSlice.Whole ignored -> endpoint.portName();
+            case PortSlice.Bit bit -> endpoint.portName() + "[" + bit.index() + "]";
+            case PortSlice.Range range -> endpoint.portName() + "[" + range.msb()
+                    + ":" + range.lsb() + "]";
+        };
     }
 }

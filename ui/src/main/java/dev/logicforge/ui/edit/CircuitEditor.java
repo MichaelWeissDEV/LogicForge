@@ -26,6 +26,8 @@ import dev.logicforge.ui.command.CircuitCommand;
 import dev.logicforge.ui.command.ChangeParameterCommand;
 import dev.logicforge.ui.command.UndoStack;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -52,19 +54,24 @@ public final class CircuitEditor {
 
     private final ComponentRegistry registry;
     private final CircuitCompiler compiler;
-    private final UndoStack undoStack = new UndoStack();
+    private final Map<String, UndoStack> undoStacks = new LinkedHashMap<>();
+    private UndoStack undoStack = new UndoStack();
     private final SelectionModel selection = new SelectionModel();
     private final CircuitClipboard clipboard = new CircuitClipboard();
     private final List<Runnable> changeListeners = new ArrayList<>();
 
     private CircuitProject project;
     private CircuitDocument document;
+    private String activeCircuitName;
+    private String activeHierarchyPath;
+    private final Deque<NavigationContext> navigationStack = new ArrayDeque<>();
     private CompilationResult compilation;
     private Simulation simulation;
     private String compileError;
     private List<ValidationIssue> lastValidationIssues = List.of();
     private boolean dirty;
     private CircuitDocumentListener documentListener;
+    private boolean projectMutation;
     /**
      * The user's run/pause intent, independent of any particular {@link Simulation}
      * instance. A recompile replaces {@code simulation} outright (a fresh object, not an
@@ -84,14 +91,19 @@ public final class CircuitEditor {
     // ------------------------------------------------------------------
 
     public void setProject(CircuitProject newProject, boolean markDirty) {
-        if (document != null && documentListener != null) {
-            document.removeListener(documentListener);
+        if (project != null && documentListener != null) {
+            project.circuits().forEach(circuit -> circuit.removeListener(documentListener));
         }
         this.project = newProject;
         this.document = newProject.mainCircuit();
+        this.activeCircuitName = CircuitProject.MAIN_CIRCUIT;
+        this.activeHierarchyPath = CircuitProject.MAIN_CIRCUIT;
+        this.navigationStack.clear();
         this.documentListener = this::onCircuitChanged;
-        this.document.addListener(documentListener);
-        this.undoStack.clear();
+        this.project.circuits().forEach(circuit -> circuit.addListener(documentListener));
+        this.undoStacks.clear();
+        this.project.circuitNames().forEach(name -> undoStacks.put(name, new UndoStack()));
+        this.undoStack = undoStacks.get(activeCircuitName);
         this.selection.clear();
         this.dirty = markDirty;
         // Clear lastValidationIssues before recompiling
@@ -106,6 +118,125 @@ public final class CircuitEditor {
 
     public CircuitDocument document() {
         return document;
+    }
+
+    public String activeCircuitName() {
+        return activeCircuitName;
+    }
+
+    /** Hierarchical instance path when entered through an instance; definition name otherwise. */
+    public String activeHierarchyPath() {
+        return activeHierarchyPath;
+    }
+
+    public boolean canNavigateBack() {
+        return !navigationStack.isEmpty();
+    }
+
+    public List<String> navigationLabels() {
+        List<String> labels = navigationStack.stream().map(NavigationContext::circuitName)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        java.util.Collections.reverse(labels);
+        labels.add(activeCircuitName);
+        return List.copyOf(labels);
+    }
+
+    /** Opens a definition directly from the project tree. */
+    public void openCircuit(String circuitName) {
+        switchActiveCircuit(circuitName, circuitName, true);
+    }
+
+    /** Opens a selected subcircuit while retaining enough context for Back and signal paths. */
+    public void openSubcircuit(ComponentInstance instance) {
+        if (!SubcircuitSupport.isInstanceDefinition(instance.definitionId())) {
+            return;
+        }
+        String child = SubcircuitSupport.circuitName(instance.definitionId());
+        if (project.circuit(child).isEmpty()) {
+            return;
+        }
+        navigationStack.push(new NavigationContext(activeCircuitName, activeHierarchyPath));
+        switchActiveCircuit(child, activeHierarchyPath + "/" + instance.id(), false);
+    }
+
+    public void navigateBack() {
+        if (navigationStack.isEmpty()) {
+            return;
+        }
+        NavigationContext parent = navigationStack.pop();
+        switchActiveCircuit(parent.circuitName(), parent.hierarchyPath(), false);
+    }
+
+    private void switchActiveCircuit(String circuitName, String hierarchyPath, boolean clearNavigation) {
+        CircuitDocument next = project.circuit(circuitName).orElseThrow(() ->
+                new IllegalArgumentException("Unknown circuit '" + circuitName + "'"));
+        if (clearNavigation) {
+            navigationStack.clear();
+        }
+        activeCircuitName = circuitName;
+        activeHierarchyPath = hierarchyPath;
+        document = next;
+        undoStack = undoStacks.computeIfAbsent(circuitName, ignored -> new UndoStack());
+        selection.clear();
+        notifyChanged();
+    }
+
+    public CircuitDocument addCircuit(String circuitName) {
+        CircuitDocument added = project.addCircuit(circuitName);
+        added.addListener(documentListener);
+        undoStacks.put(added.metadata().name(), new UndoStack());
+        dirty = true;
+        notifyChanged();
+        openCircuit(added.metadata().name());
+        return added;
+    }
+
+    public void renameCircuit(String oldName, String newName) {
+        projectMutation = true;
+        try {
+            project.renameCircuit(oldName, newName);
+        } finally {
+            projectMutation = false;
+        }
+        String target = newName.trim();
+        UndoStack history = undoStacks.remove(oldName);
+        if (history != null) {
+            undoStacks.put(target, history);
+        }
+        if (activeCircuitName.equals(oldName)) {
+            activeCircuitName = target;
+            document = project.circuit(target).orElseThrow();
+            undoStack = undoStacks.get(target);
+        }
+        List<NavigationContext> updatedNavigation = navigationStack.stream()
+                .map(context -> context.circuitName().equals(oldName)
+                        ? new NavigationContext(target, context.hierarchyPath()) : context)
+                .toList();
+        navigationStack.clear();
+        updatedNavigation.forEach(navigationStack::addLast);
+        dirty = true;
+        recompilePreservingState();
+        notifyChanged();
+    }
+
+    public void deleteCircuit(String circuitName) {
+        CircuitDocument removed = project.circuit(circuitName).orElseThrow(() ->
+                new IllegalArgumentException("Unknown circuit '" + circuitName + "'"));
+        removed.removeListener(documentListener);
+        project.removeCircuit(circuitName);
+        undoStacks.remove(circuitName);
+        navigationStack.removeIf(context -> context.circuitName().equals(circuitName));
+        if (activeCircuitName.equals(circuitName)) {
+            navigationStack.clear();
+            activeCircuitName = CircuitProject.MAIN_CIRCUIT;
+            activeHierarchyPath = CircuitProject.MAIN_CIRCUIT;
+            document = project.mainCircuit();
+            undoStack = undoStacks.get(CircuitProject.MAIN_CIRCUIT);
+            selection.clear();
+        }
+        dirty = true;
+        recompilePreservingState();
+        notifyChanged();
     }
 
     public ComponentRegistry registry() {
@@ -281,6 +412,20 @@ public final class CircuitEditor {
         if (endpoint.slice() instanceof PortSlice.Bit bit && value.width() > 1) {
             return Optional.of(LogicVector.single(value.getBit(bit.index())));
         }
+        if (endpoint.slice() instanceof PortSlice.Range range) {
+            LogicState[] bits = new LogicState[range.width()];
+            for (int offset = 0; offset < bits.length; offset++) {
+                OptionalInt bitNet = compilation.sourceMap().netOf(
+                        PortEndpoint.bit(endpoint.port(), range.lsb() + offset));
+                if (bitNet.isEmpty()) {
+                    return Optional.empty();
+                }
+                LogicVector bitValue = simulation.readNet(bitNet.getAsInt());
+                bits[offset] = bitValue.width() == 1 ? bitValue.singleBit()
+                        : bitValue.getBit(range.lsb() + offset);
+            }
+            return Optional.of(LogicVector.ofLsbFirst(bits));
+        }
         return Optional.of(value);
     }
 
@@ -417,17 +562,24 @@ public final class CircuitEditor {
 
     private void onCircuitChanged(CircuitDocument changed, CircuitChange change) {
         dirty = true;
+        if (projectMutation) {
+            return;
+        }
         if (change.affectsTopology()) {
-            Map<UUID, LogicVector> previousInputs = captureInputValues();
-            Map<UUID, Object> previousStates = captureRuntimeStates();
-            recompile(previousInputs, previousStates);
+            recompilePreservingState();
         }
         notifyChanged();
     }
 
+    private void recompilePreservingState() {
+        Map<UUID, LogicVector> previousInputs = captureInputValues();
+        Map<UUID, Object> previousStates = captureRuntimeStates();
+        recompile(previousInputs, previousStates);
+    }
+
     private void recompile(Map<UUID, LogicVector> previousInputs, Map<UUID, Object> previousStates) {
         try {
-            compilation = compiler.compile(project, document.metadata().name());
+            compilation = compiler.compile(project, CircuitProject.MAIN_CIRCUIT);
             compileError = null;
             lastValidationIssues = compilation.issues();
             simulation = new Simulation(compilation.circuit(), false);
@@ -583,5 +735,8 @@ public final class CircuitEditor {
 
     private void notifyChanged() {
         changeListeners.forEach(Runnable::run);
+    }
+
+    private record NavigationContext(String circuitName, String hierarchyPath) {
     }
 }

@@ -85,6 +85,48 @@ class CircuitCompilerTest {
     }
 
     @Test
+    void rangeEndpointsMapCorrespondingBitsIntoLogicalPorts() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance sink = ComponentInstance.create(
+                "test.input8", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(sink);
+        PortEndpoint from = PortEndpoint.range(new PortReference(source.id(), "OUT"), 7, 4);
+        PortEndpoint to = PortEndpoint.range(new PortReference(sink.id(), "IN"), 3, 0);
+        document.addConnection(Connection.create(from, to));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.of("ZZZZ1111"),
+                new Simulation(result.circuit()).readInput(sinkId, 0));
+        assertEquals(1, result.circuit().net(
+                result.sourceMap().netOf(to).orElseThrow()).width().bits());
+    }
+
+    @Test
+    void outOfBoundsRangeEndpointIsRejected() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance sink = ComponentInstance.create(
+                "test.input8", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(sink);
+        document.addConnection(Connection.create(
+                PortEndpoint.range(new PortReference(source.id(), "OUT"), 8, 5),
+                PortEndpoint.range(new PortReference(sink.id(), "IN"), 3, 0)));
+
+        CircuitCompileException error = assertThrows(CircuitCompileException.class,
+                () -> new CircuitCompiler(registry).compile(document));
+        assertTrue(error.getMessage().contains("Range 8:5 is outside"));
+    }
+
+    @Test
     void wholeAndBitConnectionsOnSameLogicalPortAreRejected() {
         ComponentRegistry registry = createWidthTestRegistry();
         CircuitDocument document = new CircuitDocument();

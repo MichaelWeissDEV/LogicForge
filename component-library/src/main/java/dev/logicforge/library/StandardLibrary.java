@@ -835,8 +835,8 @@ final class StandardLibrary {
 
     private static void registerHierarchy(ComponentRegistry registry) {
         registry.register(ComponentType.of(
-                definition(SubcircuitSupport.INPUT_DEFINITION_ID, "Subcircuit Input", HIERARCHY,
-                        "Declares a named input on this circuit's reusable interface",
+                definition(SubcircuitSupport.INPUT_DEFINITION_ID, "Hierarchy Input", HIERARCHY,
+                        "Signal enters this child circuit from its parent",
                         List.of(SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH),
                         PortLayouts.dynamicBox(List.of(),
                                 List.of(new PortLayouts.DynamicPortDef("OUT",
@@ -845,8 +845,8 @@ final class StandardLibrary {
                         List.of("subcircuit", "interface", "input")),
                 context -> { }));
         registry.register(ComponentType.of(
-                definition(SubcircuitSupport.OUTPUT_DEFINITION_ID, "Subcircuit Output", HIERARCHY,
-                        "Declares a named output on this circuit's reusable interface",
+                definition(SubcircuitSupport.OUTPUT_DEFINITION_ID, "Hierarchy Output", HIERARCHY,
+                        "Signal leaves this child circuit for its parent",
                         List.of(SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH),
                         PortLayouts.dynamicBox(
                                 List.of(new PortLayouts.DynamicPortDef("IN",
@@ -854,6 +854,17 @@ final class StandardLibrary {
                                         "Signal leaving this child circuit")),
                                 List.of(), REGISTER_WIDTH),
                         List.of("subcircuit", "interface", "output")),
+                context -> { }));
+        registry.register(ComponentType.of(
+                definition(SubcircuitSupport.INOUT_DEFINITION_ID, "Hierarchy InOut", HIERARCHY,
+                        "Bidirectional signal shared between this child circuit and its parent",
+                        List.of(SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH),
+                        PortLayouts.dynamicBoxWithInout(List.of(),
+                                List.of(new PortLayouts.DynamicPortDef("BUS",
+                                        values -> BitWidth.of(values.getInt(SubcircuitSupport.INTERFACE_WIDTH)),
+                                        "Bidirectional child/parent interface")),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("subcircuit", "interface", "inout", "bidirectional")),
                 context -> { }));
     }
 

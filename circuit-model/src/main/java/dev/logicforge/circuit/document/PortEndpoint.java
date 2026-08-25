@@ -25,6 +25,11 @@ public record PortEndpoint(PortReference port, PortSlice slice) {
         return new PortEndpoint(port, new PortSlice.Bit(bitIndex));
     }
 
+    /** Convenience: creates a contiguous range endpoint. */
+    public static PortEndpoint range(PortReference port, int msb, int lsb) {
+        return new PortEndpoint(port, new PortSlice.Range(msb, lsb));
+    }
+
     /** True if this endpoint refers to the whole bus port. */
     public boolean isWhole() {
         return slice instanceof PortSlice.Whole;
@@ -33,6 +38,20 @@ public record PortEndpoint(PortReference port, PortSlice slice) {
     /** True if this endpoint refers to a single bit. */
     public boolean isBit() {
         return slice instanceof PortSlice.Bit;
+    }
+
+    /** True if this endpoint refers to a contiguous range. */
+    public boolean isRange() {
+        return slice instanceof PortSlice.Range;
+    }
+
+    /** Number of bits selected, given the width of the logical port. */
+    public int selectedWidth(int portWidth) {
+        return switch (slice) {
+            case PortSlice.Whole ignored -> portWidth;
+            case PortSlice.Bit ignored -> 1;
+            case PortSlice.Range range -> range.width();
+        };
     }
 
     /** The component id from the port reference. */
@@ -50,6 +69,7 @@ public record PortEndpoint(PortReference port, PortSlice slice) {
         return switch (slice) {
             case PortSlice.Whole w -> port.toString();
             case PortSlice.Bit b -> port + "[" + b.index() + "]";
+            case PortSlice.Range range -> port + "[" + range.msb() + ":" + range.lsb() + "]";
         };
     }
 }

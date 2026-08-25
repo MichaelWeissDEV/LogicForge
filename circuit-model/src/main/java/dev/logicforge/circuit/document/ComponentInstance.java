@@ -68,6 +68,11 @@ public record ComponentInstance(
                 portDisplayMode);
     }
 
+    public ComponentInstance withDefinitionId(String newDefinitionId) {
+        return new ComponentInstance(id, newDefinitionId, position, rotation, parameters, label,
+                portDisplayMode);
+    }
+
     public ComponentInstance withPortDisplayMode(PortDisplayMode newMode) {
         return new ComponentInstance(id, definitionId, position, rotation, parameters, label, newMode);
     }

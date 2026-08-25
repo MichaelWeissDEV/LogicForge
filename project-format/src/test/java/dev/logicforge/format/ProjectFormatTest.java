@@ -106,14 +106,15 @@ class ProjectFormatTest {
     @Test
     void theFileCarriesItsFormatVersion() {
         String json = ProjectFormat.toJson(CircuitProject.empty("empty"));
-        assertTrue(json.contains("\"formatVersion\": 2"));
+        assertTrue(json.contains("\"formatVersion\": " + ProjectFormat.FORMAT_VERSION));
         assertTrue(json.contains("\"application\": \"LogicForge\""));
     }
 
     @Test
     void filesFromANewerVersionAreRefusedClearly() {
         String json = ProjectFormat.toJson(CircuitProject.empty("future"))
-                .replace("\"formatVersion\": 2", "\"formatVersion\": 99");
+                .replace("\"formatVersion\": " + ProjectFormat.FORMAT_VERSION,
+                        "\"formatVersion\": 99");
 
         ProjectFormatException failure = assertThrows(ProjectFormatException.class,
                 () -> ProjectFormat.fromJson(json, "future"));
@@ -202,6 +203,29 @@ class ProjectFormatTest {
 
         assertEquals(PortDisplayMode.EXPANDED, loadedRegister.portDisplayMode());
         assertEquals(endpoint, loadedWire.to());
+    }
+
+    @Test
+    void rangeEndpointsRoundTripWithoutChangingOldEndpointShapes() {
+        CircuitDocument circuit = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create("routing.bus_constant",
+                new CircuitPoint(0, 0), ComponentRegistry.standard()
+                        .require("routing.bus_constant").definition().defaultParameters());
+        ComponentInstance sink = ComponentInstance.create("routing.bus_probe",
+                new CircuitPoint(100, 0), ComponentRegistry.standard()
+                        .require("routing.bus_probe").definition().defaultParameters());
+        circuit.addComponent(source);
+        circuit.addComponent(sink);
+        PortEndpoint from = PortEndpoint.range(new PortReference(source.id(), "OUT"), 7, 4);
+        PortEndpoint to = PortEndpoint.range(new PortReference(sink.id(), "IN"), 3, 0);
+        circuit.addConnection(Connection.create(from, to));
+
+        CircuitProject loaded = roundTrip(CircuitProject.of("ranges", circuit));
+        Connection loadedWire = loaded.mainCircuit().connections().iterator().next();
+
+        assertEquals(from, loadedWire.from());
+        assertEquals(to, loadedWire.to());
+        assertTrue(ProjectFormat.toJson(loaded).contains("\"range\""));
     }
 
     @Test

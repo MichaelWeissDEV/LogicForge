@@ -22,6 +22,7 @@ public final class SubcircuitSupport {
 
     public static final String INPUT_DEFINITION_ID = "hierarchy.input";
     public static final String OUTPUT_DEFINITION_ID = "hierarchy.output";
+    public static final String INOUT_DEFINITION_ID = "hierarchy.inout";
     public static final String INSTANCE_PREFIX = "subcircuit:";
     public static final ParameterSpec.StringParameter INTERFACE_NAME =
             new ParameterSpec.StringParameter("name", "Port Name", "SIGNAL");
@@ -66,6 +67,9 @@ public final class SubcircuitSupport {
             } else if (component.definitionId().equals(OUTPUT_DEFINITION_ID)) {
                 direction = PortDirection.OUTPUT;
                 internalPort = "IN";
+            } else if (component.definitionId().equals(INOUT_DEFINITION_ID)) {
+                direction = PortDirection.INOUT;
+                internalPort = "BUS";
             } else {
                 continue;
             }
@@ -106,10 +110,14 @@ public final class SubcircuitSupport {
                         .filter(port -> port.direction() == PortDirection.INPUT).toList();
                 List<InterfacePort> outputs = interfaces.stream()
                         .filter(port -> port.direction() == PortDirection.OUTPUT).toList();
+                List<InterfacePort> inouts = interfaces.stream()
+                        .filter(port -> port.direction() == PortDirection.INOUT).toList();
                 CircuitSize size = bodySize(values);
                 List<PortSpec> result = new ArrayList<>(interfaces.size());
-                addPorts(result, inputs, size, PortSide.LEFT, PortDirection.INPUT);
-                addPorts(result, outputs, size, PortSide.RIGHT, PortDirection.OUTPUT);
+                addPorts(result, inputs, size, PortSide.LEFT);
+                List<InterfacePort> right = new ArrayList<>(inouts);
+                right.addAll(outputs);
+                addPorts(result, right, size, PortSide.RIGHT);
                 return result;
             }
 
@@ -127,13 +135,17 @@ public final class SubcircuitSupport {
     }
 
     private static void addPorts(List<PortSpec> result, List<InterfacePort> ports,
-                                 CircuitSize size, PortSide side, PortDirection direction) {
+                                 CircuitSize size, PortSide side) {
         for (int i = 0; i < ports.size(); i++) {
             InterfacePort port = ports.get(i);
             double y = (i - (ports.size() - 1) / 2.0) * 20;
             double x = side == PortSide.LEFT ? -size.halfWidth() - 8 : size.halfWidth() + 8;
-            result.add(new PortSpec(port.name(), direction, port.width(),
-                    new CircuitPoint(x, y), side, "Subcircuit interface " + port.name()));
+            result.add(new PortSpec(port.name(), port.direction(), port.width(),
+                    new CircuitPoint(x, y), side, switch (port.direction()) {
+                        case INPUT -> "Signal enters child from parent";
+                        case OUTPUT -> "Signal leaves child to parent";
+                        case INOUT -> "Bidirectional signal shared with parent";
+                    }));
         }
     }
 

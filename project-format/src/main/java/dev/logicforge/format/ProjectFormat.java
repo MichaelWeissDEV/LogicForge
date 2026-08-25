@@ -34,12 +34,13 @@ import java.util.UUID;
  * runtime — a project file survives any refactoring of the code that reads it.
  *
  * <p>Every file carries a {@code formatVersion}. Version 1 contains whole-port wires;
- * version 2 adds bit endpoints and port presentation. The reader accepts both.
+ * version 2 adds bit endpoints and port presentation; version 3 adds range endpoints.
+ * The reader accepts every version.
  */
 public final class ProjectFormat {
 
     /** The version this build writes. */
-    public static final int FORMAT_VERSION = 2;
+    public static final int FORMAT_VERSION = 3;
 
     /** File extension used by the file choosers. */
     public static final String EXTENSION = "logic";
@@ -140,6 +141,9 @@ public final class ProjectFormat {
                 .put("port", endpoint.portName());
         if (endpoint.isBit()) {
             obj.put("bit", ((dev.logicforge.circuit.document.PortSlice.Bit) endpoint.slice()).index());
+        } else if (endpoint.slice() instanceof dev.logicforge.circuit.document.PortSlice.Range range) {
+            obj.put("range", new JsonValue.JsonObject()
+                    .put("msb", range.msb()).put("lsb", range.lsb()));
         }
         return obj;
     }
@@ -270,6 +274,20 @@ public final class ProjectFormat {
                         "Bit wire endpoints require formatVersion 2 or newer");
             }
             return dev.logicforge.circuit.document.PortEndpoint.bit(ref, object.integer("bit", 0));
+        }
+        if (object.members().containsKey("range")) {
+            if (version < 3) {
+                throw new ProjectFormatException(
+                        "Range wire endpoints require formatVersion 3 or newer");
+            }
+            JsonValue.JsonObject range = object.object("range");
+            try {
+                return dev.logicforge.circuit.document.PortEndpoint.range(ref,
+                        range.integer("msb", -1), range.integer("lsb", -1));
+            } catch (IllegalArgumentException invalid) {
+                throw new ProjectFormatException("Invalid range on " + port + ": "
+                        + invalid.getMessage(), invalid);
+            }
         }
         return dev.logicforge.circuit.document.PortEndpoint.whole(ref);
     }

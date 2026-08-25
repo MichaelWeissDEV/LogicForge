@@ -108,6 +108,7 @@ public final class CircuitDocument {
         components.put(instance.id(), instance);
         
         // Determine the most specific change kind
+        boolean definitionChanged = !previous.definitionId().equals(instance.definitionId());
         boolean parametersChanged = !previous.parameters().equals(instance.parameters());
         boolean positionChanged = !previous.position().equals(instance.position());
         boolean rotationChanged = previous.rotation() != instance.rotation();
@@ -115,7 +116,7 @@ public final class CircuitDocument {
         boolean presentationChanged = previous.portDisplayMode() != instance.portDisplayMode();
         
         CircuitChange.Kind kind;
-        if (parametersChanged) {
+        if (definitionChanged || parametersChanged) {
             kind = CircuitChange.Kind.COMPONENT_RECONFIGURED;
         } else if (presentationChanged && !positionChanged && !rotationChanged && !labelChanged) {
             kind = CircuitChange.Kind.COMPONENT_PRESENTATION;

@@ -13,9 +13,11 @@ public record PlacedPort(PortEndpoint endpoint, PortSpec spec, CircuitPoint posi
     }
 
     public String displayName() {
-        return endpoint.slice() instanceof PortSlice.Bit bit
-                ? spec.name() + "[" + bit.index() + "]"
-                : spec.name();
+        return switch (endpoint.slice()) {
+            case PortSlice.Whole ignored -> spec.name();
+            case PortSlice.Bit bit -> spec.name() + "[" + bit.index() + "]";
+            case PortSlice.Range range -> spec.name() + "[" + range.msb() + ":" + range.lsb() + "]";
+        };
     }
 
     /** A short point away from the body, where a wire should leave this port. */

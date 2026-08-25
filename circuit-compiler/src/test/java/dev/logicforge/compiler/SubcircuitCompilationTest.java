@@ -11,15 +11,103 @@ import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.library.ComponentRegistry;
+import dev.logicforge.library.LibraryParameters;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.Simulation;
 import org.junit.jupiter.api.Test;
 
 class SubcircuitCompilationTest {
+
+    @Test
+    void parentBitMapsToTheSameBitOfAWholeWiredChildInterface() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument child = byteInputChild("ByteInput");
+        ComponentInstance childProbe = child.components().stream()
+                .filter(component -> component.definitionId().equals("routing.bus_probe"))
+                .findFirst().orElseThrow();
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance source = add(main, "routing.bus_constant", "DATA", 0, 0,
+                busParameters(registry, "A5"));
+        ComponentInstance instance = SubcircuitSupport.instantiate("ByteInput", new CircuitPoint(100, 0));
+        main.addComponent(instance);
+        main.addConnection(Connection.create(
+                PortEndpoint.bit(new PortReference(source.id(), "OUT"), 5),
+                PortEndpoint.bit(new PortReference(instance.id(), "DATA"), 2)));
+        CircuitProject project = CircuitProject.of("bit-boundary", main);
+        project.putCircuit(child);
+
+        CompilationResult result = new CircuitCompiler(registry).compile(project, "main");
+        int probeId = result.hierarchySourceMap().componentId(
+                "main/" + instance.id() + "/" + childProbe.id()).orElseThrow();
+
+        assertEquals(LogicVector.of("ZZZZZ1ZZ"),
+                new Simulation(result.circuit()).readInput(probeId, 0));
+    }
+
+    @Test
+    void parentRangeMapsLsbToLsbAcrossAWholeWiredChildInterface() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument child = byteInputChild("ByteRange");
+        ComponentInstance childProbe = child.components().stream()
+                .filter(component -> component.definitionId().equals("routing.bus_probe"))
+                .findFirst().orElseThrow();
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance source = add(main, "routing.bus_constant", "DATA", 0, 0,
+                busParameters(registry, "A5"));
+        ComponentInstance instance = SubcircuitSupport.instantiate("ByteRange", new CircuitPoint(100, 0));
+        main.addComponent(instance);
+        main.addConnection(Connection.create(
+                PortEndpoint.range(new PortReference(source.id(), "OUT"), 7, 4),
+                PortEndpoint.range(new PortReference(instance.id(), "DATA"), 3, 0)));
+        CircuitProject project = CircuitProject.of("range-boundary", main);
+        project.putCircuit(child);
+
+        CompilationResult result = new CircuitCompiler(registry).compile(project, "main");
+        int probeId = result.hierarchySourceMap().componentId(
+                "main/" + instance.id() + "/" + childProbe.id()).orElseThrow();
+
+        assertEquals(LogicVector.of("ZZZZ1010"),
+                new Simulation(result.circuit()).readInput(probeId, 0));
+    }
+
+    @Test
+    void hierarchyInOutPreservesMultipleDriversAndConflictResolution() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("SharedBus", ""));
+        ParameterValues interfaceParameters = ParameterValues.defaultsOf(java.util.List.of(
+                        SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                .with(SubcircuitSupport.INTERFACE_NAME, "DATA")
+                .with(SubcircuitSupport.INTERFACE_WIDTH, 8);
+        ComponentInstance inout = add(child, SubcircuitSupport.INOUT_DEFINITION_ID,
+                "DATA", 0, 0, interfaceParameters);
+        ComponentInstance probe = add(child, "routing.bus_probe", "PROBE", 100, 0,
+                registry.require("routing.bus_probe").definition().defaultParameters());
+        wire(child, inout, "BUS", probe, "IN");
+
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance high = add(main, "routing.bus_constant", "A", 0, 0,
+                busParameters(registry, "A5"));
+        ComponentInstance low = add(main, "routing.bus_constant", "B", 0, 80,
+                busParameters(registry, "5A"));
+        ComponentInstance instance = SubcircuitSupport.instantiate("SharedBus", new CircuitPoint(120, 0));
+        main.addComponent(instance);
+        wire(main, high, "OUT", instance, "DATA");
+        wire(main, low, "OUT", instance, "DATA");
+        CircuitProject project = CircuitProject.of("inout", main);
+        project.putCircuit(child);
+
+        CompilationResult result = new CircuitCompiler(registry).compile(project, "main");
+        int probeId = result.hierarchySourceMap().componentId(
+                "main/" + instance.id() + "/" + probe.id()).orElseThrow();
+
+        assertEquals(LogicVector.repeat(LogicState.UNKNOWN, 8),
+                new Simulation(result.circuit()).readInput(probeId, 0));
+    }
 
     @Test
     void declaredBusInterfaceWidthIsValidatedAtParentBoundary() {
@@ -105,6 +193,26 @@ class SubcircuitCompilationTest {
         wire(child, input, "OUT", not, "A");
         wire(child, not, "Y", output, "IN");
         return child;
+    }
+
+    private static CircuitDocument byteInputChild(String name) {
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata(name, ""));
+        ParameterValues inputParameters = ParameterValues.defaultsOf(java.util.List.of(
+                        SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                .with(SubcircuitSupport.INTERFACE_NAME, "DATA")
+                .with(SubcircuitSupport.INTERFACE_WIDTH, 8);
+        ComponentInstance input = add(child, SubcircuitSupport.INPUT_DEFINITION_ID,
+                "DATA", 0, 0, inputParameters);
+        ComponentInstance probe = add(child, "routing.bus_probe", "PROBE", 100, 0,
+                ComponentRegistry.standard().require("routing.bus_probe").definition().defaultParameters());
+        wire(child, input, "OUT", probe, "IN");
+        return child;
+    }
+
+    private static ParameterValues busParameters(ComponentRegistry registry, String value) {
+        return registry.require("routing.bus_constant").definition().defaultParameters()
+                .with(LibraryParameters.WIDTH, 8)
+                .with(LibraryParameters.BUS_CONSTANT_VALUE, value);
     }
 
     private static ComponentInstance add(CircuitDocument document, String type, String label,

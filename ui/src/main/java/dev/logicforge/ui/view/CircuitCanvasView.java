@@ -84,6 +84,8 @@ public final class CircuitCanvasView extends Region {
     };
     private java.util.function.Consumer<PortEndpoint> analyzerListener = endpoint -> {
     };
+    private java.util.function.Consumer<ComponentInstance> hierarchyOpenListener = instance -> {
+    };
     
     // For momentary button handling: track which component is being pressed
     private UUID pressedComponentId = null;
@@ -121,6 +123,10 @@ public final class CircuitCanvasView extends Region {
     /** Called with the port a user picked "Add to Logic Analyzer" for. */
     public void setAnalyzerListener(java.util.function.Consumer<PortEndpoint> listener) {
         this.analyzerListener = listener;
+    }
+
+    public void setHierarchyOpenListener(java.util.function.Consumer<ComponentInstance> listener) {
+        this.hierarchyOpenListener = listener;
     }
 
     /** Arms click-to-place: the next click on the canvas drops this component. */
@@ -246,6 +252,13 @@ public final class CircuitCanvasView extends Region {
 
         Optional<ComponentInstance> component = hitTester.componentAt(dragStartWorld);
         if (component.isPresent()) {
+            if (event.getClickCount() == 2
+                    && dev.logicforge.circuit.document.SubcircuitSupport
+                    .isInstanceDefinition(component.get().definitionId())) {
+                hierarchyOpenListener.accept(component.get());
+                mode = Mode.IDLE;
+                return;
+            }
             // Check if this is a momentary button - start tracking press
             var interaction = editor.inputInteraction(component.get().id());
             if (interaction == dev.logicforge.circuit.component.InputInteraction.MOMENTARY) {

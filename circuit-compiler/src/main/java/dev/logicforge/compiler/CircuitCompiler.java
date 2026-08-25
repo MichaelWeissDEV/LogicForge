@@ -212,13 +212,22 @@ public final class CircuitCompiler {
                 return false;
             }
 
-            boolean endpointBitMode = endpoint.isBit();
-            Boolean previous = bitMode.putIfAbsent(endpoint.port(), endpointBitMode);
-            if (previous != null && previous != endpointBitMode) {
+            if (endpoint.slice() instanceof PortSlice.Range range
+                    && range.msb() >= spec.width().bits()) {
+                issues.add(ValidationIssue.error(
+                        "Range " + range.msb() + ":" + range.lsb() + " is outside "
+                                + endpoint.portName() + "[" + (spec.width().bits() - 1) + ":0]",
+                        endpoint.componentId(), endpoint.portName()));
+                return false;
+            }
+
+            boolean endpointPartialMode = !endpoint.isWhole();
+            Boolean previous = bitMode.putIfAbsent(endpoint.port(), endpointPartialMode);
+            if (previous != null && previous != endpointPartialMode) {
                 if (mixedReported.add(endpoint.port())) {
                     issues.add(ValidationIssue.error(
                             "Port " + endpoint.portName()
-                                    + " has both whole-port and bit-level connections",
+                                    + " has both whole-port and bit-level/range connections",
                             endpoint.componentId(), endpoint.portName()));
                 }
                 return false;
@@ -227,7 +236,7 @@ public final class CircuitCompiler {
         }
 
         private int effectiveWidth(PortEndpoint endpoint, PortSpec spec) {
-            return endpoint.isBit() ? 1 : spec.width().bits();
+            return endpoint.selectedWidth(spec.width().bits());
         }
 
         private void formNets() {
@@ -247,8 +256,28 @@ public final class CircuitCompiler {
                 parent[atom] = atom;
             }
             for (Connection connection : mergedConnections) {
-                union(atomByEndpoint.get(connection.from()), atomByEndpoint.get(connection.to()));
+                int width = selectedWidth(connection.from());
+                for (int offset = 0; offset < width; offset++) {
+                    union(atomFor(connection.from(), offset), atomFor(connection.to(), offset));
+                }
             }
+        }
+
+        private int selectedWidth(PortEndpoint endpoint) {
+            return endpoint.selectedWidth(portSpecs.get(portIndex.get(endpoint.port())).width().bits());
+        }
+
+        /** Returns the atom for one LSB-relative bit of a whole, bit or range endpoint. */
+        private int atomFor(PortEndpoint endpoint, int offset) {
+            if (endpoint.isWhole()) {
+                return atomByEndpoint.get(endpoint);
+            }
+            int bit = switch (endpoint.slice()) {
+                case PortSlice.Bit selected -> selected.index();
+                case PortSlice.Range range -> range.lsb() + offset;
+                case PortSlice.Whole ignored -> throw new IllegalStateException("handled above");
+            };
+            return atomByEndpoint.get(PortEndpoint.bit(endpoint.port(), bit));
         }
 
         private void addAtom(PortEndpoint endpoint, int port) {
@@ -366,7 +395,11 @@ public final class CircuitCompiler {
             }
             Map<UUID, Integer> netByConnection = new LinkedHashMap<>();
             for (Connection connection : mergedConnections) {
-                netByConnection.put(connection.id(), netByEndpoint.get(connection.from()));
+                int firstAtom = atomFor(connection.from(), 0);
+                int net = netByAtom[firstAtom];
+                netByConnection.put(connection.id(), net);
+                netByEndpoint.put(connection.from(), net);
+                netByEndpoint.put(connection.to(), netByAtom[atomFor(connection.to(), 0)]);
             }
 
             CircuitSourceMap sourceMap = new CircuitSourceMap(componentIdByUuid, uuidByComponentId,

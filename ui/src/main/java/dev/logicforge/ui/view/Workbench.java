@@ -20,6 +20,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 /**
@@ -63,6 +64,7 @@ public final class Workbench extends BorderPane {
 
         canvas.setStatusListener(statusBar::update);
         canvas.setAnalyzerListener(this::addToAnalyzer);
+        canvas.setHierarchyOpenListener(editor::openSubcircuit);
         editor.addChangeListener(this::updateToolbarState);
 
         setTop(buildToolbar());
@@ -77,10 +79,12 @@ public final class Workbench extends BorderPane {
     }
 
     private SplitPane buildContent() {
-        SplitPane split = new SplitPane(palette, canvas, new InspectorView(editor));
+        VBox left = new VBox(new ProjectCircuitsView(editor), palette);
+        VBox.setVgrow(palette, Priority.ALWAYS);
+        SplitPane split = new SplitPane(left, canvas, new InspectorView(editor));
         split.setOrientation(Orientation.HORIZONTAL);
         split.setDividerPositions(0.17, 0.80);
-        SplitPane.setResizableWithParent(palette, false);
+        SplitPane.setResizableWithParent(left, false);
         return split;
     }
 
