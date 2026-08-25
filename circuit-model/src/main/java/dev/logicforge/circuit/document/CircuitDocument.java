@@ -174,7 +174,7 @@ public final class CircuitDocument {
         if (previous == null) {
             throw new IllegalStateException("No connection " + connection.id() + " in this circuit");
         }
-        if (!previous.from().equals(connection.fromPort()) || !previous.to().equals(connection.toPort())) {
+        if (!previous.from().equals(connection.from()) || !previous.to().equals(connection.to())) {
             throw new IllegalArgumentException("Rewiring must remove and add a connection");
         }
         connections.put(connection.id(), connection);

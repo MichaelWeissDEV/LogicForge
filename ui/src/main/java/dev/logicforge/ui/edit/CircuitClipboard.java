@@ -83,8 +83,8 @@ public final class CircuitClipboard {
                 continue;
             }
             connections.add(new Connection(UUID.randomUUID(),
-                    new PortReference(from, original.from().portName()),
-                    new PortReference(to, original.to().portName()),
+                    new dev.logicforge.circuit.document.PortEndpoint(new PortReference(from, original.from().portName()), original.from().slice()),
+                    new dev.logicforge.circuit.document.PortEndpoint(new PortReference(to, original.to().portName()), original.to().slice()),
                     original.waypoints().stream()
                             .map(point -> point.plus(offsetX, offsetY))
                             .toList()));

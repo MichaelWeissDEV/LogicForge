@@ -643,7 +643,7 @@ public final class CircuitCanvasView extends Region {
             }
             contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (wire.isPresent()) {
-            PortReference reference = wire.get().from();
+            PortReference reference = wire.get().fromPort();
             if (!editor.selection().containsConnection(wire.get().id())) {
                 editor.selection().selectConnection(wire.get().id());
             }

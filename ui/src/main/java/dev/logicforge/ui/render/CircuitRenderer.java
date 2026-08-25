@@ -121,8 +121,8 @@ public final class CircuitRenderer {
         graphics.setLineWidth(Theme.WIRE_STROKE);
 
         for (Connection connection : document.connections()) {
-            Optional<PlacedPort> from = port(connection.from());
-            Optional<PlacedPort> to = port(connection.to());
+            Optional<PlacedPort> from = port(connection.fromPort());
+            Optional<PlacedPort> to = port(connection.toPort());
             if (from.isEmpty() || to.isEmpty()) {
                 continue;
             }
