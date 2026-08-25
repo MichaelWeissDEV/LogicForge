@@ -240,4 +240,8 @@ public final class Workbench extends BorderPane {
     public CircuitCanvasView canvas() {
         return canvas;
     }
+
+    public LogicAnalyzerController analyzerController() {
+        return analyzerController;
+    }
 }
