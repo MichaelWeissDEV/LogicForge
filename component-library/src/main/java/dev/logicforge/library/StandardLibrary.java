@@ -285,6 +285,30 @@ final class StandardLibrary {
 
     private static void registerRegisters(ComponentRegistry registry) {
         registry.register(new ComponentType(
+                definition("memory.register_file", "Register File", MEMORY,
+                        "Multi-port register file", List.of(LibraryParameters.WIDTH, LibraryParameters.REGISTER_COUNT),
+                        PortLayouts.variableBox(
+                                values -> {
+                                    int addrBits = dev.logicforge.library.behavior.RegisterFileBehavior.addrBits(values.getInt(LibraryParameters.REGISTER_COUNT));
+                                    dev.logicforge.logic.BitWidth addrWidth = dev.logicforge.logic.BitWidth.of(addrBits);
+                                    return List.of(
+                                        new PortLayouts.DynamicPortDef("RD_ADDR_A", v -> addrWidth, ""),
+                                        new PortLayouts.DynamicPortDef("RD_ADDR_B", v -> addrWidth, ""),
+                                        new PortLayouts.DynamicPortDef("WR_ADDR", v -> addrWidth, ""),
+                                        PortLayouts.DynamicPortDef.bus("WR_DATA", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("WR_EN"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK")
+                                    );
+                                },
+                                values -> List.of(
+                                    PortLayouts.DynamicPortDef.bus("RD_DATA_A", LibraryParameters.WIDTH),
+                                    PortLayouts.DynamicPortDef.bus("RD_DATA_B", LibraryParameters.WIDTH)
+                                ),
+                                PortLayouts.GATE_WIDTH),
+                        List.of("register file", "rf", "regfile")),
+                values -> new dev.logicforge.library.behavior.RegisterFileBehavior(dev.logicforge.logic.BitWidth.of(values.getInt(LibraryParameters.WIDTH)), values.getInt(LibraryParameters.REGISTER_COUNT))));
+
+        registry.register(new ComponentType(
                 definition("sequential.register", "Register", SEQUENTIAL,
                         "Parallel-in/parallel-out register: Q loads DATA on the clock edge while LOAD is 1",
                         List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
@@ -621,6 +645,23 @@ final class StandardLibrary {
     }
 
     private static void registerArithmetic(ComponentRegistry registry) {
+        registry.register(new ComponentType(
+                definition("arithmetic.alu", "ALU", ARITHMETIC,
+                        "Arithmetic Logic Unit", List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(List.of(
+                                        PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH),
+                                        new PortLayouts.DynamicPortDef("OP", v -> dev.logicforge.logic.BitWidth.of(4), ""),
+                                        PortLayouts.DynamicPortDef.fixed("CIN")),
+                                List.of(PortLayouts.DynamicPortDef.bus("RESULT", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("ZERO"),
+                                        PortLayouts.DynamicPortDef.fixed("CARRY"),
+                                        PortLayouts.DynamicPortDef.fixed("OVERFLOW"),
+                                        PortLayouts.DynamicPortDef.fixed("NEGATIVE")),
+                                PortLayouts.GATE_WIDTH),
+                        List.of("alu", "arithmetic", "math")),
+                values -> new dev.logicforge.library.behavior.AluBehavior(dev.logicforge.logic.BitWidth.of(values.getInt(LibraryParameters.WIDTH)))));
+                
         registry.register(ComponentType.of(
                 definition("arithmetic.half_adder", "Half Adder", ARITHMETIC,
                         "SUM = A XOR B, CARRY = A AND B", List.of(),

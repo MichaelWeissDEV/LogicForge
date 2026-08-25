@@ -10,7 +10,7 @@ buses, sequential logic, logic analysis, memory devices and educational 8-bit pr
 
 ## Current scope
 
-Version 0.1 is a complete, usable combinational logic editor and simulator.
+Version 0.4 adds buses, sequential logic, arithmetic, and memory components.
 
 **Signals.** Every signal is four-state — `0`, `1`, `X` (unknown) and `Z` (not driven) — and
 the rules for combining them live in exactly one place. An unconnected gate input reads as
@@ -37,7 +37,7 @@ restores the same circuit structurally, wire for wire.
 
 ### Not in this version
 
-There is no sequential logic, no clock, no memory, no arithmetic components, no
+There is no
 hierarchical subcircuits, no logic analyser and no CPU. Those are on the roadmap below;
 nothing half-finished is shipped or shown in the UI.
 
