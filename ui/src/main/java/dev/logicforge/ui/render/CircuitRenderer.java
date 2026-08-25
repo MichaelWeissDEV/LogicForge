@@ -271,7 +271,7 @@ public final class CircuitRenderer {
         graphics.translate(effectivePosition.x(), effectivePosition.y());
         graphics.rotate(instance.rotation().degrees());
         renderers.rendererFor(instance.definitionId()).drawSymbol(graphics,
-                new SymbolContext(instance, definition, definition.bodySize(instance.parameters()),
+                new SymbolContext(instance, definition, ComponentGeometry.effectiveBodySize(instance, definition),
                         selected, hovered, portName -> valueOf(instance, portName)));
         graphics.restore();
 
@@ -348,16 +348,29 @@ public final class CircuitRenderer {
             }
             CircuitPoint trunk = junction.get().position().plus(dx, dy);
             graphics.setStroke(signalColorOf(whole));
+            List<PlacedPort> bits = ComponentGeometry.ports(instance, definition, editor.document()).stream()
+                    .filter(bit -> bit.endpoint().port().equals(reference) && bit.endpoint().isBit())
+                    .toList();
+            if (bits.isEmpty()) {
+                continue;
+            }
+            double min = bits.stream().mapToDouble(bit -> junction.get().side().isHorizontal()
+                    ? bit.position().y() + dy : bit.position().x() + dx).min().orElse(0);
+            double max = bits.stream().mapToDouble(bit -> junction.get().side().isHorizontal()
+                    ? bit.position().y() + dy : bit.position().x() + dx).max().orElse(0);
+            graphics.setLineWidth(Theme.WIRE_STROKE + 1.0);
+            if (junction.get().side().isHorizontal()) {
+                graphics.strokeLine(trunk.x(), min, trunk.x(), max);
+            } else {
+                graphics.strokeLine(min, trunk.y(), max, trunk.y());
+            }
             graphics.setLineWidth(Theme.WIRE_STROKE);
-            for (PlacedPort bit : ComponentGeometry.ports(instance, definition, editor.document())) {
-                if (bit.endpoint().port().equals(reference) && bit.endpoint().isBit()) {
-                    CircuitPoint pin = bit.position().plus(dx, dy);
-                    CircuitPoint elbow = junction.get().side().isHorizontal()
-                            ? new CircuitPoint(trunk.x(), pin.y())
-                            : new CircuitPoint(pin.x(), trunk.y());
-                    graphics.strokeLine(pin.x(), pin.y(), elbow.x(), elbow.y());
-                    graphics.strokeLine(elbow.x(), elbow.y(), trunk.x(), trunk.y());
-                }
+            for (PlacedPort bit : bits) {
+                CircuitPoint pin = bit.position().plus(dx, dy);
+                CircuitPoint elbow = junction.get().side().isHorizontal()
+                        ? new CircuitPoint(trunk.x(), pin.y())
+                        : new CircuitPoint(pin.x(), trunk.y());
+                graphics.strokeLine(pin.x(), pin.y(), elbow.x(), elbow.y());
             }
             graphics.setFill(Theme.PORT);
             graphics.fillOval(trunk.x() - Theme.JUNCTION_RADIUS, trunk.y() - Theme.JUNCTION_RADIUS,

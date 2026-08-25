@@ -1,9 +1,11 @@
 package dev.logicforge.ui.render;
 
 import dev.logicforge.circuit.component.ComponentDefinition;
-import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.component.PortDirection;
-import dev.logicforge.circuit.component.PortSpec;
+import dev.logicforge.circuit.document.ComponentGeometry;
+import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.PlacedPort;
+import dev.logicforge.circuit.document.PortSlice;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.geometry.VPos;
@@ -25,13 +27,12 @@ public final class PinLayoutView extends Canvas {
     private static final double PIN_STUB = 14;
     private static final double LABEL_MARGIN = 4;
 
-    public PinLayoutView(ComponentDefinition definition, ParameterValues parameters, double width) {
+    public PinLayoutView(ComponentDefinition definition, ComponentInstance instance, double width) {
         super(width, 10);
-        List<PortSpec> ports = definition.ports(parameters);
-        List<PortSpec> inputs = new ArrayList<>();
-        List<PortSpec> outputs = new ArrayList<>();
-        for (PortSpec port : ports) {
-            if (port.direction() == PortDirection.INPUT) {
+        List<PlacedPort> inputs = new ArrayList<>();
+        List<PlacedPort> outputs = new ArrayList<>();
+        for (PlacedPort port : ComponentGeometry.ports(instance, definition)) {
+            if (port.spec().direction() == PortDirection.INPUT) {
                 inputs.add(port);
             } else {
                 // OUTPUT and INOUT both get a connection point on the right for now.
@@ -44,7 +45,8 @@ public final class PinLayoutView extends Canvas {
         paint(width, height, inputs, outputs, definition.displayName());
     }
 
-    private void paint(double width, double height, List<PortSpec> inputs, List<PortSpec> outputs, String name) {
+    private void paint(double width, double height, List<PlacedPort> inputs,
+                       List<PlacedPort> outputs, String name) {
         GraphicsContext g = getGraphicsContext2D();
         g.clearRect(0, 0, width, height);
 
@@ -69,7 +71,8 @@ public final class PinLayoutView extends Canvas {
         drawPins(g, outputs, boxRight, boxTop, boxBottom, false);
     }
 
-    private void drawPins(GraphicsContext g, List<PortSpec> ports, double boxEdgeX, double boxTop, double boxBottom,
+    private void drawPins(GraphicsContext g, List<PlacedPort> ports, double boxEdgeX,
+                          double boxTop, double boxBottom,
                           boolean leftSide) {
         if (ports.isEmpty()) {
             return;
@@ -81,14 +84,17 @@ public final class PinLayoutView extends Canvas {
         g.setStroke(Theme.PORT);
 
         for (int i = 0; i < ports.size(); i++) {
-            PortSpec port = ports.get(i);
+            PlacedPort port = ports.get(i);
             double y = boxTop + rowHeight * (i + 0.5);
             double stubEnd = leftSide ? boxEdgeX - PIN_STUB : boxEdgeX + PIN_STUB;
             g.strokeLine(boxEdgeX, y, stubEnd, y);
             g.setFill(Theme.PORT);
             g.fillOval(stubEnd - (leftSide ? 2 : -2) - 2, y - 2, 4, 4);
 
-            String label = port.width().isSingleBit() ? port.name() : port.name() + "[" + (port.width().bits() - 1) + ":0]";
+            String label = port.endpoint().slice() instanceof PortSlice.Bit bit
+                    ? port.spec().name() + "[" + bit.index() + "]"
+                    : port.spec().width().isSingleBit() ? port.spec().name()
+                    : port.spec().name() + "[" + (port.spec().width().bits() - 1) + ":0]";
             g.setFill(Theme.TEXT_PRIMARY);
             g.setTextAlign(leftSide ? TextAlignment.RIGHT : TextAlignment.LEFT);
             double textX = leftSide ? stubEnd - LABEL_MARGIN : stubEnd + LABEL_MARGIN;

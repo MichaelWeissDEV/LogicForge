@@ -134,12 +134,20 @@ public final class InspectorView extends VBox {
         body.getChildren().add(spacer());
 
         body.getChildren().add(sectionHeader("PIN LAYOUT"));
-        body.getChildren().add(new PinLayoutView(component, instance.parameters(), 220));
+        body.getChildren().add(new PinLayoutView(component, instance, 220));
 
         body.getChildren().add(spacer());
         body.getChildren().add(sectionHeader("PINS"));
         for (PortSpec port : component.ports(instance.parameters())) {
             body.getChildren().add(pinRow(port));
+            if (instance.portDisplayMode() == PortDisplayMode.EXPANDED
+                    && !port.width().isSingleBit()) {
+                for (int bit = 0; bit < port.width().bits(); bit++) {
+                    Label bitRow = new Label("    " + port.name() + "[" + bit + "]");
+                    bitRow.getStyleClass().add("inspector-subtitle");
+                    body.getChildren().add(bitRow);
+                }
+            }
         }
 
         body.getChildren().add(spacer());

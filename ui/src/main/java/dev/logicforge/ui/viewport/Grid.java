@@ -1,5 +1,6 @@
 package dev.logicforge.ui.viewport;
 
+import dev.logicforge.circuit.geometry.CircuitGrid;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 
 /**
@@ -9,7 +10,7 @@ import dev.logicforge.circuit.geometry.CircuitPoint;
 public final class Grid {
 
     /** Distance between two grid lines, in circuit units. */
-    public static final double SPACING = 8;
+    public static final double SPACING = CircuitGrid.SPACING;
 
     /** Every fourth line is drawn stronger. */
     public static final int MAJOR_EVERY = 4;

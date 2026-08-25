@@ -3,10 +3,15 @@ package dev.logicforge.circuit.document;
 import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.component.PortSpec;
 import dev.logicforge.circuit.geometry.CircuitBounds;
+import dev.logicforge.circuit.geometry.CircuitGrid;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.CircuitSize;
+import dev.logicforge.circuit.geometry.PortSide;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -18,13 +23,34 @@ import java.util.Optional;
  */
 public final class ComponentGeometry {
 
+    /** Visible bit pins use two grid cells, matching the standard library's pin rhythm. */
+    public static final double VISIBLE_PIN_SPACING = CircuitGrid.SPACING * 2;
+
     private ComponentGeometry() {
     }
 
     /** The component's body rectangle in world coordinates, rotation included. */
     public static CircuitBounds bodyBounds(ComponentInstance instance, ComponentDefinition definition) {
-        CircuitSize size = instance.rotation().apply(definition.bodySize(instance.parameters()));
+        CircuitSize size = instance.rotation().apply(effectiveBodySize(instance, definition));
         return CircuitBounds.around(instance.position(), size);
+    }
+
+    /**
+     * The unrotated body size after accounting for every pin currently visible on each side.
+     */
+    public static CircuitSize effectiveBodySize(ComponentInstance instance,
+                                                ComponentDefinition definition) {
+        CircuitSize base = definition.bodySize(instance.parameters());
+        if (instance.portDisplayMode() != PortDisplayMode.EXPANDED) {
+            return base;
+        }
+        Map<PortSide, Integer> counts = visibleCounts(definition.ports(instance.parameters()));
+        double requiredHeight = Math.max(requiredExtent(counts.get(PortSide.LEFT)),
+                requiredExtent(counts.get(PortSide.RIGHT)));
+        double requiredWidth = Math.max(requiredExtent(counts.get(PortSide.TOP)),
+                requiredExtent(counts.get(PortSide.BOTTOM)));
+        return new CircuitSize(Math.max(base.width(), requiredWidth),
+                Math.max(base.height(), requiredHeight));
     }
 
     /** The world position of one port. */
@@ -41,28 +67,40 @@ public final class ComponentGeometry {
     public static List<PlacedPort> ports(ComponentInstance instance, ComponentDefinition definition,
                                          CircuitDocument document) {
         List<PortSpec> specs = definition.ports(instance.parameters());
-        List<PlacedPort> placed = new ArrayList<>();
-        for (PortSpec spec : specs) {
-            PortReference reference = new PortReference(instance.id(), spec.name());
-            boolean hasWhole = hasWholeConnection(document, reference);
-            boolean hasBits = hasBitConnection(document, reference);
-            boolean expanded = instance.portDisplayMode() == PortDisplayMode.EXPANDED
-                    && !spec.width().isSingleBit();
-            if (!expanded) {
-                placed.add(new PlacedPort(PortEndpoint.whole(reference), spec,
+        if (instance.portDisplayMode() != PortDisplayMode.EXPANDED) {
+            List<PlacedPort> compact = new ArrayList<>(specs.size());
+            for (PortSpec spec : specs) {
+                PortReference reference = new PortReference(instance.id(), spec.name());
+                compact.add(new PlacedPort(PortEndpoint.whole(reference), spec,
                         portPosition(instance, spec), spec.side().rotatedBy(instance.rotation()),
-                        !hasBits));
-                continue;
+                        !hasPartialConnection(document, reference)));
             }
-            int width = spec.width().bits();
-            for (int bit = 0; bit < width; bit++) {
-                double offset = (bit - (width - 1) / 2.0) * 12.0;
-                CircuitPoint tangent = spec.side().isHorizontal()
-                        ? new CircuitPoint(0, offset) : new CircuitPoint(offset, 0);
-                CircuitPoint local = spec.anchor().plus(tangent);
-                placed.add(new PlacedPort(PortEndpoint.bit(reference, bit), spec,
-                        instance.position().plus(instance.rotation().apply(local)),
-                        spec.side().rotatedBy(instance.rotation()), !hasWhole));
+            return compact;
+        }
+
+        CircuitSize base = definition.bodySize(instance.parameters());
+        CircuitSize effective = effectiveBodySize(instance, definition);
+        List<PlacedPort> placed = new ArrayList<>();
+        for (PortSide side : PortSide.values()) {
+            List<PortSpec> sideSpecs = specs.stream().filter(spec -> spec.side() == side)
+                    .sorted(Comparator.comparingDouble(spec -> tangentCoordinate(spec.anchor(), side)))
+                    .toList();
+            int count = sideSpecs.stream().mapToInt(ComponentGeometry::visibleCount).sum();
+            int row = 0;
+            for (PortSpec spec : sideSpecs) {
+                PortReference reference = new PortReference(instance.id(), spec.name());
+                boolean hasWhole = hasWholeConnection(document, reference);
+                int specPins = visibleCount(spec);
+                for (int pin = 0; pin < specPins; pin++, row++) {
+                    double tangent = (row - (count - 1) / 2.0) * VISIBLE_PIN_SPACING;
+                    CircuitPoint local = expandedAnchor(spec, base, effective, tangent);
+                    PortEndpoint endpoint = spec.width().isSingleBit()
+                            ? PortEndpoint.whole(reference) : PortEndpoint.bit(reference, pin);
+                    placed.add(new PlacedPort(endpoint, spec,
+                            instance.position().plus(instance.rotation().apply(local)),
+                            side.rotatedBy(instance.rotation()),
+                            spec.width().isSingleBit() || !hasWhole));
+                }
             }
         }
         return placed;
@@ -91,7 +129,22 @@ public final class ComponentGeometry {
             }
         }
         PortSpec port = spec.get();
-        return Optional.of(new PlacedPort(endpoint, port, portPosition(instance, port),
+        CircuitPoint position = portPosition(instance, port);
+        if (instance.portDisplayMode() == PortDisplayMode.EXPANDED) {
+            List<PlacedPort> matching = ports(instance, definition, document).stream()
+                    .filter(candidate -> candidate.reference().equals(endpoint.port())).toList();
+            if (!matching.isEmpty()) {
+                double x = matching.stream().mapToDouble(candidate -> candidate.position().x()).average()
+                        .orElse(position.x());
+                double y = matching.stream().mapToDouble(candidate -> candidate.position().y()).average()
+                        .orElse(position.y());
+                PortSide worldSide = port.side().rotatedBy(instance.rotation());
+                CircuitPoint outward = worldSide.outwards();
+                position = new CircuitPoint(x + outward.x() * CircuitGrid.SPACING * 2,
+                        y + outward.y() * CircuitGrid.SPACING * 2);
+            }
+        }
+        return Optional.of(new PlacedPort(endpoint, port, position,
                 port.side().rotatedBy(instance.rotation()), false));
     }
 
@@ -101,10 +154,48 @@ public final class ComponentGeometry {
                         || (connection.toPort().equals(reference) && connection.to().isWhole()));
     }
 
-    private static boolean hasBitConnection(CircuitDocument document, PortReference reference) {
+    private static boolean hasPartialConnection(CircuitDocument document, PortReference reference) {
         return document != null && document.connectionsAt(reference).stream().anyMatch(connection ->
-                (connection.fromPort().equals(reference) && connection.from().isBit())
-                        || (connection.toPort().equals(reference) && connection.to().isBit()));
+                (connection.fromPort().equals(reference) && !connection.from().isWhole())
+                        || (connection.toPort().equals(reference) && !connection.to().isWhole()));
+    }
+
+    private static int visibleCount(PortSpec spec) {
+        return spec.width().isSingleBit() ? 1 : spec.width().bits();
+    }
+
+    private static Map<PortSide, Integer> visibleCounts(List<PortSpec> specs) {
+        Map<PortSide, Integer> counts = new EnumMap<>(PortSide.class);
+        for (PortSide side : PortSide.values()) {
+            counts.put(side, 0);
+        }
+        for (PortSpec spec : specs) {
+            counts.compute(spec.side(), (side, count) -> count + visibleCount(spec));
+        }
+        return counts;
+    }
+
+    private static double requiredExtent(int visiblePins) {
+        return visiblePins == 0 ? 0 : (visiblePins + 1) * VISIBLE_PIN_SPACING;
+    }
+
+    private static double tangentCoordinate(CircuitPoint anchor, PortSide side) {
+        return side.isHorizontal() ? anchor.y() : anchor.x();
+    }
+
+    /** Keeps each pin stub length while moving its body edge out to the effective body. */
+    private static CircuitPoint expandedAnchor(PortSpec spec, CircuitSize base,
+                                               CircuitSize effective, double tangent) {
+        if (spec.side().isHorizontal()) {
+            double baseEdge = base.halfWidth();
+            double stub = Math.max(0, Math.abs(spec.anchor().x()) - baseEdge);
+            double x = (spec.side() == PortSide.LEFT ? -1 : 1) * (effective.halfWidth() + stub);
+            return new CircuitPoint(x, tangent);
+        }
+        double baseEdge = base.halfHeight();
+        double stub = Math.max(0, Math.abs(spec.anchor().y()) - baseEdge);
+        double y = (spec.side() == PortSide.TOP ? -1 : 1) * (effective.halfHeight() + stub);
+        return new CircuitPoint(tangent, y);
     }
 
     /**
