@@ -1,7 +1,9 @@
 package dev.logicforge.library;
 
+import static dev.logicforge.circuit.component.ComponentCategory.ARITHMETIC;
 import static dev.logicforge.circuit.component.ComponentCategory.LOGIC;
 import static dev.logicforge.circuit.component.ComponentCategory.OUTPUTS;
+import static dev.logicforge.circuit.component.ComponentCategory.ROUTING;
 import static dev.logicforge.circuit.component.ComponentCategory.SEQUENTIAL;
 import static dev.logicforge.circuit.component.ComponentCategory.SOURCES;
 import static dev.logicforge.circuit.component.InputInteraction.MOMENTARY;
@@ -11,24 +13,44 @@ import dev.logicforge.circuit.component.InputInteraction;
 
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
+import dev.logicforge.library.behavior.AddSubBehavior;
+import dev.logicforge.library.behavior.AdderBehavior;
 import dev.logicforge.library.behavior.ClockBehavior;
+import dev.logicforge.library.behavior.ComparatorBehavior;
 import dev.logicforge.library.behavior.ConstantBehavior;
+import dev.logicforge.library.behavior.ConstantVectorBehavior;
+import dev.logicforge.library.behavior.CounterBehavior;
 import dev.logicforge.library.behavior.DFlipFlopBehavior;
 import dev.logicforge.library.behavior.DLatchBehavior;
+import dev.logicforge.library.behavior.DecoderBehavior;
+import dev.logicforge.library.behavior.DemuxBehavior;
+import dev.logicforge.library.behavior.EncoderBehavior;
+import dev.logicforge.library.behavior.FullAdderBehavior;
+import dev.logicforge.library.behavior.HalfAdderBehavior;
+import dev.logicforge.library.behavior.IncrementDecrementBehavior;
 import dev.logicforge.library.behavior.JkFlipFlopBehavior;
-import dev.logicforge.library.behavior.CounterBehavior;
+import dev.logicforge.library.behavior.JoinerBehavior;
+import dev.logicforge.library.behavior.MuxBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
+import dev.logicforge.library.behavior.ParityBehavior;
+import dev.logicforge.library.behavior.PriorityEncoderBehavior;
 import dev.logicforge.library.behavior.RegisterBehavior;
+import dev.logicforge.library.behavior.ShiftBehavior;
 import dev.logicforge.library.behavior.ShiftRegisterBehavior;
 import dev.logicforge.library.behavior.SinkBehavior;
+import dev.logicforge.library.behavior.SplitterBehavior;
 import dev.logicforge.library.behavior.SrLatchBehavior;
+import dev.logicforge.library.behavior.SubtractorBehavior;
 import dev.logicforge.library.behavior.TFlipFlopBehavior;
 import dev.logicforge.library.behavior.TriStateBehavior;
 import dev.logicforge.library.behavior.UnaryGateBehavior;
 import dev.logicforge.library.behavior.UserInputBehavior;
+import dev.logicforge.library.behavior.WideTriStateBehavior;
 import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicOperation;
 import dev.logicforge.logic.LogicState;
+import dev.logicforge.logic.LogicVector;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -52,6 +74,8 @@ final class StandardLibrary {
         registerSequential(registry);
         registerRegisters(registry);
         registerCounters(registry);
+        registerRouting(registry);
+        registerArithmetic(registry);
         registerOutputs(registry);
         return registry;
     }
@@ -355,6 +379,370 @@ final class StandardLibrary {
                         keywords),
                 values -> new CounterBehavior(
                         BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values), direction)));
+    }
+
+    private static void registerRouting(ComponentRegistry registry) {
+        // --- Multiplexers -------------------------------------------------
+        registry.register(new ComponentType(
+                definition("routing.mux2", "2:1 Multiplexer", ROUTING,
+                        "Drives IN0 or IN1 onto OUT depending on SEL",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.variableBox(
+                                values -> List.of(
+                                        PortLayouts.DynamicPortDef.bus("IN0", LibraryParameters.WIDTH, "Selected when SEL is 0"),
+                                        PortLayouts.DynamicPortDef.bus("IN1", LibraryParameters.WIDTH, "Selected when SEL is 1"),
+                                        PortLayouts.DynamicPortDef.fixed("SEL", "Selects which input reaches OUT")),
+                                values -> List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH, "Selected input")),
+                                REGISTER_WIDTH),
+                        List.of("mux", "multiplexer", "select", "2:1")),
+                values -> new MuxBehavior(busWidth(values), 2)));
+
+        registry.register(new ComponentType(
+                definition("routing.mux", "Multiplexer", ROUTING,
+                        "Drives the selected input onto OUT; a generic N:1 MUX",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.PORT_COUNT),
+                        PortLayouts.variableBox(
+                                values -> muxDataPorts(values),
+                                values -> List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH, "Selected input")),
+                                REGISTER_WIDTH),
+                        List.of("mux", "multiplexer", "select")),
+                values -> new MuxBehavior(busWidth(values), values.getInt(LibraryParameters.PORT_COUNT))));
+
+        // --- Demultiplexers -------------------------------------------------
+        registry.register(new ComponentType(
+                definition("routing.demux2", "1:2 Demultiplexer", ROUTING,
+                        "Routes IN onto OUT0 or OUT1 depending on SEL; the other output floats",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.variableBox(
+                                values -> List.of(
+                                        PortLayouts.DynamicPortDef.bus("IN", LibraryParameters.WIDTH, "Data to route"),
+                                        PortLayouts.DynamicPortDef.fixed("SEL", "Selects which output receives IN")),
+                                values -> List.of(
+                                        PortLayouts.DynamicPortDef.bus("OUT0", LibraryParameters.WIDTH, "IN when SEL is 0, otherwise Z"),
+                                        PortLayouts.DynamicPortDef.bus("OUT1", LibraryParameters.WIDTH, "IN when SEL is 1, otherwise Z")),
+                                REGISTER_WIDTH),
+                        List.of("demux", "demultiplexer", "1:2")),
+                values -> new DemuxBehavior(busWidth(values), 2)));
+
+        registry.register(new ComponentType(
+                definition("routing.demux", "Demultiplexer", ROUTING,
+                        "Routes IN onto the selected output; every other output floats (Z)",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.PORT_COUNT),
+                        PortLayouts.variableBox(
+                                values -> List.of(
+                                        PortLayouts.DynamicPortDef.bus("IN", LibraryParameters.WIDTH, "Data to route"),
+                                        PortLayouts.DynamicPortDef.fixed("SEL", "Selects which output receives IN")),
+                                values -> demuxOutputPorts(values),
+                                REGISTER_WIDTH),
+                        List.of("demux", "demultiplexer")),
+                values -> new DemuxBehavior(busWidth(values), values.getInt(LibraryParameters.PORT_COUNT))));
+
+        // --- Decoder / encoders ---------------------------------------------
+        registry.register(new ComponentType(
+                definition("routing.decoder", "Decoder", ROUTING,
+                        "While ENABLE is 1, drives exactly the output SEL selects high",
+                        List.of(LibraryParameters.SELECT_BITS),
+                        PortLayouts.variableBox(
+                                values -> List.of(
+                                        new PortLayouts.DynamicPortDef("SEL",
+                                                v -> BitWidth.of(v.getInt(LibraryParameters.SELECT_BITS)),
+                                                "Selects which output is driven high"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE", "While low, every output is low")),
+                                values -> decoderOutputPorts(values),
+                                REGISTER_WIDTH),
+                        List.of("decoder", "demux", "address decoder")),
+                values -> new DecoderBehavior(1 << values.getInt(LibraryParameters.SELECT_BITS))));
+
+        registry.register(new ComponentType(
+                definition("routing.encoder", "Encoder", ROUTING,
+                        "OUT is the index of the single active input; ambiguous otherwise (X)",
+                        List.of(LibraryParameters.PORT_COUNT),
+                        PortLayouts.variableBox(
+                                values -> encoderInputPorts(values),
+                                values -> List.of(new PortLayouts.DynamicPortDef("OUT",
+                                        v -> BitWidth.of(MuxBehavior.selectWidth(v.getInt(LibraryParameters.PORT_COUNT))),
+                                        "Binary index of the single active input")),
+                                REGISTER_WIDTH),
+                        List.of("encoder", "priority")),
+                values -> new EncoderBehavior(values.getInt(LibraryParameters.PORT_COUNT))));
+
+        registry.register(new ComponentType(
+                definition("routing.priority_encoder", "Priority Encoder", ROUTING,
+                        "OUT is the index of the highest-indexed active input; VALID is 1 if any input is active",
+                        List.of(LibraryParameters.PORT_COUNT),
+                        PortLayouts.variableBox(
+                                values -> encoderInputPorts(values),
+                                values -> List.of(
+                                        new PortLayouts.DynamicPortDef("OUT",
+                                                v -> BitWidth.of(MuxBehavior.selectWidth(v.getInt(LibraryParameters.PORT_COUNT))),
+                                                "Binary index of the highest-priority active input"),
+                                        PortLayouts.DynamicPortDef.fixed("VALID", "1 if any input is active")),
+                                REGISTER_WIDTH),
+                        List.of("encoder", "priority encoder")),
+                values -> new PriorityEncoderBehavior(values.getInt(LibraryParameters.PORT_COUNT))));
+
+        // --- Comparator -------------------------------------------------------
+        registry.register(new ComponentType(
+                definition("routing.comparator", "Comparator", ROUTING,
+                        "Unsigned magnitude comparison of A and B",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "First operand"),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH, "Second operand")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("LT", "1 if A < B"),
+                                        PortLayouts.DynamicPortDef.fixed("EQ", "1 if A = B"),
+                                        PortLayouts.DynamicPortDef.fixed("GT", "1 if A > B")),
+                                REGISTER_WIDTH),
+                        List.of("comparator", "compare", "lt", "eq", "gt")),
+                values -> ComparatorBehavior.INSTANCE));
+
+        // --- Bus utilities ------------------------------------------------
+        registry.register(new ComponentType(
+                definition("routing.tristate_n", "N-bit Tri-State Buffer", ROUTING,
+                        "Drives A onto Y while ENABLE is active; otherwise every bit floats (Z)",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.ACTIVE_LOW),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Data input"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE", "Drives Y while active")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Y", LibraryParameters.WIDTH,
+                                        "A while enabled, otherwise high-impedance (Z)")),
+                                REGISTER_WIDTH),
+                        List.of("tristate", "buffer", "bus", "z")),
+                values -> new WideTriStateBehavior(busWidth(values), values.getBoolean(LibraryParameters.ACTIVE_LOW))));
+
+        registry.register(new ComponentType(
+                definition("routing.splitter", "Splitter", ROUTING,
+                        "Splits a bus into its individual bits, LSB first",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.variableBox(
+                                values -> List.of(PortLayouts.DynamicPortDef.bus("BUS", LibraryParameters.WIDTH, "Bus to split")),
+                                values -> bitPorts(busWidth(values)),
+                                REGISTER_WIDTH),
+                        List.of("splitter", "bus", "bits")),
+                values -> new SplitterBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("routing.joiner", "Joiner", ROUTING,
+                        "Assembles a bus from individual bits, LSB first",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.variableBox(
+                                values -> bitPorts(busWidth(values)),
+                                values -> List.of(PortLayouts.DynamicPortDef.bus("BUS", LibraryParameters.WIDTH, "Assembled bus")),
+                                REGISTER_WIDTH),
+                        List.of("joiner", "bus", "bits")),
+                values -> new JoinerBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("routing.bus_constant", "Bus Constant", ROUTING,
+                        "Drives a fixed value onto OUT, entered in hex",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.BUS_CONSTANT_VALUE),
+                        PortLayouts.dynamicBox(List.of(),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH, "The configured constant value")),
+                                REGISTER_WIDTH),
+                        List.of("constant", "bus", "value", "hex")),
+                values -> new ConstantVectorBehavior(parseBusConstant(
+                        values.get(LibraryParameters.BUS_CONSTANT_VALUE), values.getInt(LibraryParameters.WIDTH)))));
+
+        registry.register(ComponentType.of(
+                definition("routing.bus_probe", "Bus Probe", ROUTING,
+                        "Shows the value of a bus; read its value in the inspector or the logic analyzer",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("IN", LibraryParameters.WIDTH, "Bus to observe")),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("probe", "bus", "measure", "hex", "debug")),
+                SinkBehavior.INSTANCE));
+    }
+
+    private static List<PortLayouts.DynamicPortDef> bitPorts(BitWidth width) {
+        List<PortLayouts.DynamicPortDef> ports = new ArrayList<>(width.bits());
+        for (int i = 0; i < width.bits(); i++) {
+            ports.add(PortLayouts.DynamicPortDef.fixed("BIT" + i, "Bit " + i));
+        }
+        return ports;
+    }
+
+    private static List<PortLayouts.DynamicPortDef> muxDataPorts(dev.logicforge.circuit.component.ParameterValues values) {
+        int n = values.getInt(LibraryParameters.PORT_COUNT);
+        List<PortLayouts.DynamicPortDef> ports = new ArrayList<>(n + 1);
+        for (int i = 0; i < n; i++) {
+            ports.add(PortLayouts.DynamicPortDef.bus("IN" + i, LibraryParameters.WIDTH, "Data input " + i));
+        }
+        ports.add(PortLayouts.DynamicPortDef.fixed("SEL", "Selects which input reaches OUT"));
+        return ports;
+    }
+
+    private static List<PortLayouts.DynamicPortDef> demuxOutputPorts(dev.logicforge.circuit.component.ParameterValues values) {
+        int n = values.getInt(LibraryParameters.PORT_COUNT);
+        List<PortLayouts.DynamicPortDef> ports = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            ports.add(PortLayouts.DynamicPortDef.bus("OUT" + i, LibraryParameters.WIDTH, "IN when SEL = " + i + ", otherwise Z"));
+        }
+        return ports;
+    }
+
+    private static List<PortLayouts.DynamicPortDef> decoderOutputPorts(dev.logicforge.circuit.component.ParameterValues values) {
+        int n = 1 << values.getInt(LibraryParameters.SELECT_BITS);
+        List<PortLayouts.DynamicPortDef> ports = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            ports.add(PortLayouts.DynamicPortDef.fixed("OUT" + i, "High when SEL = " + i + " and ENABLE is 1"));
+        }
+        return ports;
+    }
+
+    private static List<PortLayouts.DynamicPortDef> encoderInputPorts(dev.logicforge.circuit.component.ParameterValues values) {
+        int n = values.getInt(LibraryParameters.PORT_COUNT);
+        List<PortLayouts.DynamicPortDef> ports = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            ports.add(PortLayouts.DynamicPortDef.fixed("IN" + i, "Request input " + i));
+        }
+        return ports;
+    }
+
+    private static BitWidth busWidth(dev.logicforge.circuit.component.ParameterValues values) {
+        return BitWidth.of(values.getInt(LibraryParameters.WIDTH));
+    }
+
+    private static LogicVector parseBusConstant(String hex, int width) {
+        try {
+            String trimmed = hex.trim().replaceFirst("^0[xX]", "");
+            if (trimmed.isEmpty()) {
+                return LogicVector.repeat(LogicState.ZERO, width);
+            }
+            long value = Long.parseUnsignedLong(trimmed, 16);
+            return LogicVector.fromUnsignedLong(value, width);
+        } catch (NumberFormatException failure) {
+            return LogicVector.repeat(LogicState.ZERO, width);
+        }
+    }
+
+    private static void registerArithmetic(ComponentRegistry registry) {
+        registry.register(ComponentType.of(
+                definition("arithmetic.half_adder", "Half Adder", ARITHMETIC,
+                        "SUM = A XOR B, CARRY = A AND B", List.of(),
+                        PortLayouts.box(List.of(
+                                        new PortLayouts.PortDef("A", BitWidth.ONE, "First operand"),
+                                        new PortLayouts.PortDef("B", BitWidth.ONE, "Second operand")),
+                                List.of(new PortLayouts.PortDef("SUM", BitWidth.ONE, "A XOR B"),
+                                        new PortLayouts.PortDef("CARRY", BitWidth.ONE, "A AND B")),
+                                PortLayouts.GATE_WIDTH),
+                        List.of("adder", "half adder", "sum", "carry")),
+                HalfAdderBehavior.INSTANCE));
+
+        registry.register(ComponentType.of(
+                definition("arithmetic.full_adder", "Full Adder", ARITHMETIC,
+                        "SUM = A XOR B XOR CIN, COUT = majority(A, B, CIN)", List.of(),
+                        PortLayouts.box(List.of(
+                                        new PortLayouts.PortDef("A", BitWidth.ONE, "First operand"),
+                                        new PortLayouts.PortDef("B", BitWidth.ONE, "Second operand"),
+                                        new PortLayouts.PortDef("CIN", BitWidth.ONE, "Carry in")),
+                                List.of(new PortLayouts.PortDef("SUM", BitWidth.ONE, "A XOR B XOR CIN"),
+                                        new PortLayouts.PortDef("COUT", BitWidth.ONE, "Carry out")),
+                                PortLayouts.GATE_WIDTH),
+                        List.of("adder", "full adder", "sum", "carry")),
+                FullAdderBehavior.INSTANCE));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.adder", "Adder", ARITHMETIC,
+                        "N-bit unsigned addition: SUM = A + B + CIN",
+                        List.of(LibraryParameters.WIDTH),
+                        addSubLayout("SUM", "A + B + CIN", "COUT", "Carry out of the top bit", "CIN", "Carry in"),
+                        List.of("adder", "add", "sum", "carry", "alu")),
+                values -> new AdderBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.subtractor", "Subtractor", ARITHMETIC,
+                        "N-bit unsigned subtraction: DIFF = A - B - BIN",
+                        List.of(LibraryParameters.WIDTH),
+                        addSubLayout("DIFF", "A - B - BIN", "BORROW", "1 if the subtraction goes negative",
+                                "BIN", "Borrow in"),
+                        List.of("subtractor", "subtract", "diff", "borrow", "alu")),
+                values -> new SubtractorBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.add_sub", "Add/Sub Unit", ARITHMETIC,
+                        "RESULT = A + B when SUB is 0, A - B when SUB is 1",
+                        List.of(LibraryParameters.WIDTH),
+                        addSubLayout("RESULT", "A + B, or A - B when SUB is 1", "COUT",
+                                "Carry (adding) or NOT borrow (subtracting)", "SUB", "0 adds, 1 subtracts"),
+                        List.of("add", "subtract", "alu", "add/sub")),
+                values -> new AddSubBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.incrementer", "Incrementer", ARITHMETIC,
+                        "OUT = A + 1, wrapping at the top", List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Operand")),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH, "A + 1")),
+                                REGISTER_WIDTH),
+                        List.of("increment", "add one", "counter")),
+                values -> new IncrementDecrementBehavior(busWidth(values), true)));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.decrementer", "Decrementer", ARITHMETIC,
+                        "OUT = A - 1, wrapping at zero", List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Operand")),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH, "A - 1")),
+                                REGISTER_WIDTH),
+                        List.of("decrement", "subtract one", "counter")),
+                values -> new IncrementDecrementBehavior(busWidth(values), false)));
+
+        registerShift(registry, "arithmetic.shift_left", "Shift Left",
+                "Logical shift left: vacated low bits become 0", ShiftBehavior.Direction.LEFT);
+        registerShift(registry, "arithmetic.shift_right", "Shift Right",
+                "Logical shift right: vacated high bits become 0", ShiftBehavior.Direction.RIGHT_LOGICAL);
+        registerShift(registry, "arithmetic.shift_right_arithmetic", "Shift Right (Arithmetic)",
+                "Arithmetic shift right: vacated high bits copy the sign bit", ShiftBehavior.Direction.RIGHT_ARITHMETIC);
+
+        registry.register(new ComponentType(
+                definition("arithmetic.parity_generator", "Parity Generator", ARITHMETIC,
+                        "P makes the total number of ones in A and P together even",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Data")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("P", "Even parity bit")),
+                                REGISTER_WIDTH),
+                        List.of("parity", "even", "checksum")),
+                values -> new ParityBehavior(false)));
+
+        registry.register(new ComponentType(
+                definition("arithmetic.parity_checker", "Parity Checker", ARITHMETIC,
+                        "ERROR is 1 when P does not match the parity A implies",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Data"),
+                                        PortLayouts.DynamicPortDef.fixed("P", "Parity bit to check")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("ERROR", "1 if the parity bit is wrong")),
+                                REGISTER_WIDTH),
+                        List.of("parity", "checksum", "error")),
+                values -> new ParityBehavior(true)));
+    }
+
+    private static void registerShift(ComponentRegistry registry, String id, String name, String description,
+                                      ShiftBehavior.Direction direction) {
+        registry.register(new ComponentType(
+                definition(id, name, ARITHMETIC, description, List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Value to shift"),
+                                        new PortLayouts.DynamicPortDef("SHIFT",
+                                                v -> BitWidth.of(ShiftBehavior.shiftAmountWidth(v.getInt(LibraryParameters.WIDTH))),
+                                                "How many positions to shift")),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH, "Shifted result")),
+                                REGISTER_WIDTH),
+                        List.of("shift", "shifter")),
+                values -> new ShiftBehavior(busWidth(values), direction)));
+    }
+
+    private static PortLayout addSubLayout(String resultName, String resultDescription, String carryName,
+                                           String carryDescription, String cinName, String cinDescription) {
+        return PortLayouts.dynamicBox(
+                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "First operand"),
+                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH, "Second operand"),
+                        PortLayouts.DynamicPortDef.fixed(cinName, cinDescription)),
+                List.of(PortLayouts.DynamicPortDef.bus(resultName, LibraryParameters.WIDTH, resultDescription),
+                        PortLayouts.DynamicPortDef.fixed(carryName, carryDescription)),
+                REGISTER_WIDTH);
     }
 
     private static void registerOutputs(ComponentRegistry registry) {

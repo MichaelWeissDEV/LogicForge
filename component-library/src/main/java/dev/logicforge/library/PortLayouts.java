@@ -207,6 +207,48 @@ public final class PortLayouts {
         };
     }
 
+    /**
+     * {@link #dynamicBox}, but for components whose number of ports (not just port width)
+     * depends on their parameters — a MUX's input count, a decoder's output count. The
+     * input/output lists are recomputed from the current parameters every time.
+     */
+    public static PortLayout variableBox(
+            Function<ParameterValues, List<DynamicPortDef>> inputsFn,
+            Function<ParameterValues, List<DynamicPortDef>> outputsFn,
+            double width) {
+        return new PortLayout() {
+
+            @Override
+            public List<PortSpec> ports(ParameterValues values) {
+                List<DynamicPortDef> inputs = inputsFn.apply(values);
+                List<DynamicPortDef> outputs = outputsFn.apply(values);
+                CircuitSize body = bodySize(values);
+                List<PortSpec> ports = new ArrayList<>(inputs.size() + outputs.size());
+                for (int i = 0; i < inputs.size(); i++) {
+                    double y = (i - (inputs.size() - 1) / 2.0) * PORT_SPACING;
+                    DynamicPortDef def = inputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.INPUT, def.width().apply(values),
+                            new CircuitPoint(-body.halfWidth() - PORT_STUB, y), PortSide.LEFT,
+                            def.description()));
+                }
+                for (int i = 0; i < outputs.size(); i++) {
+                    double y = (i - (outputs.size() - 1) / 2.0) * PORT_SPACING;
+                    DynamicPortDef def = outputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.OUTPUT, def.width().apply(values),
+                            new CircuitPoint(body.halfWidth() + PORT_STUB, y), PortSide.RIGHT,
+                            def.description()));
+                }
+                return ports;
+            }
+
+            @Override
+            public CircuitSize bodySize(ParameterValues values) {
+                int rows = Math.max(inputsFn.apply(values).size(), outputsFn.apply(values).size());
+                return new CircuitSize(width, Math.max(48, rows * PORT_SPACING + PORT_SPACING));
+            }
+        };
+    }
+
     private static PortSpec described(PortSpec port, String description) {
         return new PortSpec(port.name(), port.direction(), port.width(), port.anchor(), port.side(), description);
     }

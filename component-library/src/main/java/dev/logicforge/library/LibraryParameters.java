@@ -51,6 +51,18 @@ public final class LibraryParameters {
     public static final ParameterSpec.IntegerParameter WIDTH =
             new ParameterSpec.IntegerParameter("width", "Width", 8, 1, 64);
 
+    /** How many data inputs a MUX/encoder has, or data outputs a DEMUX has. */
+    public static final ParameterSpec.IntegerParameter PORT_COUNT =
+            new ParameterSpec.IntegerParameter("ports", "Port Count", 4, 2, 16);
+
+    /** How many address bits a decoder reads; it drives 2^selectBits outputs. */
+    public static final ParameterSpec.IntegerParameter SELECT_BITS =
+            new ParameterSpec.IntegerParameter("selectBits", "Select Bits", 2, 1, 6);
+
+    /** The value a Bus Constant drives, entered in hex. */
+    public static final ParameterSpec.StringParameter BUS_CONSTANT_VALUE =
+            new ParameterSpec.StringParameter("value", "Value (hex)", "0");
+
     private LibraryParameters() {
     }
 }
