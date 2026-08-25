@@ -208,6 +208,47 @@ public final class PortLayouts {
     }
 
     /**
+     * {@link #dynamicBox}, but with a third group of INOUT ports (a bidirectional data bus)
+     * drawn on the right alongside the outputs — what a RAM's DATA pin needs: it both reads
+     * and drives the same net, never as two separate ports.
+     */
+    public static PortLayout dynamicBoxWithInout(List<DynamicPortDef> inputs, List<DynamicPortDef> inout,
+                                                 List<DynamicPortDef> outputs, double width) {
+        return new PortLayout() {
+
+            @Override
+            public List<PortSpec> ports(ParameterValues values) {
+                CircuitSize body = bodySize(values);
+                List<PortSpec> ports = new ArrayList<>(inputs.size() + inout.size() + outputs.size());
+                for (int i = 0; i < inputs.size(); i++) {
+                    double y = (i - (inputs.size() - 1) / 2.0) * PORT_SPACING;
+                    DynamicPortDef def = inputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.INPUT, def.width().apply(values),
+                            new CircuitPoint(-body.halfWidth() - PORT_STUB, y), PortSide.LEFT,
+                            def.description()));
+                }
+                List<DynamicPortDef> rightSide = new ArrayList<>(inout);
+                rightSide.addAll(outputs);
+                for (int i = 0; i < rightSide.size(); i++) {
+                    double y = (i - (rightSide.size() - 1) / 2.0) * PORT_SPACING;
+                    DynamicPortDef def = rightSide.get(i);
+                    PortDirection direction = i < inout.size() ? PortDirection.INOUT : PortDirection.OUTPUT;
+                    ports.add(new PortSpec(def.name(), direction, def.width().apply(values),
+                            new CircuitPoint(body.halfWidth() + PORT_STUB, y), PortSide.RIGHT,
+                            def.description()));
+                }
+                return ports;
+            }
+
+            @Override
+            public CircuitSize bodySize(ParameterValues values) {
+                int rows = Math.max(inputs.size(), inout.size() + outputs.size());
+                return new CircuitSize(width, Math.max(48, rows * PORT_SPACING + PORT_SPACING));
+            }
+        };
+    }
+
+    /**
      * {@link #dynamicBox}, but for components whose number of ports (not just port width)
      * depends on their parameters — a MUX's input count, a decoder's output count. The
      * input/output lists are recomputed from the current parameters every time.

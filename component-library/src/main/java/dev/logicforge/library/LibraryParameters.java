@@ -63,6 +63,15 @@ public final class LibraryParameters {
     public static final ParameterSpec.StringParameter BUS_CONSTANT_VALUE =
             new ParameterSpec.StringParameter("value", "Value (hex)", "0");
 
+    /** Address bus width of a memory: 2^addressWidth addressable words. */
+    public static final ParameterSpec.IntegerParameter ADDRESS_WIDTH =
+            new ParameterSpec.IntegerParameter("addressWidth", "Address Width", 8, 1, 16);
+
+    /** A ROM's contents: comma-separated hex words, one per address, MSB word first is not
+     *  implied — index 0 is the first entry. Missing or unparsable entries default to 0. */
+    public static final ParameterSpec.StringParameter ROM_CONTENTS =
+            new ParameterSpec.StringParameter("contents", "Contents (hex, comma-separated)", "");
+
     private LibraryParameters() {
     }
 }

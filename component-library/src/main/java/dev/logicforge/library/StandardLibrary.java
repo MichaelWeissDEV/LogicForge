@@ -2,6 +2,7 @@ package dev.logicforge.library;
 
 import static dev.logicforge.circuit.component.ComponentCategory.ARITHMETIC;
 import static dev.logicforge.circuit.component.ComponentCategory.LOGIC;
+import static dev.logicforge.circuit.component.ComponentCategory.MEMORY;
 import static dev.logicforge.circuit.component.ComponentCategory.OUTPUTS;
 import static dev.logicforge.circuit.component.ComponentCategory.ROUTING;
 import static dev.logicforge.circuit.component.ComponentCategory.SEQUENTIAL;
@@ -34,7 +35,9 @@ import dev.logicforge.library.behavior.MuxBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
 import dev.logicforge.library.behavior.ParityBehavior;
 import dev.logicforge.library.behavior.PriorityEncoderBehavior;
+import dev.logicforge.library.behavior.RamBehavior;
 import dev.logicforge.library.behavior.RegisterBehavior;
+import dev.logicforge.library.behavior.RomBehavior;
 import dev.logicforge.library.behavior.ShiftBehavior;
 import dev.logicforge.library.behavior.ShiftRegisterBehavior;
 import dev.logicforge.library.behavior.SinkBehavior;
@@ -76,6 +79,7 @@ final class StandardLibrary {
         registerCounters(registry);
         registerRouting(registry);
         registerArithmetic(registry);
+        registerMemory(registry);
         registerOutputs(registry);
         return registry;
     }
@@ -743,6 +747,69 @@ final class StandardLibrary {
                 List.of(PortLayouts.DynamicPortDef.bus(resultName, LibraryParameters.WIDTH, resultDescription),
                         PortLayouts.DynamicPortDef.fixed(carryName, carryDescription)),
                 REGISTER_WIDTH);
+    }
+
+    private static void registerMemory(ComponentRegistry registry) {
+        registry.register(new ComponentType(
+                definition("memory.rom", "ROM", MEMORY,
+                        "Read-only memory: while ENABLE is 1, drives contents[ADDRESS] onto DATA",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH,
+                                LibraryParameters.ROM_CONTENTS),
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("ADDRESS",
+                                                v -> BitWidth.of(v.getInt(LibraryParameters.ADDRESS_WIDTH)),
+                                                "Word address"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE", "While low, DATA floats (Z)")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                        "The word stored at ADDRESS")),
+                                REGISTER_WIDTH),
+                        List.of("rom", "memory", "read-only", "lookup table")),
+                values -> new RomBehavior(busWidth(values), parseMemoryContents(
+                        values.get(LibraryParameters.ROM_CONTENTS),
+                        1 << values.getInt(LibraryParameters.ADDRESS_WIDTH),
+                        values.getInt(LibraryParameters.WIDTH)))));
+
+        registry.register(new ComponentType(
+                definition("memory.ram", "RAM", MEMORY,
+                        "Read/write memory: reads while CS=1,WE=0,OE=1; writes while CS=1,WE=1; "
+                                + "otherwise DATA floats",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBoxWithInout(
+                                List.of(new PortLayouts.DynamicPortDef("ADDRESS",
+                                                v -> BitWidth.of(v.getInt(LibraryParameters.ADDRESS_WIDTH)),
+                                                "Word address"),
+                                        PortLayouts.DynamicPortDef.fixed("WE", "Write enable: 1 stores DATA at ADDRESS"),
+                                        PortLayouts.DynamicPortDef.fixed("OE", "Output enable: 1 allows RAM to drive DATA"),
+                                        PortLayouts.DynamicPortDef.fixed("CS", "Chip select: 0 floats DATA regardless of WE/OE")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                        "Bidirectional data bus")),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("ram", "memory", "read-write", "storage")),
+                values -> new RamBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
+    }
+
+    /** Parses comma-separated hex words into {@code wordCount} vectors; blank/bad entries default to 0. */
+    private static LogicVector[] parseMemoryContents(String csv, int wordCount, int dataWidth) {
+        LogicVector[] words = new LogicVector[wordCount];
+        java.util.Arrays.fill(words, LogicVector.repeat(LogicState.ZERO, dataWidth));
+        if (csv == null || csv.isBlank()) {
+            return words;
+        }
+        String[] tokens = csv.split(",");
+        for (int i = 0; i < tokens.length && i < wordCount; i++) {
+            String token = tokens[i].trim();
+            if (token.isEmpty()) {
+                continue;
+            }
+            try {
+                long value = Long.parseUnsignedLong(token.replaceFirst("^0[xX]", ""), 16);
+                words[i] = LogicVector.fromUnsignedLong(value, dataWidth);
+            } catch (NumberFormatException ignored) {
+                // Leave that word at its zero default rather than failing the whole ROM.
+            }
+        }
+        return words;
     }
 
     private static void registerOutputs(ComponentRegistry registry) {
