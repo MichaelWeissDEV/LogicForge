@@ -250,4 +250,89 @@ class RoutingArithmeticBehaviorTest {
         simulation.setInput(resultSrc, LogicVector.fromUnsignedLong(0x7F, 8));
         assertEquals(LogicVector.ONE, simulation.readNet(overflow));
     }
+
+    @Test
+    void rotateLeftWrapsTheTopBitsAroundToTheBottom() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int shift = builder.addNet(BitWidth.of(4));
+        int out = builder.addNet(WIDTH8);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        int shiftSrc = builder.addComponent("test.shift", "SHIFT", new BusSource(BitWidth.of(4)), NONE, new int[]{shift});
+        builder.addComponent("arithmetic.rotate_left", "ROL", new ShiftBehavior(WIDTH8, ShiftBehavior.Direction.ROTATE_LEFT),
+                new int[]{a, shift}, new int[]{out});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0b10000001, 8));
+        simulation.setInput(shiftSrc, LogicVector.fromUnsignedLong(1, 4));
+        assertEquals(LogicVector.fromUnsignedLong(0b00000011, 8), simulation.readNet(out),
+                "the bit rotated off the top reappears at the bottom");
+
+        simulation.setInput(shiftSrc, LogicVector.fromUnsignedLong(8, 4));
+        assertEquals(LogicVector.fromUnsignedLong(0b10000001, 8), simulation.readNet(out),
+                "rotating by a full width is the identity");
+    }
+
+    @Test
+    void rotateRightWrapsTheBottomBitsAroundToTheTop() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int shift = builder.addNet(BitWidth.of(4));
+        int out = builder.addNet(WIDTH8);
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        int shiftSrc = builder.addComponent("test.shift", "SHIFT", new BusSource(BitWidth.of(4)), NONE, new int[]{shift});
+        builder.addComponent("arithmetic.rotate_right", "ROR", new ShiftBehavior(WIDTH8, ShiftBehavior.Direction.ROTATE_RIGHT),
+                new int[]{a, shift}, new int[]{out});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0b10000001, 8));
+        simulation.setInput(shiftSrc, LogicVector.fromUnsignedLong(1, 4));
+        assertEquals(LogicVector.fromUnsignedLong(0b11000000, 8), simulation.readNet(out),
+                "the bit rotated off the bottom reappears at the top");
+    }
+
+    @Test
+    void leadingZeroCountStopsAtTheFirstOne() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int count = builder.addNet(BitWidth.of(4));
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        builder.addComponent("arithmetic.leading_zero_count", "LZC",
+                new BitCounterBehavior(WIDTH8, BitCounterBehavior.Kind.LEADING_ZEROS), new int[]{a}, new int[]{count});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0b00010000, 8));
+        assertEquals(LogicVector.fromUnsignedLong(3, 4), simulation.readNet(count));
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0, 8));
+        assertEquals(LogicVector.fromUnsignedLong(8, 4), simulation.readNet(count), "all zero -> full width");
+    }
+
+    @Test
+    void trailingZeroCountStopsAtTheFirstOne() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int count = builder.addNet(BitWidth.of(4));
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        builder.addComponent("arithmetic.trailing_zero_count", "TZC",
+                new BitCounterBehavior(WIDTH8, BitCounterBehavior.Kind.TRAILING_ZEROS), new int[]{a}, new int[]{count});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0b00010000, 8));
+        assertEquals(LogicVector.fromUnsignedLong(4, 4), simulation.readNet(count));
+    }
+
+    @Test
+    void populationCountCountsSetBits() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int a = builder.addNet(WIDTH8);
+        int count = builder.addNet(BitWidth.of(4));
+        int aSrc = builder.addComponent("test.a", "A", new BusSource(WIDTH8), NONE, new int[]{a});
+        builder.addComponent("arithmetic.population_count", "POPCNT",
+                new BitCounterBehavior(WIDTH8, BitCounterBehavior.Kind.POPULATION_COUNT), new int[]{a}, new int[]{count});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(aSrc, LogicVector.fromUnsignedLong(0b10110001, 8));
+        assertEquals(LogicVector.fromUnsignedLong(4, 4), simulation.readNet(count));
+    }
 }

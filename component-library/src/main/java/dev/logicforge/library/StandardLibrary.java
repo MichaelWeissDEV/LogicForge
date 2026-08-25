@@ -18,6 +18,7 @@ import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
 import dev.logicforge.library.behavior.AddSubBehavior;
 import dev.logicforge.library.behavior.AdderBehavior;
+import dev.logicforge.library.behavior.BitCounterBehavior;
 import dev.logicforge.library.behavior.ClockBehavior;
 import dev.logicforge.library.behavior.ComparatorBehavior;
 import dev.logicforge.library.behavior.ConstantBehavior;
@@ -780,6 +781,10 @@ final class StandardLibrary {
                 "Logical shift right: vacated high bits become 0", ShiftBehavior.Direction.RIGHT_LOGICAL);
         registerShift(registry, "arithmetic.shift_right_arithmetic", "Shift Right (Arithmetic)",
                 "Arithmetic shift right: vacated high bits copy the sign bit", ShiftBehavior.Direction.RIGHT_ARITHMETIC);
+        registerShift(registry, "arithmetic.rotate_left", "Rotate Left",
+                "Rotate left: bits shifted off the top wrap around to the bottom", ShiftBehavior.Direction.ROTATE_LEFT);
+        registerShift(registry, "arithmetic.rotate_right", "Rotate Right",
+                "Rotate right: bits shifted off the bottom wrap around to the top", ShiftBehavior.Direction.ROTATE_RIGHT);
 
         registry.register(new ComponentType(
                 definition("arithmetic.parity_generator", "Parity Generator", ARITHMETIC,
@@ -842,6 +847,31 @@ final class StandardLibrary {
                         List.of("overflow", "flag", "condition code", "v", "signed")),
                 values -> new OverflowDetectorBehavior(busWidth(values),
                         values.get(LibraryParameters.OVERFLOW_OPERATION).equals("sub"))));
+
+        // --- Bit counting ---------------------------------------------------
+        registerBitCounter(registry, "arithmetic.leading_zero_count", "Leading Zero Count",
+                "How many leading (most-significant) bits of A are 0 before the first 1",
+                BitCounterBehavior.Kind.LEADING_ZEROS);
+        registerBitCounter(registry, "arithmetic.trailing_zero_count", "Trailing Zero Count",
+                "How many trailing (least-significant) bits of A are 0 before the first 1",
+                BitCounterBehavior.Kind.TRAILING_ZEROS);
+        registerBitCounter(registry, "arithmetic.population_count", "Population Count",
+                "How many bits of A are 1 (Hamming weight)",
+                BitCounterBehavior.Kind.POPULATION_COUNT);
+    }
+
+    private static void registerBitCounter(ComponentRegistry registry, String id, String name, String description,
+                                           BitCounterBehavior.Kind kind) {
+        registry.register(new ComponentType(
+                definition(id, name, ARITHMETIC, description, List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "Value to count")),
+                                List.of(new PortLayouts.DynamicPortDef("COUNT",
+                                        v -> BitWidth.of(BitCounterBehavior.countWidth(v.getInt(LibraryParameters.WIDTH))),
+                                        "The resulting count, from 0 up to and including the width of A")),
+                                REGISTER_WIDTH),
+                        List.of("count", "zeros", "ones", "population", "hamming weight")),
+                values -> new BitCounterBehavior(busWidth(values), kind)));
     }
 
     private static void registerShift(ComponentRegistry registry, String id, String name, String description,
