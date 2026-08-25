@@ -111,7 +111,7 @@ class CircuitDocumentTest {
         assertEquals(1, document.connection(wire.id()).orElseThrow().waypoints().size());
 
         Connection rewired = new Connection(wire.id(), wire.from(),
-                new PortReference(sink.id(), "IN1"), List.of());
+                dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(sink.id(), "IN1")), List.of());
         assertThrows(IllegalArgumentException.class, () -> document.replaceConnection(rewired));
     }
 
