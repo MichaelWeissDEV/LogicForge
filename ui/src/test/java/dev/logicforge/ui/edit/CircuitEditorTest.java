@@ -9,6 +9,7 @@ import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.library.ComponentRegistry;
@@ -23,6 +24,7 @@ import dev.logicforge.ui.command.MoveComponentsCommand;
 import dev.logicforge.ui.command.PasteCommand;
 import dev.logicforge.ui.command.RemoveElementsCommand;
 import dev.logicforge.ui.command.RotateComponentsCommand;
+import dev.logicforge.ui.command.SetPortDisplayModeCommand;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
@@ -96,6 +98,72 @@ class CircuitEditorTest {
         assertTrue(editor.simulation().orElseThrow() == simulationBefore,
                 "moving is not a topology change, so nothing is recompiled");
         assertEquals(LogicVector.ONE, valueAt(led, "IN"));
+    }
+
+    @Test
+    void compactExpandedIsUndoableAndNeverRecompilesOrDropsWiring() {
+        ComponentInstance source = add("routing.bus_constant", 0, 0);
+        ComponentInstance register = add("sequential.register", 200, 0);
+        connect(source, "OUT", register, "DATA");
+        var simulationBefore = editor.simulation().orElseThrow();
+
+        editor.execute(new SetPortDisplayModeCommand(editor.document(), register,
+                PortDisplayMode.EXPANDED));
+
+        assertEquals(PortDisplayMode.EXPANDED,
+                editor.document().requireComponent(register.id()).portDisplayMode());
+        assertTrue(editor.simulation().orElseThrow() == simulationBefore);
+        assertEquals(1, editor.document().connectionCount());
+
+        editor.undo();
+        assertEquals(PortDisplayMode.COMPACT,
+                editor.document().requireComponent(register.id()).portDisplayMode());
+        assertTrue(editor.simulation().orElseThrow() == simulationBefore);
+        assertEquals(1, editor.document().connectionCount());
+    }
+
+    @Test
+    void restoredRegisterStateImmediatelyRedrivesItsOutputAfterRecompile() {
+        ParameterValues busValue = editor.definition("routing.bus_constant").orElseThrow()
+                .defaultParameters().with(LibraryParameters.WIDTH, 8)
+                .with(LibraryParameters.BUS_CONSTANT_VALUE, "A5");
+        ComponentInstance data = add("routing.bus_constant", 0, 0, busValue);
+        ComponentInstance load = add("source.one", 0, 80);
+        ComponentInstance clock = add("source.toggle", 0, 160);
+        ComponentInstance register = add("sequential.register", 240, 80);
+        connect(data, "OUT", register, "DATA");
+        connect(load, "OUT", register, "LOAD");
+        connect(clock, "OUT", register, "CLK");
+
+        editor.toggleInput(clock.id());
+        assertEquals(LogicVector.of("10100101"), valueAt(register, "Q"));
+
+        add("logic.not", 500, 300);
+
+        assertEquals(LogicVector.of("10100101"), valueAt(register, "Q"),
+                "restored state must immediately drive the fresh simulation");
+    }
+
+    @Test
+    void romCanBeInspectedAndEditedThroughTheSharedMemoryApi() {
+        ParameterValues parameters = editor.definition("memory.rom").orElseThrow()
+                .defaultParameters().with(LibraryParameters.ADDRESS_WIDTH, 2)
+                .with(LibraryParameters.WIDTH, 8)
+                .with(LibraryParameters.ROM_CONTENTS, "12,34,56,78");
+        ComponentInstance rom = add("memory.rom", 0, 0, parameters);
+
+        assertEquals(LogicVector.fromUnsignedLong(0x34, 8),
+                editor.memorySnapshot(rom.id()).orElseThrow().wordAt(1));
+
+        editor.writeMemoryWord(rom.id(), 1, LogicVector.fromUnsignedLong(0xA5, 8));
+
+        assertEquals(LogicVector.fromUnsignedLong(0xA5, 8),
+                editor.memorySnapshot(rom.id()).orElseThrow().wordAt(1));
+        assertTrue(editor.document().requireComponent(rom.id()).parameters()
+                .get(LibraryParameters.ROM_CONTENTS).contains("A5"));
+        editor.undo();
+        assertEquals(LogicVector.fromUnsignedLong(0x34, 8),
+                editor.memorySnapshot(rom.id()).orElseThrow().wordAt(1));
     }
 
     @Test

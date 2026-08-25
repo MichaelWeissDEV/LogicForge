@@ -3,6 +3,8 @@ package dev.logicforge.ui.edit;
 import dev.logicforge.analyzer.SignalRecorder;
 import dev.logicforge.analyzer.SignalTrace;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortSlice;
 import dev.logicforge.simulation.Simulation;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -25,7 +27,7 @@ import java.util.Set;
 public final class LogicAnalyzerController {
 
     /** A signal the user chose to watch, identified the way the rest of the editor does. */
-    public record WatchedSignal(PortReference reference, String label) {
+    public record WatchedSignal(PortEndpoint reference, String label) {
     }
 
     private final CircuitEditor editor;
@@ -41,7 +43,7 @@ public final class LogicAnalyzerController {
         resync();
     }
 
-    public void addSignal(PortReference reference, String label) {
+    public void addSignal(PortEndpoint reference, String label) {
         if (isWatching(reference)) {
             return;
         }
@@ -49,13 +51,17 @@ public final class LogicAnalyzerController {
         resync();
     }
 
-    public void removeSignal(PortReference reference) {
+    public void addSignal(PortReference reference, String label) {
+        addSignal(PortEndpoint.whole(reference), label);
+    }
+
+    public void removeSignal(PortEndpoint reference) {
         if (watched.removeIf(signal -> signal.reference().equals(reference))) {
             resync();
         }
     }
 
-    public boolean isWatching(PortReference reference) {
+    public boolean isWatching(PortEndpoint reference) {
         return watched.stream().anyMatch(signal -> signal.reference().equals(reference));
     }
 
@@ -63,12 +69,20 @@ public final class LogicAnalyzerController {
         return List.copyOf(watched);
     }
 
-    public Optional<SignalTrace> traceFor(PortReference reference) {
+    public Optional<SignalTrace> traceFor(PortEndpoint reference) {
         if (recorder == null) {
             return Optional.empty();
         }
         java.util.OptionalInt netId = editor.netOf(reference);
-        return netId.isPresent() ? recorder.trace(netId.getAsInt()) : Optional.empty();
+        if (netId.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<SignalTrace> trace = recorder.trace(netId.getAsInt());
+        if (trace.isPresent() && reference.slice() instanceof PortSlice.Bit bit
+                && trace.get().width().bits() > 1) {
+            return Optional.of(trace.get().bit(bit.index()));
+        }
+        return trace;
     }
 
     public boolean isCapturing() {

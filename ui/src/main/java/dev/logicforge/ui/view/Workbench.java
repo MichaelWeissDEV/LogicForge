@@ -2,6 +2,7 @@ package dev.logicforge.ui.view;
 
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.edit.LogicAnalyzerController;
@@ -84,12 +85,13 @@ public final class Workbench extends BorderPane {
     }
 
     /** Adds the port the user right-clicked to the analyzer, labelled by its component. */
-    private void addToAnalyzer(PortReference reference) {
+    private void addToAnalyzer(PortEndpoint endpoint) {
+        PortReference reference = endpoint.port();
         String componentLabel = editor.document().component(reference.componentId())
                 .map(ComponentInstance::label)
                 .filter(label -> !label.isBlank())
                 .orElseGet(() -> reference.componentId().toString().substring(0, 8));
-        analyzerController.addSignal(reference, componentLabel + "." + reference.portName());
+        analyzerController.addSignal(endpoint, componentLabel + "." + endpoint);
         if (!analyzerToggle.isSelected()) {
             analyzerToggle.setSelected(true);
             toggleAnalyzer();

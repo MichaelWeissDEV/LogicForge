@@ -3,6 +3,7 @@ package dev.logicforge.ui.view;
 import dev.logicforge.analyzer.SignalTrace;
 import dev.logicforge.analyzer.SignalTransition;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.ui.edit.LogicAnalyzerController;
@@ -171,7 +172,7 @@ public final class LogicAnalyzerView extends BorderPane {
     }
 
     /** Removes a watched signal; called from the row's own remove button. */
-    private void remove(PortReference reference) {
+    private void remove(PortEndpoint reference) {
         controller.removeSignal(reference);
     }
 

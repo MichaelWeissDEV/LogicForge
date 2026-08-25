@@ -11,6 +11,8 @@ import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.library.ComponentRegistry;
@@ -103,14 +105,14 @@ class ProjectFormatTest {
     @Test
     void theFileCarriesItsFormatVersion() {
         String json = ProjectFormat.toJson(CircuitProject.empty("empty"));
-        assertTrue(json.contains("\"formatVersion\": 1"));
+        assertTrue(json.contains("\"formatVersion\": 2"));
         assertTrue(json.contains("\"application\": \"LogicForge\""));
     }
 
     @Test
     void filesFromANewerVersionAreRefusedClearly() {
         String json = ProjectFormat.toJson(CircuitProject.empty("future"))
-                .replace("\"formatVersion\": 1", "\"formatVersion\": 99");
+                .replace("\"formatVersion\": 2", "\"formatVersion\": 99");
 
         ProjectFormatException failure = assertThrows(ProjectFormatException.class,
                 () -> ProjectFormat.fromJson(json, "future"));
@@ -148,6 +150,80 @@ class ProjectFormatTest {
                 }
                 """;
         assertThrows(ProjectFormatException.class, () -> ProjectFormat.fromJson(json, "broken"));
+    }
+
+    @Test
+    void versionOneWholeEndpointsLoadAsCurrentModel() {
+        String sourceId = "00000000-0000-0000-0000-000000000001";
+        String sinkId = "00000000-0000-0000-0000-000000000002";
+        String json = """
+                {
+                  "formatVersion": 1,
+                  "name": "legacy",
+                  "circuits": [{
+                    "name": "main",
+                    "components": [
+                      {"id": "%s", "type": "source.toggle", "x": 0, "y": 0},
+                      {"id": "%s", "type": "output.led", "x": 100, "y": 0}
+                    ],
+                    "connections": [{
+                      "from": {"component": "%s", "port": "OUT"},
+                      "to": {"component": "%s", "port": "IN"}
+                    }]
+                  }]
+                }
+                """.formatted(sourceId, sinkId, sourceId, sinkId);
+
+        Connection loaded = ProjectFormat.fromJson(json, "legacy").mainCircuit()
+                .connections().iterator().next();
+        assertTrue(loaded.from().isWhole());
+        assertTrue(loaded.to().isWhole());
+    }
+
+    @Test
+    void versionTwoBitEndpointsAndPresentationRoundTrip() {
+        CircuitDocument circuit = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create("source.toggle",
+                new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance register = ComponentInstance.create("sequential.register",
+                new CircuitPoint(100, 0), ComponentRegistry.standard()
+                        .require("sequential.register").definition().defaultParameters())
+                .withPortDisplayMode(PortDisplayMode.EXPANDED);
+        circuit.addComponent(source);
+        circuit.addComponent(register);
+        PortEndpoint endpoint = PortEndpoint.bit(new PortReference(register.id(), "DATA"), 3);
+        circuit.addConnection(Connection.create(
+                PortEndpoint.whole(new PortReference(source.id(), "OUT")), endpoint));
+
+        CircuitDocument loaded = roundTrip(CircuitProject.of("bits", circuit)).mainCircuit();
+        ComponentInstance loadedRegister = loaded.requireComponent(register.id());
+        Connection loadedWire = loaded.connections().iterator().next();
+
+        assertEquals(PortDisplayMode.EXPANDED, loadedRegister.portDisplayMode());
+        assertEquals(endpoint, loadedWire.to());
+    }
+
+    @Test
+    void versionOneCannotClaimBitEndpointSemantics() {
+        String json = """
+                {
+                  "formatVersion": 1,
+                  "circuits": [{
+                    "name": "main",
+                    "components": [
+                      {"id": "00000000-0000-0000-0000-000000000001", "type": "source.toggle"},
+                      {"id": "00000000-0000-0000-0000-000000000002", "type": "output.led"}
+                    ],
+                    "connections": [{
+                      "from": {"component": "00000000-0000-0000-0000-000000000001", "port": "OUT"},
+                      "to": {"component": "00000000-0000-0000-0000-000000000002", "port": "IN", "bit": 0}
+                    }]
+                  }]
+                }
+                """;
+        ProjectFormatException error = assertThrows(ProjectFormatException.class,
+                () -> ProjectFormat.fromJson(json, "bad-v1"));
+        assertTrue(error.getMessage().contains("formatVersion 2"));
     }
 
     @Test

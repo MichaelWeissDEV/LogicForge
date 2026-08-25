@@ -13,15 +13,37 @@ public record CompiledComponent(
         String definitionId,
         String label,
         ComponentBehavior behavior,
-        int[] inputNets,
-        int[] outputNets,
-        int[] outputDrivers) {
+        CompiledInputBinding[] inputBindings,
+        CompiledOutputBinding[] outputBindings) {
+
+    public CompiledComponent {
+        inputBindings = inputBindings.clone();
+        outputBindings = outputBindings.clone();
+    }
+
+    @Override
+    public CompiledInputBinding[] inputBindings() {
+        return inputBindings.clone();
+    }
+
+    @Override
+    public CompiledOutputBinding[] outputBindings() {
+        return outputBindings.clone();
+    }
 
     public int inputCount() {
-        return inputNets.length;
+        return inputBindings.length;
+    }
+
+    public CompiledInputBinding inputBinding(int index) {
+        return inputBindings[index];
     }
 
     public int outputCount() {
-        return outputNets.length;
+        return outputBindings.length;
+    }
+
+    public CompiledOutputBinding outputBinding(int index) {
+        return outputBindings[index];
     }
 }

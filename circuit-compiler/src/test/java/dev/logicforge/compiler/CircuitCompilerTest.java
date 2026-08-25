@@ -16,6 +16,7 @@ import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.CircuitSize;
 import dev.logicforge.circuit.geometry.PortSide;
@@ -34,6 +35,117 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class CircuitCompilerTest {
+
+    @Test
+    void bitEndpointOnlyAffectsSelectedBusBitAndLeavesOthersUndriven() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance sink = ComponentInstance.create(
+                "test.input8", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(sink);
+        PortEndpoint sourceBit = PortEndpoint.bit(new PortReference(source.id(), "OUT"), 0);
+        PortEndpoint sinkBit = PortEndpoint.bit(new PortReference(sink.id(), "IN"), 3);
+        document.addConnection(Connection.create(sourceBit, sinkBit));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        Simulation simulation = new Simulation(result.circuit());
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.of("ZZZZ1ZZZ"), simulation.readInput(sinkId, 0));
+        assertEquals(1, result.circuit().net(
+                result.sourceMap().netOf(sinkBit).orElseThrow()).width().bits());
+        assertTrue(result.sourceMap().netOf(new PortReference(sink.id(), "IN")).isEmpty(),
+                "a bit-bound bus has no single whole-port net");
+    }
+
+    @Test
+    void multipleBitEndpointsAssembleOneLogicalVector() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance sink = ComponentInstance.create(
+                "test.input8", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(sink);
+        for (int bit = 0; bit < 8; bit++) {
+            document.addConnection(Connection.create(
+                    PortEndpoint.bit(new PortReference(source.id(), "OUT"), bit),
+                    PortEndpoint.bit(new PortReference(sink.id(), "IN"), bit)));
+        }
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.repeat(LogicState.ONE, 8),
+                new Simulation(result.circuit()).readInput(sinkId, 0));
+    }
+
+    @Test
+    void wholeAndBitConnectionsOnSameLogicalPortAreRejected() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance first = ComponentInstance.create(
+                "test.input8", new CircuitPoint(100, 0), ParameterValues.empty());
+        ComponentInstance scalar = ComponentInstance.create(
+                "test.input1", new CircuitPoint(100, 50), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(first);
+        document.addComponent(scalar);
+        PortReference output = new PortReference(source.id(), "OUT");
+        document.addConnection(Connection.create(output, new PortReference(first.id(), "IN")));
+        document.addConnection(Connection.create(PortEndpoint.bit(output, 3),
+                PortEndpoint.whole(new PortReference(scalar.id(), "IN"))));
+
+        CircuitCompileException error = assertThrows(CircuitCompileException.class,
+                () -> new CircuitCompiler(registry).compile(document));
+        assertTrue(error.getMessage().contains("whole-port and bit-level"));
+    }
+
+    @Test
+    void outOfRangeBitEndpointIsRejected() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance scalar = ComponentInstance.create(
+                "test.input1", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(scalar);
+        document.addConnection(Connection.create(
+                PortEndpoint.bit(new PortReference(source.id(), "OUT"), 8),
+                PortEndpoint.whole(new PortReference(scalar.id(), "IN"))));
+
+        CircuitCompileException error = assertThrows(CircuitCompileException.class,
+                () -> new CircuitCompiler(registry).compile(document));
+        assertTrue(error.getMessage().contains("outside"));
+    }
+
+    @Test
+    void oneBitWholePortConnectsToBusBit() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance scalar = ComponentInstance.create(
+                "test.input1", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(scalar);
+        PortEndpoint bit = PortEndpoint.bit(new PortReference(source.id(), "OUT"), 5);
+        PortEndpoint whole = PortEndpoint.whole(new PortReference(scalar.id(), "IN"));
+        document.addConnection(Connection.create(bit, whole));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int scalarId = result.sourceMap().componentId(scalar.id()).orElseThrow();
+        assertEquals(LogicVector.ONE, new Simulation(result.circuit()).readInput(scalarId, 0));
+        assertEquals(result.sourceMap().netOf(bit).orElseThrow(),
+                result.sourceMap().netOf(whole).orElseThrow());
+    }
 
     @Test
     void connectedPortsShareOneNet() {

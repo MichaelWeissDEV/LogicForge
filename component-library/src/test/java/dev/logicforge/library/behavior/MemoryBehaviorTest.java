@@ -37,6 +37,24 @@ class MemoryBehaviorTest {
     }
 
     @Test
+    void statelessRomExposesItsContentsForMemoryInspection() {
+        LogicVector[] contents = new LogicVector[]{
+                LogicVector.fromUnsignedLong(0x12, 8),
+                LogicVector.fromUnsignedLong(0xA5, 8)};
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int address = builder.addNet(BitWidth.ONE);
+        int enable = builder.addNet(BitWidth.ONE);
+        int data = builder.addNet(DATA8);
+        int romId = builder.addComponent("memory.rom", "ROM", new RomBehavior(DATA8, contents),
+                new int[]{address, enable}, new int[]{data});
+        Simulation simulation = new Simulation(builder.build());
+
+        var snapshot = simulation.memorySnapshot(romId).orElseThrow();
+        assertEquals(2, snapshot.size());
+        assertEquals(LogicVector.fromUnsignedLong(0xA5, 8), snapshot.wordAt(1));
+    }
+
+    @Test
     void romFloatsWhenDisabled() {
         LogicVector[] contents = new LogicVector[16];
         java.util.Arrays.fill(contents, LogicVector.fromUnsignedLong(0xFF, 8));

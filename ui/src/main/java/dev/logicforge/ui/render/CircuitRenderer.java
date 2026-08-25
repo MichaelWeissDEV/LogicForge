@@ -7,6 +7,8 @@ import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PlacedPort;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.circuit.geometry.CircuitBounds;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.logic.LogicState;
@@ -121,8 +123,8 @@ public final class CircuitRenderer {
         graphics.setLineWidth(Theme.WIRE_STROKE);
 
         for (Connection connection : document.connections()) {
-            Optional<PlacedPort> from = port(connection.fromPort());
-            Optional<PlacedPort> to = port(connection.toPort());
+            Optional<PlacedPort> from = endpoint(connection.from());
+            Optional<PlacedPort> to = endpoint(connection.to());
             if (from.isEmpty() || to.isEmpty()) {
                 continue;
             }
@@ -220,11 +222,11 @@ public final class CircuitRenderer {
             if (definition.isEmpty()) {
                 continue;
             }
-            for (PlacedPort placed : ComponentGeometry.ports(instance, definition.get())) {
-                if (document.connectionsAt(placed.reference()).size() < 2) {
+            for (PlacedPort placed : ComponentGeometry.ports(instance, definition.get(), document)) {
+                if (document.connectionsAt(placed.endpoint()).size() < 2) {
                     continue;
                 }
-                graphics.setFill(signalColorOf(placed.reference()));
+                graphics.setFill(signalColorOf(placed.endpoint()));
                 graphics.fillOval(placed.position().x() - Theme.JUNCTION_RADIUS,
                         placed.position().y() - Theme.JUNCTION_RADIUS,
                         Theme.JUNCTION_RADIUS * 2, Theme.JUNCTION_RADIUS * 2);
@@ -264,6 +266,7 @@ public final class CircuitRenderer {
         graphics.setGlobalAlpha(opacity);
 
         drawPorts(graphics, instance, definition, viewport, overlay, effectivePosition);
+        drawExpandedWholeBusFanout(graphics, instance, definition, effectivePosition);
 
         graphics.translate(effectivePosition.x(), effectivePosition.y());
         graphics.rotate(instance.rotation().degrees());
@@ -282,7 +285,7 @@ public final class CircuitRenderer {
                            ComponentDefinition definition, ViewportTransform viewport,
                            CanvasOverlay overlay, CircuitPoint effectivePosition) {
         graphics.setLineWidth(Theme.WIRE_STROKE);
-        for (PlacedPort placed : ComponentGeometry.ports(instance, definition)) {
+        for (PlacedPort placed : ComponentGeometry.ports(instance, definition, editor.document())) {
             // Ports are relative to component position, so we need to adjust
             CircuitPoint portPosRelative = placed.position();
             CircuitPoint portPosAbsolute = new CircuitPoint(
@@ -300,19 +303,65 @@ public final class CircuitRenderer {
             outer = new CircuitPoint(placed.position().x() + dx, placed.position().y() + dy);
             inner = new CircuitPoint(inner.x() + dx, inner.y() + dy);
             
-            graphics.setStroke(signalColorOf(placed.reference()));
+            graphics.setStroke(signalColorOf(placed.endpoint()));
             graphics.strokeLine(inner.x(), inner.y(), outer.x(), outer.y());
 
             boolean highlighted = overlay.hoveredPortOption()
-                    .map(port -> port.reference().equals(placed.reference()))
+                    .map(port -> port.endpoint().equals(placed.endpoint()))
                     .orElse(false);
             double radius = highlighted ? Theme.PORT_RADIUS * 1.8 : Theme.PORT_RADIUS;
-            graphics.setFill(highlighted ? Theme.PORT_HIGHLIGHT : Theme.PORT);
+            graphics.setFill(!placed.connectable() ? Theme.TEXT_MUTED
+                    : highlighted ? Theme.PORT_HIGHLIGHT : Theme.PORT);
             graphics.fillOval(outer.x() - radius, outer.y() - radius, radius * 2, radius * 2);
 
             if (viewport.scale() >= PORT_LABEL_ZOOM) {
                 drawPortName(graphics, placed, dx, dy);
             }
+        }
+    }
+
+    /** Draws the local, presentation-only fan-out for an expanded port wired as one bus. */
+    private void drawExpandedWholeBusFanout(GraphicsContext graphics, ComponentInstance instance,
+                                            ComponentDefinition definition,
+                                            CircuitPoint effectivePosition) {
+        if (instance.portDisplayMode() != PortDisplayMode.EXPANDED) {
+            return;
+        }
+        double dx = effectivePosition.x() - instance.position().x();
+        double dy = effectivePosition.y() - instance.position().y();
+        for (var spec : definition.ports(instance.parameters())) {
+            if (spec.width().isSingleBit()) {
+                continue;
+            }
+            PortReference reference = new PortReference(instance.id(), spec.name());
+            boolean wholeConnected = editor.document().connectionsAt(reference).stream().anyMatch(connection ->
+                    (connection.fromPort().equals(reference) && connection.from().isWhole())
+                            || (connection.toPort().equals(reference) && connection.to().isWhole()));
+            if (!wholeConnected) {
+                continue;
+            }
+            PortEndpoint whole = PortEndpoint.whole(reference);
+            Optional<PlacedPort> junction = ComponentGeometry.endpoint(
+                    instance, definition, whole, editor.document());
+            if (junction.isEmpty()) {
+                continue;
+            }
+            CircuitPoint trunk = junction.get().position().plus(dx, dy);
+            graphics.setStroke(signalColorOf(whole));
+            graphics.setLineWidth(Theme.WIRE_STROKE);
+            for (PlacedPort bit : ComponentGeometry.ports(instance, definition, editor.document())) {
+                if (bit.endpoint().port().equals(reference) && bit.endpoint().isBit()) {
+                    CircuitPoint pin = bit.position().plus(dx, dy);
+                    CircuitPoint elbow = spec.side().isHorizontal()
+                            ? new CircuitPoint(trunk.x(), pin.y())
+                            : new CircuitPoint(pin.x(), trunk.y());
+                    graphics.strokeLine(pin.x(), pin.y(), elbow.x(), elbow.y());
+                    graphics.strokeLine(elbow.x(), elbow.y(), trunk.x(), trunk.y());
+                }
+            }
+            graphics.setFill(Theme.PORT);
+            graphics.fillOval(trunk.x() - Theme.JUNCTION_RADIUS, trunk.y() - Theme.JUNCTION_RADIUS,
+                    Theme.JUNCTION_RADIUS * 2, Theme.JUNCTION_RADIUS * 2);
         }
     }
     
@@ -335,15 +384,15 @@ public final class CircuitRenderer {
         switch (placed.side()) {
             case LEFT -> {
                 graphics.setTextAlign(TextAlignment.LEFT);
-                graphics.fillText(placed.spec().name(), inside.x() + 2, inside.y());
+                graphics.fillText(placed.displayName(), inside.x() + 2, inside.y());
             }
             case RIGHT -> {
                 graphics.setTextAlign(TextAlignment.RIGHT);
-                graphics.fillText(placed.spec().name(), inside.x() - 2, inside.y());
+                graphics.fillText(placed.displayName(), inside.x() - 2, inside.y());
             }
             default -> {
                 graphics.setTextAlign(TextAlignment.CENTER);
-                graphics.fillText(placed.spec().name(), inside.x(), inside.y());
+                graphics.fillText(placed.displayName(), inside.x(), inside.y());
             }
         }
     }
@@ -401,18 +450,18 @@ public final class CircuitRenderer {
 
     // --------------------------------------------------------------- helpers
 
-    private Optional<PlacedPort> port(PortReference reference) {
-        return editor.document().component(reference.componentId()).flatMap(instance ->
+    private Optional<PlacedPort> endpoint(PortEndpoint endpoint) {
+        return editor.document().component(endpoint.componentId()).flatMap(instance ->
                 editor.definitionOf(instance).flatMap(definition ->
-                        ComponentGeometry.port(instance, definition, reference.portName())));
+                        ComponentGeometry.endpoint(instance, definition, endpoint, editor.document())));
     }
 
-    private Color signalColorOf(PortReference reference) {
-        OptionalInt net = editor.netOf(reference);
+    private Color signalColorOf(PortEndpoint endpoint) {
+        OptionalInt net = editor.netOf(endpoint);
         if (net.isPresent() && editor.hasDriverConflict(net.getAsInt())) {
             return Theme.SIGNAL_CONFLICT;
         }
-        return editor.valueAt(reference)
+        return editor.valueAt(endpoint)
                 .map(value -> value.width() == 1
                         ? Theme.signalColor(value.getBit(0))
                         : Theme.busColor(value))

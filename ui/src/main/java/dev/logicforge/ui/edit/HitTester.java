@@ -6,6 +6,7 @@ import dev.logicforge.circuit.document.ComponentGeometry;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PlacedPort;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.geometry.CircuitBounds;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.ui.wiring.WireRouter;
@@ -51,7 +52,7 @@ public final class HitTester {
             if (definition.isEmpty()) {
                 continue;
             }
-            for (PlacedPort port : ComponentGeometry.ports(instance, definition.get())) {
+            for (PlacedPort port : ComponentGeometry.ports(instance, definition.get(), document())) {
                 double distance = port.position().distanceTo(point);
                 if (distance <= bestDistance) {
                     best = port;
@@ -89,8 +90,8 @@ public final class HitTester {
     }
 
     private Optional<double[]> distanceTo(Connection connection, CircuitPoint point) {
-        Optional<PlacedPort> from = port(connection.from().componentId(), connection.from().portName());
-        Optional<PlacedPort> to = port(connection.to().componentId(), connection.to().portName());
+        Optional<PlacedPort> from = endpoint(connection.from());
+        Optional<PlacedPort> to = endpoint(connection.to());
         if (from.isEmpty() || to.isEmpty()) {
             return Optional.empty();
         }
@@ -128,6 +129,12 @@ public final class HitTester {
         return document().component(componentId).flatMap(instance ->
                 definitions.apply(instance.definitionId())
                         .flatMap(definition -> ComponentGeometry.port(instance, definition, portName)));
+    }
+
+    public Optional<PlacedPort> endpoint(PortEndpoint endpoint) {
+        return document().component(endpoint.componentId()).flatMap(instance ->
+                definitions.apply(instance.definitionId()).flatMap(definition ->
+                        ComponentGeometry.endpoint(instance, definition, endpoint, document())));
     }
 
     private CircuitDocument document() {

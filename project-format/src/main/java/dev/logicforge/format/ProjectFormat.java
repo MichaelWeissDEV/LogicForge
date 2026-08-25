@@ -7,6 +7,7 @@ import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.format.json.JsonParseException;
@@ -32,13 +33,13 @@ import java.util.UUID;
  * between named ports. No Java class names, no serialised objects, nothing from the
  * runtime — a project file survives any refactoring of the code that reads it.
  *
- * <p>Every file carries a {@code formatVersion}. Version 1 is the format below; a reader
- * refuses anything newer rather than guessing.
+ * <p>Every file carries a {@code formatVersion}. Version 1 contains whole-port wires;
+ * version 2 adds bit endpoints and port presentation. The reader accepts both.
  */
 public final class ProjectFormat {
 
     /** The version this build writes. */
-    public static final int FORMAT_VERSION = 1;
+    public static final int FORMAT_VERSION = 2;
 
     /** File extension used by the file choosers. */
     public static final String EXTENSION = "logic";
@@ -104,6 +105,9 @@ public final class ProjectFormat {
         }
         if (!instance.label().isBlank()) {
             object.put("label", instance.label());
+        }
+        if (instance.portDisplayMode() == PortDisplayMode.EXPANDED) {
+            object.put("portDisplay", "expanded");
         }
         if (!instance.parameters().isEmpty()) {
             JsonValue.JsonObject parameters = new JsonValue.JsonObject();
@@ -188,7 +192,7 @@ public final class ProjectFormat {
         }
         for (JsonValue circuit : circuits) {
             if (circuit instanceof JsonValue.JsonObject object) {
-                project.putCircuit(readCircuit(object));
+                project.putCircuit(readCircuit(object, version));
             }
         }
         if (project.circuit(CircuitProject.MAIN_CIRCUIT).isEmpty()) {
@@ -198,7 +202,7 @@ public final class ProjectFormat {
         return project;
     }
 
-    private static CircuitDocument readCircuit(JsonValue.JsonObject object) {
+    private static CircuitDocument readCircuit(JsonValue.JsonObject object, int version) {
         CircuitDocument circuit = new CircuitDocument(new CircuitMetadata(
                 object.string("name", CircuitProject.MAIN_CIRCUIT), object.string("description", "")));
 
@@ -209,7 +213,7 @@ public final class ProjectFormat {
         }
         for (JsonValue element : object.array("connections")) {
             if (element instanceof JsonValue.JsonObject connection) {
-                circuit.addConnection(readConnection(connection, circuit));
+                circuit.addConnection(readConnection(connection, circuit, version));
             }
         }
         return circuit;
@@ -231,12 +235,15 @@ public final class ProjectFormat {
                 new CircuitPoint(object.number("x", 0), object.number("y", 0)),
                 Rotation.ofDegrees(object.integer("rotation", 0)),
                 ParameterValues.of(parameters),
-                object.string("label", ""));
+                object.string("label", ""),
+                "expanded".equalsIgnoreCase(object.string("portDisplay", "compact"))
+                        ? PortDisplayMode.EXPANDED : PortDisplayMode.COMPACT);
     }
 
-    private static Connection readConnection(JsonValue.JsonObject object, CircuitDocument circuit) {
-        dev.logicforge.circuit.document.PortEndpoint from = readEndpoint(object.object("from"));
-        dev.logicforge.circuit.document.PortEndpoint to = readEndpoint(object.object("to"));
+    private static Connection readConnection(JsonValue.JsonObject object, CircuitDocument circuit,
+                                             int version) {
+        dev.logicforge.circuit.document.PortEndpoint from = readEndpoint(object.object("from"), version);
+        dev.logicforge.circuit.document.PortEndpoint to = readEndpoint(object.object("to"), version);
         if (circuit.component(from.componentId()).isEmpty() || circuit.component(to.componentId()).isEmpty()) {
             throw new ProjectFormatException("A wire refers to a component that is not in the file");
         }
@@ -249,7 +256,8 @@ public final class ProjectFormat {
         return new Connection(readId(object, "wire"), from, to, waypoints);
     }
 
-    private static dev.logicforge.circuit.document.PortEndpoint readEndpoint(JsonValue.JsonObject object) {
+    private static dev.logicforge.circuit.document.PortEndpoint readEndpoint(
+            JsonValue.JsonObject object, int version) {
         String component = object.string("component", "");
         String port = object.string("port", "");
         if (component.isBlank() || port.isBlank()) {
@@ -257,6 +265,10 @@ public final class ProjectFormat {
         }
         PortReference ref = new PortReference(parseUuid(component, "wire endpoint"), port);
         if (object.members().containsKey("bit")) {
+            if (version < 2) {
+                throw new ProjectFormatException(
+                        "Bit wire endpoints require formatVersion 2 or newer");
+            }
             return dev.logicforge.circuit.document.PortEndpoint.bit(ref, object.integer("bit", 0));
         }
         return dev.logicforge.circuit.document.PortEndpoint.whole(ref);

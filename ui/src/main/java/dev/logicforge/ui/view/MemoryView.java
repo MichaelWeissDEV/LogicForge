@@ -8,6 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.io.IOException;
+import java.nio.file.Files;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -17,6 +19,7 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import javafx.stage.FileChooser;
 
 /** A window displaying the contents of a RAM or ROM component. */
 public final class MemoryView extends Stage {
@@ -73,7 +76,13 @@ public final class MemoryView extends Stage {
         jumpField.setOnAction(e -> jumpToAddress());
         Button jumpBtn = new Button("Go");
         jumpBtn.setOnAction(e -> jumpToAddress());
-        HBox jumpBar = new HBox(4, jumpLabel, jumpField, jumpBtn);
+        Button loadBtn = new Button("Load .bin");
+        loadBtn.setOnAction(e -> loadBinary());
+        Button saveBtn = new Button("Save .bin");
+        saveBtn.setOnAction(e -> saveBinary());
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+        HBox jumpBar = new HBox(4, jumpLabel, jumpField, jumpBtn, spacer, loadBtn, saveBtn);
         jumpBar.setPadding(new Insets(4));
         
         VBox content = new VBox(jumpBar, table);
@@ -115,6 +124,68 @@ public final class MemoryView extends Stage {
         } catch (NumberFormatException e) {
             // ignore
         }
+    }
+
+    private void loadBinary() {
+        FileChooser chooser = binaryChooser("Load memory image");
+        java.io.File file = chooser.showOpenDialog(this);
+        if (file == null) return;
+        try {
+            byte[] bytes = Files.readAllBytes(file.toPath());
+            int bytesPerWord = (dataWidth + 7) / 8;
+            int wordCount = Math.min(rows.size(), (bytes.length + bytesPerWord - 1) / bytesPerWord);
+            List<LogicVector> words = new ArrayList<>(wordCount);
+            for (int word = 0; word < wordCount; word++) {
+                long value = 0;
+                for (int offset = 0; offset < bytesPerWord; offset++) {
+                    int index = word * bytesPerWord + offset;
+                    value = (value << 8) | (index < bytes.length ? bytes[index] & 0xffL : 0L);
+                }
+                words.add(LogicVector.fromUnsignedLong(value, dataWidth));
+            }
+            editor.loadMemory(componentId, words);
+            refresh();
+        } catch (IOException failure) {
+            showIoError("Could not load memory image", failure);
+        }
+    }
+
+    private void saveBinary() {
+        Optional<MemorySnapshot> snapshot = editor.memorySnapshot(componentId);
+        if (snapshot.isEmpty()) return;
+        FileChooser chooser = binaryChooser("Save memory image");
+        java.io.File file = chooser.showSaveDialog(this);
+        if (file == null) return;
+        try {
+            int bytesPerWord = (dataWidth + 7) / 8;
+            byte[] bytes = new byte[snapshot.get().size() * bytesPerWord];
+            for (int word = 0; word < snapshot.get().size(); word++) {
+                long value = snapshot.get().wordAt(word).toUnsignedLong().orElse(0L);
+                for (int offset = bytesPerWord - 1; offset >= 0; offset--) {
+                    bytes[word * bytesPerWord + offset] = (byte) value;
+                    value >>>= 8;
+                }
+            }
+            Files.write(file.toPath(), bytes);
+        } catch (IOException failure) {
+            showIoError("Could not save memory image", failure);
+        }
+    }
+
+    private FileChooser binaryChooser(String title) {
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle(title);
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("Raw binary (*.bin)", "*.bin"));
+        return chooser;
+    }
+
+    private void showIoError(String title, IOException failure) {
+        Alert alert = new Alert(Alert.AlertType.ERROR, failure.getMessage(), ButtonType.OK);
+        alert.setTitle(title);
+        alert.setHeaderText(title);
+        alert.initOwner(this);
+        alert.showAndWait();
     }
     
     public record MemoryRow(int address, int addrHexWidth, LogicVector value, int dataWidthBits) {

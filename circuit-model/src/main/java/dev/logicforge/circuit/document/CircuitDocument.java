@@ -112,10 +112,13 @@ public final class CircuitDocument {
         boolean positionChanged = !previous.position().equals(instance.position());
         boolean rotationChanged = previous.rotation() != instance.rotation();
         boolean labelChanged = !previous.label().equals(instance.label());
+        boolean presentationChanged = previous.portDisplayMode() != instance.portDisplayMode();
         
         CircuitChange.Kind kind;
         if (parametersChanged) {
             kind = CircuitChange.Kind.COMPONENT_RECONFIGURED;
+        } else if (presentationChanged && !positionChanged && !rotationChanged && !labelChanged) {
+            kind = CircuitChange.Kind.COMPONENT_PRESENTATION;
         } else if (positionChanged && !rotationChanged && !labelChanged) {
             kind = CircuitChange.Kind.COMPONENT_MOVED;
         } else if (!positionChanged && rotationChanged && !labelChanged) {
@@ -186,6 +189,12 @@ public final class CircuitDocument {
         return connections.values().stream().filter(connection -> connection.touches(port)).toList();
     }
 
+    /** Every wire attached to this exact whole or bit endpoint. */
+    public List<Connection> connectionsAt(PortEndpoint endpoint) {
+        return connections.values().stream()
+                .filter(connection -> connection.touchesEndpoint(endpoint)).toList();
+    }
+
     /** Every wire attached to any port of the given component. */
     public List<Connection> connectionsOf(UUID componentId) {
         return connections.values().stream().filter(connection -> connection.touches(componentId)).toList();
@@ -195,6 +204,12 @@ public final class CircuitDocument {
         return connections.values().stream()
                 .anyMatch(connection -> (connection.fromPort().equals(a) && connection.toPort().equals(b))
                         || (connection.fromPort().equals(b) && connection.toPort().equals(a)));
+    }
+
+    public boolean isConnected(PortEndpoint a, PortEndpoint b) {
+        return connections.values().stream()
+                .anyMatch(connection -> (connection.from().equals(a) && connection.to().equals(b))
+                        || (connection.from().equals(b) && connection.to().equals(a)));
     }
 
     // ------------------------------------------------------------------

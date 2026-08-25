@@ -47,6 +47,19 @@ public final class SignalTrace {
         return transitions.isEmpty();
     }
 
+    /** A derived scalar view of one bit of this recorded vector net. */
+    public SignalTrace bit(int bitIndex) {
+        if (bitIndex < 0 || bitIndex >= width.bits()) {
+            throw new IndexOutOfBoundsException("Bit " + bitIndex + " of " + width);
+        }
+        SignalTrace extracted = new SignalTrace(netId, label + "[" + bitIndex + "]", BitWidth.ONE);
+        for (SignalTransition transition : transitions) {
+            extracted.record(transition.time(), transition.deltaCycle(),
+                    LogicVector.single(transition.value().getBit(bitIndex)));
+        }
+        return extracted;
+    }
+
     /**
      * The value this trace held at {@code time}: the value of the last transition at or
      * before it, or empty if nothing was recorded yet that early.

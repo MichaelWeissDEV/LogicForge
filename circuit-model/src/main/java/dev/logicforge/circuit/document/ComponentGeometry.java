@@ -34,14 +34,36 @@ public final class ComponentGeometry {
 
     /** All ports of the component, resolved into world coordinates. */
     public static List<PlacedPort> ports(ComponentInstance instance, ComponentDefinition definition) {
+        return ports(instance, definition, null);
+    }
+
+    /** Visible pins, expanded into individual bit endpoints when requested. */
+    public static List<PlacedPort> ports(ComponentInstance instance, ComponentDefinition definition,
+                                         CircuitDocument document) {
         List<PortSpec> specs = definition.ports(instance.parameters());
-        List<PlacedPort> placed = new ArrayList<>(specs.size());
+        List<PlacedPort> placed = new ArrayList<>();
         for (PortSpec spec : specs) {
-            placed.add(new PlacedPort(
-                    new PortReference(instance.id(), spec.name()),
-                    spec,
-                    portPosition(instance, spec),
-                    spec.side().rotatedBy(instance.rotation())));
+            PortReference reference = new PortReference(instance.id(), spec.name());
+            boolean hasWhole = hasWholeConnection(document, reference);
+            boolean hasBits = hasBitConnection(document, reference);
+            boolean expanded = instance.portDisplayMode() == PortDisplayMode.EXPANDED
+                    && !spec.width().isSingleBit();
+            if (!expanded) {
+                placed.add(new PlacedPort(PortEndpoint.whole(reference), spec,
+                        portPosition(instance, spec), spec.side().rotatedBy(instance.rotation()),
+                        !hasBits));
+                continue;
+            }
+            int width = spec.width().bits();
+            for (int bit = 0; bit < width; bit++) {
+                double offset = (bit - (width - 1) / 2.0) * 12.0;
+                CircuitPoint tangent = spec.side().isHorizontal()
+                        ? new CircuitPoint(0, offset) : new CircuitPoint(offset, 0);
+                CircuitPoint local = spec.anchor().plus(tangent);
+                placed.add(new PlacedPort(PortEndpoint.bit(reference, bit), spec,
+                        instance.position().plus(instance.rotation().apply(local)),
+                        spec.side().rotatedBy(instance.rotation()), !hasWhole));
+            }
         }
         return placed;
     }
@@ -51,6 +73,38 @@ public final class ComponentGeometry {
         return ports(instance, definition).stream()
                 .filter(port -> port.spec().name().equals(portName))
                 .findFirst();
+    }
+
+    /** Resolves a stored electrical endpoint, including hidden compact/expanded anchors. */
+    public static Optional<PlacedPort> endpoint(ComponentInstance instance,
+                                                ComponentDefinition definition,
+                                                PortEndpoint endpoint,
+                                                CircuitDocument document) {
+        Optional<PortSpec> spec = definition.ports(instance.parameters()).stream()
+                .filter(candidate -> candidate.name().equals(endpoint.portName())).findFirst();
+        if (spec.isEmpty()) {
+            return Optional.empty();
+        }
+        for (PlacedPort placed : ports(instance, definition, document)) {
+            if (placed.endpoint().equals(endpoint)) {
+                return Optional.of(placed);
+            }
+        }
+        PortSpec port = spec.get();
+        return Optional.of(new PlacedPort(endpoint, port, portPosition(instance, port),
+                port.side().rotatedBy(instance.rotation()), false));
+    }
+
+    private static boolean hasWholeConnection(CircuitDocument document, PortReference reference) {
+        return document != null && document.connectionsAt(reference).stream().anyMatch(connection ->
+                (connection.fromPort().equals(reference) && connection.from().isWhole())
+                        || (connection.toPort().equals(reference) && connection.to().isWhole()));
+    }
+
+    private static boolean hasBitConnection(CircuitDocument document, PortReference reference) {
+        return document != null && document.connectionsAt(reference).stream().anyMatch(connection ->
+                (connection.fromPort().equals(reference) && connection.from().isBit())
+                        || (connection.toPort().equals(reference) && connection.to().isBit()));
     }
 
     /**

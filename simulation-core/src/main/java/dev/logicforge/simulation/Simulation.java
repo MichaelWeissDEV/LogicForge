@@ -88,6 +88,11 @@ public final class Simulation {
     private SimulationOscillationException oscillation;
 
     public Simulation(CompiledCircuit circuit) {
+        this(circuit, true);
+    }
+
+    /** Creates a simulation with explicit initial run/pause intent. */
+    public Simulation(CompiledCircuit circuit, boolean running) {
         this.circuit = circuit;
         this.netValues = new LogicVector[circuit.netCount()];
         this.driverValues = new LogicVector[circuit.driverCount()];
@@ -96,6 +101,7 @@ public final class Simulation {
         for (int id = 0; id < circuit.componentCount(); id++) {
             states[id] = circuit.component(id).behavior().createState();
         }
+        this.running = running;
         reset();
     }
 
@@ -415,6 +421,26 @@ public final class Simulation {
         restoreInputState(componentId, LogicVector.single(value));
     }
 
+    /** Re-evaluates one component without advancing physical time. */
+    public void reevaluateComponent(int componentId) {
+        evaluate(componentId, deltaCycle + 1);
+        status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
+        if (running) {
+            runUntilStableAtCurrentTime();
+        }
+    }
+
+    /** Re-evaluates all behavior outputs from their current restored state. */
+    public void reevaluateAllAtCurrentTime() {
+        for (int componentId = 0; componentId < circuit.componentCount(); componentId++) {
+            evaluate(componentId, deltaCycle + 1);
+        }
+        status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
+        if (running) {
+            runUntilStableAtCurrentTime();
+        }
+    }
+
     /**
      * While running, changes settle immediately, up to the current instant. While paused,
      * they queue up and only {@link #step()} advances the circuit — which is what
@@ -441,11 +467,11 @@ public final class Simulation {
 
     /** The value a component's output port currently sees on its net. */
     public LogicVector readOutput(int componentId, int outputIndex) {
-        return netValues[circuit.component(componentId).outputNets()[outputIndex]];
+        return readOutputBinding(circuit.component(componentId).outputBinding(outputIndex));
     }
 
     public LogicVector readInput(int componentId, int inputIndex) {
-        return netValues[circuit.component(componentId).inputNets()[inputIndex]];
+        return readInputBinding(circuit.component(componentId).inputBinding(inputIndex));
     }
 
     public LogicVector driverValue(int driverId) {
@@ -470,6 +496,20 @@ public final class Simulation {
 
     public ComponentRuntimeState stateOf(int componentId) {
         return states[componentId];
+    }
+
+    /** Memory contents exposed by this component's behavior, if any. */
+    public java.util.Optional<MemorySnapshot> memorySnapshot(int componentId) {
+        CompiledComponent component = circuit.component(componentId);
+        return java.util.Optional.ofNullable(
+                component.behavior().memorySnapshot(states[componentId]));
+    }
+
+    /** Writes runtime-backed memory and refreshes outputs at the current timestamp. */
+    public void writeMemoryWord(int componentId, int address, LogicVector value) {
+        CompiledComponent component = circuit.component(componentId);
+        component.behavior().writeMemoryWord(states[componentId], address, value);
+        reevaluateComponent(componentId);
     }
 
     public SimulationStatus status() {
@@ -540,6 +580,30 @@ public final class Simulation {
         context.component.behavior().evaluate(context);
     }
 
+    private LogicVector readInputBinding(CompiledInputBinding binding) {
+        if (binding instanceof CompiledInputBinding.Whole whole) {
+            return netValues[whole.netId()];
+        }
+        int[] netIds = ((CompiledInputBinding.Bits) binding).netIds();
+        LogicState[] bits = new LogicState[netIds.length];
+        for (int bit = 0; bit < netIds.length; bit++) {
+            bits[bit] = netValues[netIds[bit]].singleBit();
+        }
+        return LogicVector.ofLsbFirst(bits);
+    }
+
+    private LogicVector readOutputBinding(CompiledOutputBinding binding) {
+        if (binding instanceof CompiledOutputBinding.Whole whole) {
+            return netValues[whole.netId()];
+        }
+        int[] netIds = ((CompiledOutputBinding.Bits) binding).netIds();
+        LogicState[] bits = new LogicState[netIds.length];
+        for (int bit = 0; bit < netIds.length; bit++) {
+            bits[bit] = netValues[netIds[bit]].singleBit();
+        }
+        return LogicVector.ofLsbFirst(bits);
+    }
+
     /** Reused per evaluation; the simulator is single threaded by design. */
     private final class EvaluationContext implements ComponentContext {
 
@@ -553,7 +617,7 @@ public final class Simulation {
 
         @Override
         public LogicVector readInput(int index) {
-            return netValues[component.inputNets()[index]];
+            return readInputBinding(component.inputBinding(index));
         }
 
         @Override
@@ -563,13 +627,25 @@ public final class Simulation {
 
         @Override
         public void driveOutput(int index, LogicVector value) {
-            int driverId = component.outputDrivers()[index];
-            CompiledDriver driver = circuit.driver(driverId);
-            value.requireWidth(circuit.net(driver.netId()).width());
-            if (driverValues[driverId].equals(value)) {
-                return;
+            CompiledOutputBinding binding = component.outputBinding(index);
+            value.requireWidth(binding.width());
+            if (binding instanceof CompiledOutputBinding.Whole whole) {
+                scheduleImmediate(whole.netId(), whole.driverId(), value);
+            } else {
+                CompiledOutputBinding.Bits bits = (CompiledOutputBinding.Bits) binding;
+                int[] netIds = bits.netIds();
+                int[] driverIds = bits.driverIds();
+                for (int bit = 0; bit < netIds.length; bit++) {
+                    scheduleImmediate(netIds[bit], driverIds[bit], LogicVector.single(value.getBit(bit)));
+                }
             }
-            queue.add(new SimulationEvent(time, scheduleDelta, sequence++, driver.netId(), driverId, value));
+        }
+
+        private void scheduleImmediate(int netId, int driverId, LogicVector value) {
+            if (!driverValues[driverId].equals(value)) {
+                queue.add(new SimulationEvent(
+                        time, scheduleDelta, sequence++, netId, driverId, value));
+            }
         }
 
         @Override
@@ -590,10 +666,20 @@ public final class Simulation {
         }
 
         private void scheduleDriverEvent(int index, long eventTime, LogicVector value) {
-            int driverId = component.outputDrivers()[index];
-            CompiledDriver driver = circuit.driver(driverId);
-            value.requireWidth(circuit.net(driver.netId()).width());
-            queue.add(new SimulationEvent(eventTime, 0, sequence++, driver.netId(), driverId, value));
+            CompiledOutputBinding binding = component.outputBinding(index);
+            value.requireWidth(binding.width());
+            if (binding instanceof CompiledOutputBinding.Whole whole) {
+                queue.add(new SimulationEvent(
+                        eventTime, 0, sequence++, whole.netId(), whole.driverId(), value));
+            } else {
+                CompiledOutputBinding.Bits bits = (CompiledOutputBinding.Bits) binding;
+                int[] netIds = bits.netIds();
+                int[] driverIds = bits.driverIds();
+                for (int bit = 0; bit < netIds.length; bit++) {
+                    queue.add(new SimulationEvent(eventTime, 0, sequence++, netIds[bit],
+                            driverIds[bit], LogicVector.single(value.getBit(bit))));
+                }
+            }
         }
 
         @Override

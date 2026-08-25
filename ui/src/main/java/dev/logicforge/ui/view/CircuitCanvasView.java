@@ -5,6 +5,7 @@ import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PlacedPort;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.geometry.CircuitBounds;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
@@ -81,7 +82,7 @@ public final class CircuitCanvasView extends Region {
     private String pendingPlacement;
     private Runnable statusListener = () -> {
     };
-    private java.util.function.Consumer<PortReference> analyzerListener = reference -> {
+    private java.util.function.Consumer<PortEndpoint> analyzerListener = endpoint -> {
     };
     
     // For momentary button handling: track which component is being pressed
@@ -118,7 +119,7 @@ public final class CircuitCanvasView extends Region {
     }
 
     /** Called with the port a user picked "Add to Logic Analyzer" for. */
-    public void setAnalyzerListener(java.util.function.Consumer<PortReference> listener) {
+    public void setAnalyzerListener(java.util.function.Consumer<PortEndpoint> listener) {
         this.analyzerListener = listener;
     }
 
@@ -235,7 +236,7 @@ public final class CircuitCanvasView extends Region {
         }
 
         Optional<PlacedPort> port = hitTester.portAt(dragStartWorld, worldTolerance(PORT_TOLERANCE_PIXELS));
-        if (port.isPresent()) {
+        if (port.isPresent() && port.get().connectable()) {
             mode = Mode.WIRING;
             overlay = overlay.withPreviewWire(port.get(),
                     router.routeToPoint(port.get(), Grid.snap(dragStartWorld)));
@@ -454,12 +455,12 @@ public final class CircuitCanvasView extends Region {
             return;
         }
         hitTester.portAt(world, worldTolerance(PORT_TOLERANCE_PIXELS)).ifPresent(target -> {
-            if (target.reference().equals(origin.reference())
-                    || editor.document().isConnected(origin.reference(), target.reference())) {
+            if (!target.connectable() || target.endpoint().equals(origin.endpoint())
+                    || editor.document().isConnected(origin.endpoint(), target.endpoint())) {
                 return;
             }
             editor.execute(new ConnectCommand(editor.document(),
-                    Connection.create(origin.reference(), target.reference())));
+                    Connection.create(origin.endpoint(), target.endpoint())));
         });
     }
 
@@ -469,7 +470,7 @@ public final class CircuitCanvasView extends Region {
         Optional<ComponentInstance> component = hitTester.componentAt(world);
 
         overlay = overlay.withHover(component.map(ComponentInstance::id).orElse(null), port.orElse(null));
-        setCursor(cursorFor(port.isPresent(), component));
+        setCursor(cursorFor(port.map(PlacedPort::connectable).orElse(false), component));
         updateTooltip(port);
         redraw();
     }
@@ -499,8 +500,10 @@ public final class CircuitCanvasView extends Region {
             return;
         }
         PlacedPort placed = port.get();
-        String value = editor.valueAt(placed.reference()).map(Object::toString).orElse("–");
-        portTooltip.setText(placed.spec().name() + "\n" + describe(placed) + "\nCurrent: " + value);
+        String value = editor.valueAt(placed.endpoint()).map(Object::toString).orElse("–");
+        String availability = placed.connectable() ? "" : "\nLocked by existing bus wiring";
+        portTooltip.setText(placed.displayName() + "\n" + describe(placed)
+                + "\nCurrent: " + value + availability);
     }
 
     private String describe(PlacedPort placed) {
@@ -509,7 +512,8 @@ public final class CircuitCanvasView extends Region {
             case OUTPUT -> "Output";
             case INOUT -> "Bidirectional";
         };
-        return direction + " · " + placed.spec().width();
+        int width = placed.endpoint().isBit() ? 1 : placed.spec().width().bits();
+        return direction + " · " + width + (width == 1 ? " bit" : " bits");
     }
 
     private void onScroll(ScrollEvent event) {
@@ -636,19 +640,19 @@ public final class CircuitCanvasView extends Region {
                 : Optional.empty();
         if (port.isPresent()) {
             contextMenu.showForPort(this, event.getScreenX(), event.getScreenY(),
-                    () -> analyzerListener.accept(port.get().reference()));
+                    () -> analyzerListener.accept(port.get().endpoint()));
         } else if (component.isPresent()) {
             if (!editor.selection().containsComponent(component.get().id())) {
                 editor.selection().selectComponent(component.get().id());
             }
             contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (wire.isPresent()) {
-            PortReference reference = wire.get().fromPort();
+            PortEndpoint endpoint = wire.get().from();
             if (!editor.selection().containsConnection(wire.get().id())) {
                 editor.selection().selectConnection(wire.get().id());
             }
             contextMenu.showForWire(this, event.getScreenX(), event.getScreenY(),
-                    () -> analyzerListener.accept(reference));
+                    () -> analyzerListener.accept(endpoint));
         } else {
             contextMenu.showForCanvas(this, event.getScreenX(), event.getScreenY());
         }

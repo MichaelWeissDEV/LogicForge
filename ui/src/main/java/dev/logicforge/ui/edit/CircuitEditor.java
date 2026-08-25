@@ -7,6 +7,8 @@ import dev.logicforge.circuit.document.CircuitDocumentListener;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortSlice;
 import dev.logicforge.compiler.CircuitCompileException;
 import dev.logicforge.compiler.CircuitCompiler;
 import dev.logicforge.compiler.CompilationResult;
@@ -20,6 +22,7 @@ import dev.logicforge.simulation.Simulation;
 import dev.logicforge.simulation.SimulationOscillationException;
 import dev.logicforge.simulation.SimulationStatus;
 import dev.logicforge.ui.command.CircuitCommand;
+import dev.logicforge.ui.command.ChangeParameterCommand;
 import dev.logicforge.ui.command.UndoStack;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -261,6 +264,22 @@ public final class CircuitEditor {
         return net.isPresent() ? Optional.of(simulation.readNet(net.getAsInt())) : Optional.empty();
     }
 
+    /** Value at an exact whole or bit endpoint. A bit of a whole vector is extracted. */
+    public Optional<LogicVector> valueAt(PortEndpoint endpoint) {
+        if (simulation == null || compilation == null) {
+            return Optional.empty();
+        }
+        OptionalInt net = compilation.sourceMap().netOf(endpoint);
+        if (net.isEmpty()) {
+            return Optional.empty();
+        }
+        LogicVector value = simulation.readNet(net.getAsInt());
+        if (endpoint.slice() instanceof PortSlice.Bit bit && value.width() > 1) {
+            return Optional.of(LogicVector.single(value.getBit(bit.index())));
+        }
+        return Optional.of(value);
+    }
+
     /** The value on a wire, for drawing it in the colour of its signal. */
     public Optional<LogicVector> valueOfConnection(UUID connectionId) {
         if (simulation == null || compilation == null) {
@@ -272,6 +291,10 @@ public final class CircuitEditor {
 
     public OptionalInt netOf(PortReference port) {
         return compilation == null ? OptionalInt.empty() : compilation.sourceMap().netOf(port);
+    }
+
+    public OptionalInt netOf(PortEndpoint endpoint) {
+        return compilation == null ? OptionalInt.empty() : compilation.sourceMap().netOf(endpoint);
     }
 
     public OptionalInt netOfConnection(UUID connectionId) {
@@ -397,10 +420,12 @@ public final class CircuitEditor {
             compilation = compiler.compile(document);
             compileError = null;
             lastValidationIssues = compilation.issues();
-            simulation = new Simulation(compilation.circuit());
-            simulation.setRunning(desiredRunning);
+            simulation = new Simulation(compilation.circuit(), false);
             restoreInputValues(previousInputs);
             restoreRuntimeStates(previousStates);
+            simulation.reevaluateAllAtCurrentTime();
+            simulation.runUntilStableAtCurrentTime();
+            simulation.setRunning(desiredRunning);
         } catch (CircuitCompileException failure) {
             compilation = null;
             simulation = null;
@@ -489,18 +514,57 @@ public final class CircuitEditor {
         if (simulation == null || compilation == null) return java.util.Optional.empty();
         java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
         if (runtimeId.isEmpty()) return java.util.Optional.empty();
-        return java.util.Optional.ofNullable(simulation.stateOf(runtimeId.getAsInt()).memorySnapshot());
+        return simulation.memorySnapshot(runtimeId.getAsInt());
     }
 
     public void writeMemoryWord(java.util.UUID componentId, int address, dev.logicforge.logic.LogicVector value) {
-        if (simulation == null || compilation == null) return;
-        java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
-        if (runtimeId.isEmpty()) return;
-        dev.logicforge.simulation.ComponentRuntimeState state = simulation.stateOf(runtimeId.getAsInt());
-        // Since we cannot cast to RamState easily without depending on component-library,
-        // we assume ComponentRuntimeState has a writeMemoryWord method (we will add it).
-        state.writeMemoryWord(address, value);
-        notifyChanged();
+        document.component(componentId).ifPresent(instance -> {
+            if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
+                memorySnapshot(componentId).ifPresent(snapshot -> {
+                    List<LogicVector> words = new ArrayList<>();
+                    for (int i = 0; i < snapshot.size(); i++) {
+                        words.add(i == address ? value : snapshot.wordAt(i));
+                    }
+                    updateRomContents(instance, words);
+                });
+                return;
+            }
+            if (simulation == null || compilation == null) return;
+            java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+            if (runtimeId.isEmpty()) return;
+            guarded(() -> simulation.writeMemoryWord(runtimeId.getAsInt(), address, value));
+            notifyChanged();
+        });
+    }
+
+    /** Loads complete contents into project-backed ROM or live RAM. */
+    public void loadMemory(UUID componentId, List<LogicVector> words) {
+        document.component(componentId).ifPresent(instance -> {
+            if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
+                updateRomContents(instance, words);
+                return;
+            }
+            if (simulation == null || compilation == null) return;
+            OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+            if (runtimeId.isEmpty()) return;
+            int id = runtimeId.getAsInt();
+            for (int address = 0; address < words.size(); address++) {
+                compilation.circuit().component(id).behavior().writeMemoryWord(
+                        simulation.stateOf(id), address, words.get(address));
+            }
+            guarded(() -> simulation.reevaluateComponent(id));
+            notifyChanged();
+        });
+    }
+
+    private void updateRomContents(ComponentInstance instance, List<LogicVector> words) {
+        String csv = words.stream().map(word -> word.toUnsignedLong().isPresent()
+                        ? Long.toHexString(word.toUnsignedLong().getAsLong()).toUpperCase(java.util.Locale.ROOT)
+                        : "0")
+                .collect(java.util.stream.Collectors.joining(","));
+        definitionOf(instance).ifPresent(definition -> execute(new ChangeParameterCommand(
+                document, definition, document.requireComponent(instance.id()),
+                LibraryParameters.ROM_CONTENTS.key(), csv)));
     }
 
     public void addChangeListener(Runnable listener) {

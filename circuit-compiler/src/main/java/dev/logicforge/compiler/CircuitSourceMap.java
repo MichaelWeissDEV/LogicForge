@@ -1,5 +1,6 @@
 package dev.logicforge.compiler;
 
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import java.util.List;
 import java.util.Map;
@@ -19,14 +20,18 @@ public record CircuitSourceMap(
         List<UUID> uuidByComponentId,
         Map<PortReference, Integer> netByPort,
         List<List<PortReference>> portsByNet,
-        Map<UUID, Integer> netByConnection) {
+        Map<UUID, Integer> netByConnection,
+        Map<PortEndpoint, Integer> netByEndpoint,
+        List<List<PortEndpoint>> endpointsByNet) {
 
     public CircuitSourceMap {
         componentIdByUuid = Map.copyOf(componentIdByUuid);
         uuidByComponentId = List.copyOf(uuidByComponentId);
         netByPort = Map.copyOf(netByPort);
-        portsByNet = List.copyOf(portsByNet);
+        portsByNet = portsByNet.stream().map(List::copyOf).toList();
         netByConnection = Map.copyOf(netByConnection);
+        netByEndpoint = Map.copyOf(netByEndpoint);
+        endpointsByNet = endpointsByNet.stream().map(List::copyOf).toList();
     }
 
     /** The runtime id of a placed component, if it made it into the compiled circuit. */
@@ -47,6 +52,15 @@ public record CircuitSourceMap(
         return net == null ? OptionalInt.empty() : OptionalInt.of(net);
     }
 
+    /**
+     * The net carrying an endpoint. A bit of a whole-bound bus maps to its vector net;
+     * a bit-bound endpoint maps to its actual scalar net.
+     */
+    public OptionalInt netOf(PortEndpoint endpoint) {
+        Integer net = netByEndpoint.get(endpoint);
+        return net == null ? OptionalInt.empty() : OptionalInt.of(net);
+    }
+
     /** The net a wire belongs to — used to show live signal values on wires. */
     public OptionalInt netOfConnection(UUID connectionId) {
         Integer net = netByConnection.get(connectionId);
@@ -56,6 +70,11 @@ public record CircuitSourceMap(
     /** Every port that shares the given net. */
     public List<PortReference> portsOf(int netId) {
         return portsByNet.get(netId);
+    }
+
+    /** Every effective electrical endpoint that shares the given net. */
+    public List<PortEndpoint> endpointsOf(int netId) {
+        return endpointsByNet.get(netId);
     }
 
     public int netCount() {

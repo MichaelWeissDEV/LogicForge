@@ -87,24 +87,67 @@ public final class CompiledCircuit {
          */
         public int addComponent(String definitionId, String label, ComponentBehavior behavior,
                                 int[] inputNets, int[] outputNets) {
-            int componentId = components.size();
-            int[] outputDrivers = new int[outputNets.length];
-            for (int outputIndex = 0; outputIndex < outputNets.length; outputIndex++) {
-                int netId = outputNets[outputIndex];
-                int driverId = drivers.size();
-                drivers.add(new CompiledDriver(driverId, componentId, outputIndex, netId));
-                driversByNet.get(netId).add(driverId);
-                outputDrivers[outputIndex] = driverId;
+            CompiledInputBinding[] inputs = new CompiledInputBinding[inputNets.length];
+            for (int i = 0; i < inputNets.length; i++) {
+                inputs[i] = new CompiledInputBinding.Whole(inputNets[i], netWidths.get(inputNets[i]));
             }
-            for (int netId : inputNets) {
-                List<Integer> consumers = consumersByNet.get(netId);
-                if (!consumers.contains(componentId)) {
-                    consumers.add(componentId);
+            CompiledOutputBinding[] outputs = new CompiledOutputBinding[outputNets.length];
+            for (int i = 0; i < outputNets.length; i++) {
+                outputs[i] = new CompiledOutputBinding.Whole(
+                        outputNets[i], -1, netWidths.get(outputNets[i]).bits());
+            }
+            return addComponent(definitionId, label, behavior, inputs, outputs);
+        }
+
+        /** Adds a component whose logical ports may bind to whole nets or per-bit nets. */
+        public int addComponent(String definitionId, String label, ComponentBehavior behavior,
+                                CompiledInputBinding[] inputBindings,
+                                CompiledOutputBinding[] outputBindings) {
+            int componentId = components.size();
+            CompiledOutputBinding[] boundOutputs = new CompiledOutputBinding[outputBindings.length];
+            for (int outputIndex = 0; outputIndex < outputBindings.length; outputIndex++) {
+                CompiledOutputBinding binding = outputBindings[outputIndex];
+                if (binding instanceof CompiledOutputBinding.Whole whole) {
+                    int driverId = addDriver(componentId, outputIndex, whole.netId());
+                    boundOutputs[outputIndex] = new CompiledOutputBinding.Whole(
+                            whole.netId(), driverId, whole.width());
+                } else {
+                    CompiledOutputBinding.Bits bits = (CompiledOutputBinding.Bits) binding;
+                    int[] netIds = bits.netIds();
+                    int[] driverIds = new int[netIds.length];
+                    for (int bit = 0; bit < netIds.length; bit++) {
+                        driverIds[bit] = addDriver(componentId, outputIndex, netIds[bit]);
+                    }
+                    boundOutputs[outputIndex] = new CompiledOutputBinding.Bits(netIds, driverIds);
+                }
+            }
+
+            for (CompiledInputBinding binding : inputBindings) {
+                if (binding instanceof CompiledInputBinding.Whole whole) {
+                    addConsumer(whole.netId(), componentId);
+                } else {
+                    for (int netId : ((CompiledInputBinding.Bits) binding).netIds()) {
+                        addConsumer(netId, componentId);
+                    }
                 }
             }
             components.add(new CompiledComponent(componentId, definitionId, label, behavior,
-                    inputNets.clone(), outputNets.clone(), outputDrivers));
+                    inputBindings, boundOutputs));
             return componentId;
+        }
+
+        private int addDriver(int componentId, int outputIndex, int netId) {
+            int driverId = drivers.size();
+            drivers.add(new CompiledDriver(driverId, componentId, outputIndex, netId));
+            driversByNet.get(netId).add(driverId);
+            return driverId;
+        }
+
+        private void addConsumer(int netId, int componentId) {
+            List<Integer> consumers = consumersByNet.get(netId);
+            if (!consumers.contains(componentId)) {
+                consumers.add(componentId);
+            }
         }
 
         public CompiledCircuit build() {

@@ -17,6 +17,8 @@ public record CircuitChange(Kind kind, UUID elementId) {
         COMPONENT_ROTATED(false),
         /** Component's label changed — the netlist is unaffected. */
         COMPONENT_RENAMED(false),
+        /** Compact/expanded pin presentation changed; electrical topology is untouched. */
+        COMPONENT_PRESENTATION(false),
         CONNECTION_ADDED(true),
         CONNECTION_REMOVED(true),
         /** Only the wire's waypoints changed. */

@@ -1,5 +1,7 @@
 package dev.logicforge.simulation;
 
+import dev.logicforge.logic.LogicVector;
+
 /**
  * The simulation behaviour of one kind of component — kept separate from its
  * {@code ComponentDefinition} (what it is) and its renderer (how it looks).
@@ -19,5 +21,15 @@ public interface ComponentBehavior {
     /** Creates the state object for one instance. Stateless components keep the default. */
     default ComponentRuntimeState createState() {
         return ComponentRuntimeState.STATELESS;
+    }
+
+    /** Read-only memory contents exposed uniformly by stateful RAM and stateless ROM. */
+    default MemorySnapshot memorySnapshot(ComponentRuntimeState state) {
+        return state.memorySnapshot();
+    }
+
+    /** Updates runtime memory when supported. Project-backed ROM is edited by the editor. */
+    default void writeMemoryWord(ComponentRuntimeState state, int address, LogicVector value) {
+        state.writeMemoryWord(address, value);
     }
 }

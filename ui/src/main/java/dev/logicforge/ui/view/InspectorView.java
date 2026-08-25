@@ -5,11 +5,13 @@ import dev.logicforge.circuit.component.ParameterSpec;
 import dev.logicforge.circuit.component.PortSpec;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.library.LibraryParameters;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.SimulationTime;
 import dev.logicforge.ui.command.ChangeParameterCommand;
 import dev.logicforge.ui.command.SetLabelCommand;
+import dev.logicforge.ui.command.SetPortDisplayModeCommand;
 import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.render.PinLayoutView;
 import java.util.ArrayList;
@@ -105,6 +107,30 @@ public final class InspectorView extends VBox {
         body.getChildren().add(title(component.displayName()));
         body.getChildren().add(readOnly("Category", component.category().displayName()));
         body.getChildren().add(subtitle(component.description()));
+        body.getChildren().add(spacer());
+
+        body.getChildren().add(propertyLabel("Port display"));
+        ComboBox<PortDisplayMode> portDisplay = new ComboBox<>();
+        portDisplay.getItems().setAll(PortDisplayMode.COMPACT, PortDisplayMode.EXPANDED);
+        portDisplay.setValue(instance.portDisplayMode());
+        portDisplay.setMaxWidth(Double.MAX_VALUE);
+        portDisplay.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(PortDisplayMode mode) {
+                return mode == PortDisplayMode.EXPANDED ? "Expanded" : "Compact";
+            }
+            @Override public PortDisplayMode fromString(String value) {
+                return "Expanded".equals(value) ? PortDisplayMode.EXPANDED : PortDisplayMode.COMPACT;
+            }
+        });
+        portDisplay.valueProperty().addListener((observable, oldMode, newMode) -> {
+            if (newMode != null && newMode != oldMode) {
+                editor.document().component(instance.id()).ifPresent(current ->
+                        editor.execute(new SetPortDisplayModeCommand(
+                                editor.document(), current, newMode)));
+            }
+        });
+        body.getChildren().add(portDisplay);
+
         body.getChildren().add(spacer());
 
         body.getChildren().add(sectionHeader("PIN LAYOUT"));

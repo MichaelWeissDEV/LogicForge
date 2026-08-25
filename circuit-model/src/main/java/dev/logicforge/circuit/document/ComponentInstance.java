@@ -20,10 +20,12 @@ public record ComponentInstance(
         CircuitPoint position,
         Rotation rotation,
         ParameterValues parameters,
-        String label) {
+        String label,
+        PortDisplayMode portDisplayMode) {
 
     public ComponentInstance {
-        if (id == null || definitionId == null || position == null || rotation == null) {
+        if (id == null || definitionId == null || position == null || rotation == null
+                || portDisplayMode == null) {
             throw new IllegalArgumentException("Incomplete component instance");
         }
         parameters = parameters == null ? ParameterValues.empty() : parameters;
@@ -34,11 +36,12 @@ public record ComponentInstance(
     public static ComponentInstance create(String definitionId, CircuitPoint position,
                                            ParameterValues parameters) {
         return new ComponentInstance(UUID.randomUUID(), definitionId, position, Rotation.DEG_0,
-                parameters, "");
+                parameters, "", PortDisplayMode.COMPACT);
     }
 
     public ComponentInstance withPosition(CircuitPoint newPosition) {
-        return new ComponentInstance(id, definitionId, newPosition, rotation, parameters, label);
+        return new ComponentInstance(id, definitionId, newPosition, rotation, parameters, label,
+                portDisplayMode);
     }
 
     public ComponentInstance movedBy(double dx, double dy) {
@@ -46,18 +49,26 @@ public record ComponentInstance(
     }
 
     public ComponentInstance withRotation(Rotation newRotation) {
-        return new ComponentInstance(id, definitionId, position, newRotation, parameters, label);
+        return new ComponentInstance(id, definitionId, position, newRotation, parameters, label,
+                portDisplayMode);
     }
 
     public ComponentInstance withParameters(ParameterValues newParameters) {
-        return new ComponentInstance(id, definitionId, position, rotation, newParameters, label);
+        return new ComponentInstance(id, definitionId, position, rotation, newParameters, label,
+                portDisplayMode);
     }
 
     public ComponentInstance withLabel(String newLabel) {
-        return new ComponentInstance(id, definitionId, position, rotation, parameters, newLabel);
+        return new ComponentInstance(id, definitionId, position, rotation, parameters, newLabel,
+                portDisplayMode);
     }
 
     public ComponentInstance withId(UUID newId) {
-        return new ComponentInstance(newId, definitionId, position, rotation, parameters, label);
+        return new ComponentInstance(newId, definitionId, position, rotation, parameters, label,
+                portDisplayMode);
+    }
+
+    public ComponentInstance withPortDisplayMode(PortDisplayMode newMode) {
+        return new ComponentInstance(id, definitionId, position, rotation, parameters, label, newMode);
     }
 }

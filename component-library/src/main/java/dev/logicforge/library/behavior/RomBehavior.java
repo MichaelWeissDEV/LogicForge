@@ -6,6 +6,8 @@ import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.ComponentBehavior;
 import dev.logicforge.simulation.ComponentContext;
+import dev.logicforge.simulation.ComponentRuntimeState;
+import dev.logicforge.simulation.MemorySnapshot;
 import java.util.OptionalLong;
 
 /**
@@ -45,5 +47,10 @@ public record RomBehavior(BitWidth dataWidth, LogicVector[] contents) implements
             return;
         }
         context.driveOutput(0, contents[(int) address.getAsLong()]);
+    }
+
+    @Override
+    public MemorySnapshot memorySnapshot(ComponentRuntimeState state) {
+        return new MemorySnapshot(contents);
     }
 }
