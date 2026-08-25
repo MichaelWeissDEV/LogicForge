@@ -256,6 +256,17 @@ public final class CircuitCompiler {
             }
         }
 
+        private void checkEndpoint(dev.logicforge.circuit.document.PortEndpoint ep, java.util.Map<PortReference, Boolean> seen) {
+            Boolean asWhole = seen.get(ep.port());
+            if (asWhole == null) {
+                seen.put(ep.port(), ep.isWhole());
+            } else if ((asWhole && ep.isBit()) || (!asWhole && ep.isWhole())) {
+                issues.add(ValidationIssue.error(
+                    "Port " + ep.portName() + " has both bus-level and bit-level connections; this is not allowed",
+                    ep.componentId(), ep.portName()));
+            }
+        }
+
         // ========== PHASE 5: Validate Net Widths ==========
 
         private void validateNetWidths() {
