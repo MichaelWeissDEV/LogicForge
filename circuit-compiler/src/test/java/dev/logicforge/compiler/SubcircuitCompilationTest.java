@@ -2,6 +2,7 @@ package dev.logicforge.compiler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.document.CircuitDocument;
@@ -19,6 +20,27 @@ import dev.logicforge.simulation.Simulation;
 import org.junit.jupiter.api.Test;
 
 class SubcircuitCompilationTest {
+
+    @Test
+    void declaredBusInterfaceWidthIsValidatedAtParentBoundary() {
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("ByteSink", ""));
+        ParameterValues inputParameters = ParameterValues.defaultsOf(java.util.List.of(
+                        SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                .with(SubcircuitSupport.INTERFACE_NAME, "DATA")
+                .with(SubcircuitSupport.INTERFACE_WIDTH, 8);
+        add(child, SubcircuitSupport.INPUT_DEFINITION_ID, "DATA", 0, 0, inputParameters);
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance scalar = add(main, "source.toggle", "S", 0, 0, ParameterValues.empty());
+        ComponentInstance instance = SubcircuitSupport.instantiate("ByteSink", new CircuitPoint(100, 0));
+        main.addComponent(instance);
+        wire(main, scalar, "OUT", instance, "DATA");
+        CircuitProject project = CircuitProject.of("width", main);
+        project.putCircuit(child);
+
+        CircuitCompileException failure = assertThrows(CircuitCompileException.class,
+                () -> new CircuitCompiler(ComponentRegistry.standard()).compile(project, "main"));
+        assertTrue(failure.getMessage().contains("1 and 8 bits wide"));
+    }
 
     @Test
     void reusableChildCircuitIsFlattenedTwiceIntoOneSimulation() {
