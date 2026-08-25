@@ -32,16 +32,31 @@ final class BehaviorHarness implements ComponentContext {
 
     /** Runs a stateful behaviour, letting the caller touch its state first. */
     static BehaviorHarness of(ComponentBehavior behavior, LogicState... inputs) {
+        return of(behavior, 1, inputs);
+    }
+
+    /** Runs a stateful, multi-output behaviour over several evaluations. */
+    static BehaviorHarness of(ComponentBehavior behavior, int outputCount, LogicState... inputs) {
         LogicVector[] vectors = new LogicVector[inputs.length];
         for (int i = 0; i < inputs.length; i++) {
             vectors[i] = LogicVector.single(inputs[i]);
         }
-        return new BehaviorHarness(behavior, 1, vectors);
+        return new BehaviorHarness(behavior, outputCount, vectors);
     }
 
     LogicState run(ComponentBehavior behavior) {
         behavior.evaluate(this);
         return outputs[0].singleBit();
+    }
+
+    /** Changes one input between evaluations, e.g. to drive a clock edge. */
+    void setInput(int index, LogicState value) {
+        inputs[index] = LogicVector.single(value);
+    }
+
+    /** The value output port {@code index} was last driven with. */
+    LogicState output(int index) {
+        return outputs[index].singleBit();
     }
 
     @Override

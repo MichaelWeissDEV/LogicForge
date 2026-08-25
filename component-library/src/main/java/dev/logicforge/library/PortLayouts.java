@@ -7,6 +7,7 @@ import dev.logicforge.circuit.component.PortSpec;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.CircuitSize;
 import dev.logicforge.circuit.geometry.PortSide;
+import dev.logicforge.logic.BitWidth;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -84,6 +85,64 @@ public final class PortLayouts {
                 return new CircuitSize(GATE_WIDTH, Math.max(48, inputs * PORT_SPACING + PORT_SPACING));
             }
         };
+    }
+
+    /** One named, possibly multi-bit, port for {@link #box}. */
+    public record PortDef(String name, BitWidth width, String description) {
+
+        public PortDef(String name) {
+            this(name, BitWidth.ONE, "");
+        }
+
+        public PortDef(String name, BitWidth width) {
+            this(name, width, "");
+        }
+    }
+
+    /**
+     * A fixed-width box with a given set of inputs evenly spaced on the left and outputs
+     * evenly spaced on the right — the layout latches, flip-flops, registers and the other
+     * boxy ICs share. Port widths may differ from 1 bit, so a bus (DATA, COUNT, ...) is
+     * declared the same way as a single-bit control line (CLK, EN, ...).
+     */
+    public static PortLayout box(List<PortDef> inputs, List<PortDef> outputs, double width) {
+        return new PortLayout() {
+
+            @Override
+            public List<PortSpec> ports(ParameterValues values) {
+                CircuitSize body = bodySize(values);
+                List<PortSpec> ports = new ArrayList<>(inputs.size() + outputs.size());
+                for (int i = 0; i < inputs.size(); i++) {
+                    double y = (i - (inputs.size() - 1) / 2.0) * PORT_SPACING;
+                    PortDef def = inputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.INPUT, def.width(),
+                            new CircuitPoint(-body.halfWidth() - PORT_STUB, y), PortSide.LEFT,
+                            def.description()));
+                }
+                for (int i = 0; i < outputs.size(); i++) {
+                    double y = (i - (outputs.size() - 1) / 2.0) * PORT_SPACING;
+                    PortDef def = outputs.get(i);
+                    ports.add(new PortSpec(def.name(), PortDirection.OUTPUT, def.width(),
+                            new CircuitPoint(body.halfWidth() + PORT_STUB, y), PortSide.RIGHT,
+                            def.description()));
+                }
+                return ports;
+            }
+
+            @Override
+            public CircuitSize bodySize(ParameterValues values) {
+                int rows = Math.max(inputs.size(), outputs.size());
+                return new CircuitSize(width, Math.max(48, rows * PORT_SPACING + PORT_SPACING));
+            }
+        };
+    }
+
+    /** {@link #box} for the common case where every port is a single bit. */
+    public static PortLayout box(List<String> inputNames, List<String> outputNames) {
+        return box(
+                inputNames.stream().map(PortDef::new).toList(),
+                outputNames.stream().map(PortDef::new).toList(),
+                GATE_WIDTH);
     }
 
     private static PortSpec inputPort(String name, CircuitSize body, double y) {

@@ -2,6 +2,7 @@ package dev.logicforge.library;
 
 import static dev.logicforge.circuit.component.ComponentCategory.LOGIC;
 import static dev.logicforge.circuit.component.ComponentCategory.OUTPUTS;
+import static dev.logicforge.circuit.component.ComponentCategory.SEQUENTIAL;
 import static dev.logicforge.circuit.component.ComponentCategory.SOURCES;
 import static dev.logicforge.circuit.component.InputInteraction.MOMENTARY;
 import static dev.logicforge.circuit.component.InputInteraction.TOGGLE;
@@ -12,8 +13,13 @@ import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
 import dev.logicforge.library.behavior.ClockBehavior;
 import dev.logicforge.library.behavior.ConstantBehavior;
+import dev.logicforge.library.behavior.DFlipFlopBehavior;
+import dev.logicforge.library.behavior.DLatchBehavior;
+import dev.logicforge.library.behavior.JkFlipFlopBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
 import dev.logicforge.library.behavior.SinkBehavior;
+import dev.logicforge.library.behavior.SrLatchBehavior;
+import dev.logicforge.library.behavior.TFlipFlopBehavior;
 import dev.logicforge.library.behavior.TriStateBehavior;
 import dev.logicforge.library.behavior.UnaryGateBehavior;
 import dev.logicforge.library.behavior.UserInputBehavior;
@@ -39,6 +45,7 @@ final class StandardLibrary {
         registerSources(registry);
         registerDrivers(registry);
         registerGates(registry);
+        registerSequential(registry);
         registerOutputs(registry);
         return registry;
     }
@@ -147,6 +154,65 @@ final class StandardLibrary {
                 definition(id, name, LOGIC, description, List.of(LibraryParameters.INPUT_COUNT),
                         PortLayouts.gate(LibraryParameters.INPUT_COUNT), List.of("gate", name.toLowerCase())),
                 new NaryGateBehavior(operation, invert)));
+    }
+
+    private static void registerSequential(ComponentRegistry registry) {
+        registry.register(ComponentType.of(
+                definition("sequential.sr_latch", "SR Latch", SEQUENTIAL,
+                        "Level-sensitive set/reset latch (NOR-based, active-high S/R)",
+                        List.of(), PortLayouts.box(List.of("S", "R"), List.of("Q", "Q'")),
+                        List.of("latch", "sr", "set", "reset", "nor")),
+                new SrLatchBehavior(false)));
+
+        registry.register(ComponentType.of(
+                definition("sequential.sr_latch_nand", "SR Latch (Active-Low)", SEQUENTIAL,
+                        "Level-sensitive set/reset latch (NAND-based, active-low S/R)",
+                        List.of(), PortLayouts.box(List.of("S", "R"), List.of("Q", "Q'")),
+                        List.of("latch", "sr", "set", "reset", "nand")),
+                new SrLatchBehavior(true)));
+
+        registry.register(ComponentType.of(
+                definition("sequential.d_latch", "D Latch", SEQUENTIAL,
+                        "Level-sensitive latch: Q follows D while EN is 1, holds while EN is 0",
+                        List.of(), PortLayouts.box(List.of("D", "EN"), List.of("Q", "Q'")),
+                        List.of("latch", "d", "transparent")),
+                DLatchBehavior.INSTANCE));
+
+        registry.register(new ComponentType(
+                definition("sequential.d_ff", "D Flip-Flop", SEQUENTIAL,
+                        "Edge-triggered: Q takes D's value on the configured clock edge",
+                        List.of(LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.box(List.of("D", "CLK"), List.of("Q", "Q'")),
+                        List.of("flipflop", "flip-flop", "d", "register bit")),
+                values -> new DFlipFlopBehavior(isRisingEdge(values), false)));
+
+        registry.register(new ComponentType(
+                definition("sequential.d_ff_sr", "D Flip-Flop (Set/Reset)", SEQUENTIAL,
+                        "Edge-triggered D flip-flop with asynchronous SET and RESET",
+                        List.of(LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.box(List.of("D", "CLK", "SET", "RESET"), List.of("Q", "Q'")),
+                        List.of("flipflop", "flip-flop", "d", "set", "reset", "async")),
+                values -> new DFlipFlopBehavior(isRisingEdge(values), true)));
+
+        registry.register(new ComponentType(
+                definition("sequential.jk_ff", "JK Flip-Flop", SEQUENTIAL,
+                        "Edge-triggered: hold, set, reset or toggle depending on J and K",
+                        List.of(LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.box(List.of("J", "K", "CLK"), List.of("Q", "Q'")),
+                        List.of("flipflop", "flip-flop", "jk", "toggle")),
+                values -> new JkFlipFlopBehavior(isRisingEdge(values))));
+
+        registry.register(new ComponentType(
+                definition("sequential.t_ff", "T Flip-Flop", SEQUENTIAL,
+                        "Edge-triggered: toggles Q when T is 1, holds when T is 0",
+                        List.of(LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.box(List.of("T", "CLK"), List.of("Q", "Q'")),
+                        List.of("flipflop", "flip-flop", "t", "toggle", "counter bit")),
+                values -> new TFlipFlopBehavior(isRisingEdge(values))));
+    }
+
+    private static boolean isRisingEdge(dev.logicforge.circuit.component.ParameterValues values) {
+        return values.get(LibraryParameters.CLOCK_EDGE).equals("rising");
     }
 
     private static void registerOutputs(ComponentRegistry registry) {

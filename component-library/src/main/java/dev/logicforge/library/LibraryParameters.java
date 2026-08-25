@@ -43,6 +43,10 @@ public final class LibraryParameters {
     public static final ParameterSpec.BooleanParameter ENABLED =
             new ParameterSpec.BooleanParameter("enabled", "Enabled", true);
 
+    /** Which clock transition an edge-triggered component reacts to. */
+    public static final ParameterSpec.EnumParameter CLOCK_EDGE =
+            new ParameterSpec.EnumParameter("edge", "Clock Edge", "rising", List.of("rising", "falling"));
+
     private LibraryParameters() {
     }
 }

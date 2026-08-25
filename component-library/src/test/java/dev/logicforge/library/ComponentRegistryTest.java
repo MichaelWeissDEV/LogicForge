@@ -39,7 +39,7 @@ class ComponentRegistryTest {
     @Test
     void searchFindsComponentsByNameIdAndKeyword() {
         assertEquals(List.of("logic.and", "logic.nand"),
-                registry.search("and").stream().map(ComponentType::id).toList());
+                registry.search("and").stream().map(ComponentType::id).toList().subList(0, 2));
         assertEquals(List.of("logic.xor", "logic.xnor"),
                 registry.search("x").stream().map(ComponentType::id).toList().subList(0, 2));
         assertEquals(List.of("source.toggle"),
