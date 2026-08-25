@@ -284,6 +284,26 @@ public final class Simulation {
         return time;
     }
 
+    /**
+     * Like {@link #runUntil(long)}, but never advances more than {@code maxAdvances} times
+     * in one call, even if {@code targetTime} has not been reached yet. This is what a UI
+     * playback loop calls once per frame: a fast clock's virtual horizon can be far enough
+     * ahead that draining it in one call would freeze the interface, so the caller instead
+     * gets however far a bounded amount of work reaches and continues from there on the
+     * next frame. A slow clock reaches {@code targetTime} in well under the budget, so nothing
+     * about the ordinary case changes.
+     *
+     * @return the simulation time reached, which may be before {@code targetTime}
+     */
+    public long advanceBudgeted(long targetTime, int maxAdvances) {
+        int advances = 0;
+        while (advances < maxAdvances && !queue.isEmpty() && queue.peek().time() <= targetTime) {
+            advanceToNextEvent();
+            advances++;
+        }
+        return time;
+    }
+
     private int runUntilTimeBoundary(long targetTime) {
         int cycles = 0;
         while (!queue.isEmpty() && queue.peek().time() == targetTime) {

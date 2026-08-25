@@ -2,6 +2,7 @@ package dev.logicforge.ui.view;
 
 import dev.logicforge.compiler.ValidationIssue;
 import dev.logicforge.simulation.SimulationStatus;
+import dev.logicforge.simulation.SimulationTime;
 import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.viewport.ViewportTransform;
 import javafx.scene.control.Label;
@@ -20,6 +21,7 @@ public final class StatusBarView extends HBox {
     private final Label nets = new Label();
     private final Label zoom = new Label();
     private final Label simulation = new Label();
+    private final Label time = new Label();
 
     public StatusBarView(CircuitEditor editor, ViewportTransform viewport) {
         this.editor = editor;
@@ -28,10 +30,10 @@ public final class StatusBarView extends HBox {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        for (Label label : new Label[]{message, components, nets, zoom, simulation}) {
+        for (Label label : new Label[]{message, components, nets, zoom, simulation, time}) {
             label.getStyleClass().add("status-item");
         }
-        getChildren().addAll(message, spacer, components, nets, zoom, simulation);
+        getChildren().addAll(message, spacer, components, nets, zoom, simulation, time);
 
         editor.addChangeListener(this::update);
         update();
@@ -43,6 +45,8 @@ public final class StatusBarView extends HBox {
                 .map(compilation -> String.valueOf(compilation.circuit().netCount()))
                 .orElse("–"));
         zoom.setText("Zoom: " + Math.round(viewport.scale() * 100) + "%");
+
+        time.setText("t = " + SimulationTime.ofPicoseconds(editor.currentTime()));
 
         SimulationStatus status = editor.status();
         simulation.setText("Simulation: " + status.displayName());

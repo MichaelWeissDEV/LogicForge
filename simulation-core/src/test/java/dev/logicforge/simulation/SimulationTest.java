@@ -419,6 +419,21 @@ class SimulationTest {
     }
 
     @Test
+    void advanceBudgetedStopsAtTheStepLimitAndResumesOnTheNextCall() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int clk = builder.addNet(BitWidth.ONE);
+        builder.addComponent("test.oscillator", "OSC", TestBehaviors.periodicToggle(100), NONE, new int[]{clk});
+        Simulation simulation = new Simulation(builder.build());
+
+        long reached = simulation.advanceBudgeted(10_000, 3);
+        assertEquals(300, reached, "stopped after exactly 3 advances, well short of the target");
+        assertEquals(java.util.OptionalLong.of(400), simulation.nextScheduledTime());
+
+        long reachedTarget = simulation.advanceBudgeted(10_000, 1_000_000);
+        assertEquals(10_000, reachedTarget, "given enough budget, it reaches the target");
+    }
+
+    @Test
     void schedulingApiRejectsNonFutureTimes() {
         CompiledCircuit.Builder builder = CompiledCircuit.builder();
         int out = builder.addNet(BitWidth.ONE);

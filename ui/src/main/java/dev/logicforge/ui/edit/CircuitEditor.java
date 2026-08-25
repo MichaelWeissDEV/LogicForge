@@ -219,6 +219,23 @@ public final class CircuitEditor {
         return simulation == null ? java.util.OptionalLong.empty() : simulation.nextScheduledTime();
     }
 
+    /** The current simulation time, or 0 if nothing is compiled. */
+    public long currentTime() {
+        return simulation == null ? 0 : simulation.time();
+    }
+
+    /**
+     * Advances virtual time towards {@code targetTime}, bounded to at most {@code maxAdvances}
+     * scheduled events so one call can never block the UI regardless of how far in the future
+     * {@code targetTime} is. Used by the playback controller once per animation frame.
+     */
+    public void advancePlayback(long targetTime, int maxAdvances) {
+        if (simulation != null) {
+            guarded(() -> simulation.advanceBudgeted(targetTime, maxAdvances));
+            notifyChanged();
+        }
+    }
+
     /** Puts the simulation back into its initial state without touching the circuit. */
     public void resetSimulation() {
         if (simulation != null) {

@@ -8,6 +8,7 @@ import dev.logicforge.ui.edit.LogicAnalyzerController;
 import javafx.geometry.Orientation;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.ToggleButton;
@@ -36,6 +37,7 @@ public final class Workbench extends BorderPane {
     private final ProjectController projects;
     private final LogicAnalyzerController analyzerController;
     private final LogicAnalyzerView analyzerView;
+    private final SimulationPlaybackController playback;
     private final SplitPane verticalSplit = new SplitPane();
 
     private final Button undoButton = toolButton("Undo");
@@ -43,6 +45,9 @@ public final class Workbench extends BorderPane {
     private final ToggleButton runButton = new ToggleButton("Pause");
     private final Button stepButton = toolButton("Step");
     private final Button stepTimeButton = toolButton("Step Time");
+    private final ComboBox<SimulationPlaybackController.Speed> speedBox =
+            new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
+                    SimulationPlaybackController.Speed.values()));
     private final ToggleButton analyzerToggle = new ToggleButton("Analyzer");
 
     public Workbench(Stage stage) {
@@ -53,6 +58,7 @@ public final class Workbench extends BorderPane {
         this.projects = new ProjectController(editor, stage, statusBar::showMessage);
         this.analyzerController = new LogicAnalyzerController(editor);
         this.analyzerView = new LogicAnalyzerView(analyzerController);
+        this.playback = new SimulationPlaybackController(editor);
 
         canvas.setStatusListener(statusBar::update);
         canvas.setAnalyzerListener(this::addToAnalyzer);
@@ -120,6 +126,10 @@ public final class Workbench extends BorderPane {
         Button resetButton = toolButton("Reset");
         resetButton.setOnAction(event -> editor.resetSimulation());
 
+        speedBox.setValue(SimulationPlaybackController.Speed.REALTIME);
+        speedBox.getStyleClass().add("tool-button");
+        speedBox.setOnAction(event -> playback.setSpeed(speedBox.getValue()));
+
         analyzerToggle.getStyleClass().add("tool-button");
         analyzerToggle.setOnAction(event -> toggleAnalyzer());
 
@@ -136,7 +146,7 @@ public final class Workbench extends BorderPane {
         HBox toolbar = new HBox(title,
                 newButton, openButton, saveButton, separator(),
                 undoButton, redoButton, separator(),
-                runButton, stepButton, stepTimeButton, resetButton, separator(),
+                runButton, stepButton, stepTimeButton, resetButton, speedBox, separator(),
                 analyzerToggle,
                 spacer,
                 zoomOut, zoomIn, zoomFit);
@@ -145,7 +155,13 @@ public final class Workbench extends BorderPane {
     }
 
     private void toggleRunning() {
-        editor.setRunning(!editor.isRunning());
+        boolean running = !editor.isRunning();
+        editor.setRunning(running);
+        if (running) {
+            playback.start();
+        } else {
+            playback.stop();
+        }
         updateToolbarState();
     }
 
@@ -155,9 +171,10 @@ public final class Workbench extends BorderPane {
         boolean running = editor.isRunning();
         runButton.setSelected(!running);
         runButton.setText(running ? "Pause" : "Run");
-        // Stepping is only meaningful while the simulation is paused.
+        // Stepping and manual speed only matter while playback isn't driving time itself.
         stepButton.setDisable(running);
-        stepTimeButton.setDisable(editor.nextScheduledTime().isEmpty());
+        stepTimeButton.setDisable(running || editor.nextScheduledTime().isEmpty());
+        speedBox.setDisable(!running);
     }
 
     private static Button toolButton(String text) {
