@@ -4,6 +4,7 @@ import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.ComponentRuntimeState;
+import dev.logicforge.simulation.MemoryInfo;
 import dev.logicforge.simulation.MemorySnapshot;
 import java.util.Arrays;
 
@@ -93,6 +94,13 @@ final class RamState implements ComponentRuntimeState {
     @Override
     public MemorySnapshot memorySnapshot() {
         return new MemorySnapshot(memory, revision, dataWidth.bits(), lastReadAddress,
+                lastWriteAddress, lastWrittenValue);
+    }
+
+    /** Avoids {@link #memorySnapshot()}'s array clone — the Inspector only needs metadata. */
+    @Override
+    public MemoryInfo memoryInfo() {
+        return new MemoryInfo(wordCount, dataWidth.bits(), revision, lastReadAddress,
                 lastWriteAddress, lastWrittenValue);
     }
 

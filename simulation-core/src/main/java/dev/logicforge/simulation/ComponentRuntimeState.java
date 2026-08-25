@@ -49,9 +49,20 @@ public interface ComponentRuntimeState {
         return -1;
     }
 
+    /**
+     * Cheap memory metadata (size, last access) without the contents array, or {@code null}
+     * for non-memory state. Memory-backed states should override this directly rather than
+     * relying on the default derivation from {@link #memorySnapshot()}, which still clones
+     * every word — see {@code RamState} for the cheap override.
+     */
+    default MemoryInfo memoryInfo() {
+        MemorySnapshot memory = memorySnapshot();
+        return memory == null ? null : MemoryInfo.of(memory);
+    }
+
     /** Generic live state exposed without UI casts to component-specific state classes. */
     default ComponentDebugSnapshot debugSnapshot() {
-        MemorySnapshot memory = memorySnapshot();
+        MemoryInfo memory = memoryInfo();
         return memory == null ? ComponentDebugSnapshot.EMPTY
                 : new ComponentDebugSnapshot(java.util.Map.of(), java.util.List.of(), memory,
                 java.util.Map.of());

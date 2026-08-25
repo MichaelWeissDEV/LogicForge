@@ -32,6 +32,11 @@ public interface ComponentBehavior {
         return state.memoryRevision();
     }
 
+    /** @see ComponentRuntimeState#memoryInfo() */
+    default MemoryInfo memoryInfo(ComponentRuntimeState state) {
+        return state.memoryInfo();
+    }
+
     default ComponentDebugSnapshot debugSnapshot(ComponentRuntimeState state) {
         return state.debugSnapshot();
     }

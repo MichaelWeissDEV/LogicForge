@@ -241,7 +241,7 @@ class RuntimeStateSnapshotTest {
     }
 
     @Test
-    void ramDebugSnapshotCarriesTheMemorySnapshotByDefault() {
+    void ramDebugSnapshotCarriesMemoryInfoWithoutCloningContents() {
         RamCircuit rc = buildRam(WIDTH4, WIDTH8);
         Simulation sim = rc.simulation();
         sim.setInput(rc.csSrc(), LogicVector.ONE);
@@ -252,8 +252,13 @@ class RuntimeStateSnapshotTest {
 
         dev.logicforge.simulation.ComponentDebugSnapshot debug = sim.debugSnapshot(rc.ramComponent());
 
-        assertNotNull(debug.memory(), "the default debugSnapshot() must fall through to memorySnapshot()");
-        assertEquals(3, debug.memory().lastWriteAddress());
-        assertEquals(LogicVector.fromUnsignedLong(0xAB, 8), debug.memory().lastWrittenValue());
+        // RamState.memoryInfo() is the cheap override; a compile error here would mean it
+        // regressed back to deriving from the array-cloning memorySnapshot().
+        dev.logicforge.simulation.MemoryInfo memory = debug.memory();
+        assertNotNull(memory, "RAM must expose memory metadata");
+        assertEquals(16, memory.size(), "4-bit address => 16 words");
+        assertEquals(8, memory.wordWidth());
+        assertEquals(3, memory.lastWriteAddress());
+        assertEquals(LogicVector.fromUnsignedLong(0xAB, 8), memory.lastWrittenValue());
     }
 }

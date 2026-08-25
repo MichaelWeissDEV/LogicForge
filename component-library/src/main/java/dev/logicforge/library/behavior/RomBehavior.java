@@ -56,9 +56,15 @@ public record RomBehavior(BitWidth dataWidth, LogicVector[] contents) implements
 
     @Override public long memoryRevision(ComponentRuntimeState state) { return 0; }
 
+    /** Avoids {@link #memorySnapshot}'s array clone — the Inspector only needs metadata. */
+    @Override
+    public dev.logicforge.simulation.MemoryInfo memoryInfo(ComponentRuntimeState state) {
+        return new dev.logicforge.simulation.MemoryInfo(contents.length, dataWidth.bits(), 0, -1, -1, null);
+    }
+
     @Override
     public dev.logicforge.simulation.ComponentDebugSnapshot debugSnapshot(ComponentRuntimeState state) {
         return new dev.logicforge.simulation.ComponentDebugSnapshot(
-                java.util.Map.of(), java.util.List.of(), memorySnapshot(state), java.util.Map.of());
+                java.util.Map.of(), java.util.List.of(), memoryInfo(state), java.util.Map.of());
     }
 }

@@ -5,11 +5,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Generic, read-only component introspection consumed by inspectors and debuggers. */
+/**
+ * Generic, read-only component introspection consumed by inspectors and debuggers.
+ *
+ * <p>{@code memory} is a cheap {@link MemoryInfo} rather than a full {@link MemorySnapshot}
+ * — this snapshot is built on every request (e.g. an Inspector refresh, which fires on
+ * every editor change), so it must not clone a memory's entire contents array just to
+ * report its size and last access.
+ */
 public record ComponentDebugSnapshot(
         Map<String, LogicVector> namedValues,
         List<LogicVector> registers,
-        MemorySnapshot memory,
+        MemoryInfo memory,
         Map<String, Long> counters) {
 
     public static final ComponentDebugSnapshot EMPTY =
@@ -21,7 +28,7 @@ public record ComponentDebugSnapshot(
         counters = counters == null ? Map.of() : Map.copyOf(counters);
     }
 
-    public Optional<MemorySnapshot> memoryOptional() {
+    public Optional<MemoryInfo> memoryOptional() {
         return Optional.ofNullable(memory);
     }
 
