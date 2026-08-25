@@ -232,7 +232,11 @@ public final class CircuitCompiler {
         }
 
         private void mergeConnectedPorts() {
+            java.util.Map<PortReference, Boolean> portConnectedAsWhole = new java.util.HashMap<>();
             for (Connection connection : document.connections()) {
+                checkEndpoint(connection.from(), portConnectedAsWhole);
+                checkEndpoint(connection.to(), portConnectedAsWhole);
+                
                 Integer from = portIndex.get(connection.fromPort());
                 Integer to = portIndex.get(connection.toPort());
                 if (from == null || to == null) {
