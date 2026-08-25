@@ -226,7 +226,7 @@ class names, no serialised objects, no net ids, no simulation state.
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "application": "LogicForge",
   "name": "half-adder",
   "circuits": [

@@ -352,7 +352,7 @@ public final class CircuitRenderer {
             for (PlacedPort bit : ComponentGeometry.ports(instance, definition, editor.document())) {
                 if (bit.endpoint().port().equals(reference) && bit.endpoint().isBit()) {
                     CircuitPoint pin = bit.position().plus(dx, dy);
-                    CircuitPoint elbow = spec.side().isHorizontal()
+                    CircuitPoint elbow = junction.get().side().isHorizontal()
                             ? new CircuitPoint(trunk.x(), pin.y())
                             : new CircuitPoint(pin.x(), trunk.y());
                     graphics.strokeLine(pin.x(), pin.y(), elbow.x(), elbow.y());

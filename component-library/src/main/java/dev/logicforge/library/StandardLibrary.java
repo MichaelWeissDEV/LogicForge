@@ -7,10 +7,12 @@ import static dev.logicforge.circuit.component.ComponentCategory.OUTPUTS;
 import static dev.logicforge.circuit.component.ComponentCategory.ROUTING;
 import static dev.logicforge.circuit.component.ComponentCategory.SEQUENTIAL;
 import static dev.logicforge.circuit.component.ComponentCategory.SOURCES;
+import static dev.logicforge.circuit.component.ComponentCategory.HIERARCHY;
 import static dev.logicforge.circuit.component.InputInteraction.MOMENTARY;
 import static dev.logicforge.circuit.component.InputInteraction.TOGGLE;
 
 import dev.logicforge.circuit.component.InputInteraction;
+import dev.logicforge.circuit.document.SubcircuitSupport;
 
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
@@ -80,6 +82,7 @@ final class StandardLibrary {
         registerRouting(registry);
         registerArithmetic(registry);
         registerMemory(registry);
+        registerHierarchy(registry);
         registerOutputs(registry);
         return registry;
     }
@@ -292,17 +295,17 @@ final class StandardLibrary {
                                     int addrBits = dev.logicforge.library.behavior.RegisterFileBehavior.addrBits(values.getInt(LibraryParameters.REGISTER_COUNT));
                                     dev.logicforge.logic.BitWidth addrWidth = dev.logicforge.logic.BitWidth.of(addrBits);
                                     return List.of(
-                                        new PortLayouts.DynamicPortDef("RD_ADDR_A", v -> addrWidth, ""),
-                                        new PortLayouts.DynamicPortDef("RD_ADDR_B", v -> addrWidth, ""),
-                                        new PortLayouts.DynamicPortDef("WR_ADDR", v -> addrWidth, ""),
-                                        PortLayouts.DynamicPortDef.bus("WR_DATA", LibraryParameters.WIDTH),
-                                        PortLayouts.DynamicPortDef.fixed("WR_EN"),
-                                        PortLayouts.DynamicPortDef.fixed("CLK")
+                                        new PortLayouts.DynamicPortDef("RD_ADDR_A", v -> addrWidth, "Address for combinational read port A"),
+                                        new PortLayouts.DynamicPortDef("RD_ADDR_B", v -> addrWidth, "Address for combinational read port B"),
+                                        new PortLayouts.DynamicPortDef("WR_ADDR", v -> addrWidth, "Register written on the rising clock edge"),
+                                        PortLayouts.DynamicPortDef.bus("WR_DATA", LibraryParameters.WIDTH, "Data written to WR_ADDR"),
+                                        PortLayouts.DynamicPortDef.fixed("WR_EN", "Write enable sampled on the rising clock edge"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Rising-edge write clock")
                                     );
                                 },
                                 values -> List.of(
-                                    PortLayouts.DynamicPortDef.bus("RD_DATA_A", LibraryParameters.WIDTH),
-                                    PortLayouts.DynamicPortDef.bus("RD_DATA_B", LibraryParameters.WIDTH)
+                                    PortLayouts.DynamicPortDef.bus("RD_DATA_A", LibraryParameters.WIDTH, "Contents selected by RD_ADDR_A"),
+                                    PortLayouts.DynamicPortDef.bus("RD_DATA_B", LibraryParameters.WIDTH, "Contents selected by RD_ADDR_B")
                                 ),
                                 PortLayouts.GATE_WIDTH),
                         List.of("register file", "rf", "regfile")),
@@ -649,15 +652,15 @@ final class StandardLibrary {
                 definition("arithmetic.alu", "ALU", ARITHMETIC,
                         "Arithmetic Logic Unit", List.of(LibraryParameters.WIDTH),
                         PortLayouts.dynamicBox(List.of(
-                                        PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH),
-                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH),
-                                        new PortLayouts.DynamicPortDef("OP", v -> dev.logicforge.logic.BitWidth.of(4), ""),
-                                        PortLayouts.DynamicPortDef.fixed("CIN")),
-                                List.of(PortLayouts.DynamicPortDef.bus("RESULT", LibraryParameters.WIDTH),
-                                        PortLayouts.DynamicPortDef.fixed("ZERO"),
-                                        PortLayouts.DynamicPortDef.fixed("CARRY"),
-                                        PortLayouts.DynamicPortDef.fixed("OVERFLOW"),
-                                        PortLayouts.DynamicPortDef.fixed("NEGATIVE")),
+                                        PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH, "First operand"),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH, "Second operand"),
+                                        new PortLayouts.DynamicPortDef("OP", v -> dev.logicforge.logic.BitWidth.of(4), "Operation selector: ADD=0, SUB=1, AND=2, OR=3, XOR=4"),
+                                        PortLayouts.DynamicPortDef.fixed("CIN", "Carry in; use 1 for A−B without borrow")),
+                                List.of(PortLayouts.DynamicPortDef.bus("RESULT", LibraryParameters.WIDTH, "Selected arithmetic or logical result"),
+                                        PortLayouts.DynamicPortDef.fixed("ZERO", "1 when RESULT is zero"),
+                                        PortLayouts.DynamicPortDef.fixed("CARRY", "Arithmetic carry or shifted-out bit"),
+                                        PortLayouts.DynamicPortDef.fixed("OVERFLOW", "Signed overflow for ADD and SUB"),
+                                        PortLayouts.DynamicPortDef.fixed("NEGATIVE", "Most significant bit of RESULT")),
                                 PortLayouts.GATE_WIDTH),
                         List.of("alu", "arithmetic", "math")),
                 values -> new dev.logicforge.library.behavior.AluBehavior(dev.logicforge.logic.BitWidth.of(values.getInt(LibraryParameters.WIDTH)))));
@@ -828,6 +831,30 @@ final class StandardLibrary {
                         List.of("ram", "memory", "read-write", "storage")),
                 values -> new RamBehavior(
                         BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
+    }
+
+    private static void registerHierarchy(ComponentRegistry registry) {
+        registry.register(ComponentType.of(
+                definition(SubcircuitSupport.INPUT_DEFINITION_ID, "Subcircuit Input", HIERARCHY,
+                        "Declares a named input on this circuit's reusable interface",
+                        List.of(SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH),
+                        PortLayouts.dynamicBox(List.of(),
+                                List.of(new PortLayouts.DynamicPortDef("OUT",
+                                        values -> BitWidth.of(values.getInt(SubcircuitSupport.INTERFACE_WIDTH)),
+                                        "Signal entering this child circuit")), REGISTER_WIDTH),
+                        List.of("subcircuit", "interface", "input")),
+                context -> { }));
+        registry.register(ComponentType.of(
+                definition(SubcircuitSupport.OUTPUT_DEFINITION_ID, "Subcircuit Output", HIERARCHY,
+                        "Declares a named output on this circuit's reusable interface",
+                        List.of(SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("IN",
+                                        values -> BitWidth.of(values.getInt(SubcircuitSupport.INTERFACE_WIDTH)),
+                                        "Signal leaving this child circuit")),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("subcircuit", "interface", "output")),
+                context -> { }));
     }
 
     /** Parses comma-separated hex words into {@code wordCount} vectors; blank/bad entries default to 0. */

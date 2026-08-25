@@ -9,6 +9,7 @@ import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortSlice;
+import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.compiler.CircuitCompileException;
 import dev.logicforge.compiler.CircuitCompiler;
 import dev.logicforge.compiler.CompilationResult;
@@ -162,11 +163,14 @@ public final class CircuitEditor {
     }
 
     public Optional<ComponentDefinition> definitionOf(ComponentInstance instance) {
-        return registry.definition(instance.definitionId());
+        Optional<ComponentDefinition> builtIn = registry.definition(instance.definitionId());
+        return builtIn.isPresent() ? builtIn
+                : SubcircuitSupport.definition(project, instance.definitionId());
     }
 
     public Optional<ComponentDefinition> definition(String definitionId) {
-        return registry.definition(definitionId);
+        Optional<ComponentDefinition> builtIn = registry.definition(definitionId);
+        return builtIn.isPresent() ? builtIn : SubcircuitSupport.definition(project, definitionId);
     }
 
     // ------------------------------------------------------------------
@@ -260,7 +264,7 @@ public final class CircuitEditor {
         if (simulation == null || compilation == null) {
             return Optional.empty();
         }
-        OptionalInt net = compilation.sourceMap().netOf(port);
+        OptionalInt net = netOf(port);
         return net.isPresent() ? Optional.of(simulation.readNet(net.getAsInt())) : Optional.empty();
     }
 
@@ -269,7 +273,7 @@ public final class CircuitEditor {
         if (simulation == null || compilation == null) {
             return Optional.empty();
         }
-        OptionalInt net = compilation.sourceMap().netOf(endpoint);
+        OptionalInt net = netOf(endpoint);
         if (net.isEmpty()) {
             return Optional.empty();
         }
@@ -290,11 +294,17 @@ public final class CircuitEditor {
     }
 
     public OptionalInt netOf(PortReference port) {
-        return compilation == null ? OptionalInt.empty() : compilation.sourceMap().netOf(port);
+        if (compilation == null) return OptionalInt.empty();
+        OptionalInt direct = compilation.sourceMap().netOf(port);
+        return direct.isPresent() ? direct : netOf(PortEndpoint.whole(port));
     }
 
     public OptionalInt netOf(PortEndpoint endpoint) {
-        return compilation == null ? OptionalInt.empty() : compilation.sourceMap().netOf(endpoint);
+        if (compilation == null) return OptionalInt.empty();
+        OptionalInt direct = compilation.sourceMap().netOf(endpoint);
+        return direct.isPresent() ? direct : compilation.hierarchySourceMap().netId(
+                dev.logicforge.compiler.CircuitFlattener.endpointPath(
+                        document.metadata().name(), endpoint));
     }
 
     public OptionalInt netOfConnection(UUID connectionId) {
@@ -417,7 +427,7 @@ public final class CircuitEditor {
 
     private void recompile(Map<UUID, LogicVector> previousInputs, Map<UUID, Object> previousStates) {
         try {
-            compilation = compiler.compile(document);
+            compilation = compiler.compile(project, document.metadata().name());
             compileError = null;
             lastValidationIssues = compilation.issues();
             simulation = new Simulation(compilation.circuit(), false);

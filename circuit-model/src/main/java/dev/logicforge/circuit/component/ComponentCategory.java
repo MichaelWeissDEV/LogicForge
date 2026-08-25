@@ -15,7 +15,8 @@ public enum ComponentCategory {
     ROUTING("Routing"),
     ARITHMETIC("Arithmetic"),
     SEQUENTIAL("Sequential"),
-    MEMORY("Memory");
+    MEMORY("Memory"),
+    HIERARCHY("Hierarchy");
 
     private final String displayName;
 

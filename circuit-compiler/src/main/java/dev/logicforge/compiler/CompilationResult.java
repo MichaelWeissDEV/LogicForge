@@ -8,10 +8,17 @@ import java.util.OptionalInt;
 public record CompilationResult(
         CompiledCircuit circuit,
         CircuitSourceMap sourceMap,
-        List<ValidationIssue> issues) {
+        List<ValidationIssue> issues,
+        HierarchySourceMap hierarchySourceMap) {
 
     public CompilationResult {
         issues = List.copyOf(issues);
+        hierarchySourceMap = hierarchySourceMap == null ? HierarchySourceMap.EMPTY : hierarchySourceMap;
+    }
+
+    public CompilationResult(CompiledCircuit circuit, CircuitSourceMap sourceMap,
+                             List<ValidationIssue> issues) {
+        this(circuit, sourceMap, issues, HierarchySourceMap.EMPTY);
     }
 
     /**

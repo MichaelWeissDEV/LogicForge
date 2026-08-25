@@ -1,0 +1,261 @@
+package dev.logicforge.compiler;
+
+import dev.logicforge.circuit.document.CircuitDocument;
+import dev.logicforge.circuit.document.CircuitMetadata;
+import dev.logicforge.circuit.document.CircuitProject;
+import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortSlice;
+import dev.logicforge.circuit.document.SubcircuitSupport;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+
+/** Recursively expands project-backed subcircuit instances into one flat document. */
+public final class CircuitFlattener {
+
+    private CircuitFlattener() {
+    }
+
+    public static CircuitDocument flatten(CircuitProject project, String circuitName) {
+        return flattenWithMap(project, circuitName).document();
+    }
+
+    public static FlatteningResult flattenWithMap(CircuitProject project, String circuitName) {
+        return new Run(project, circuitName).run();
+    }
+
+    public static String endpointPath(String circuitName, PortEndpoint endpoint) {
+        return circuitName + "/" + endpoint.componentId() + "." + endpointSuffix(endpoint);
+    }
+
+    private static final class Run {
+
+        private final CircuitProject project;
+        private final String rootCircuit;
+        private final CircuitDocument flat;
+        private final Map<Node, Node> parent = new LinkedHashMap<>();
+        private final Map<ComponentKey, ComponentInstance> primitiveByKey = new HashMap<>();
+        private final Map<ComponentKey, Map<String, Node>> subcircuitPorts = new HashMap<>();
+        private final Set<ComponentKey> interfaceComponents = new java.util.HashSet<>();
+        private final Map<Node, PortEndpoint> flatEndpointByNode = new LinkedHashMap<>();
+        private final Map<UUID, Node> rootConnectionNode = new LinkedHashMap<>();
+        private final Map<String, UUID> componentUuidByPath = new LinkedHashMap<>();
+        private final Map<String, PortEndpoint> flatEndpointByPath = new LinkedHashMap<>();
+        private final Deque<String> circuitStack = new ArrayDeque<>();
+
+        Run(CircuitProject project, String rootCircuit) {
+            this.project = project;
+            this.rootCircuit = rootCircuit;
+            CircuitDocument source = project.circuit(rootCircuit).orElseThrow(() ->
+                    new IllegalArgumentException("Project has no circuit '" + rootCircuit + "'"));
+            this.flat = new CircuitDocument(new CircuitMetadata(
+                    source.metadata().name(), source.metadata().description()));
+        }
+
+        FlatteningResult run() {
+            visit(rootCircuit, rootCircuit, true);
+            emitConnections();
+            return new FlatteningResult(flat, componentUuidByPath, flatEndpointByPath);
+        }
+
+        private Map<String, Node> visit(String circuitName, String path, boolean root) {
+            if (circuitStack.contains(circuitName)) {
+                throw new IllegalArgumentException("Recursive subcircuit cycle: "
+                        + String.join(" -> ", circuitStack) + " -> " + circuitName);
+            }
+            CircuitDocument document = project.circuit(circuitName).orElseThrow(() ->
+                    new IllegalArgumentException("Unknown child circuit '" + circuitName + "'"));
+            circuitStack.addLast(circuitName);
+
+            Map<String, Node> interfaces = new LinkedHashMap<>();
+            for (SubcircuitSupport.InterfacePort port : SubcircuitSupport.interfacePorts(document)) {
+                ComponentKey key = new ComponentKey(path, port.componentId());
+                interfaceComponents.add(key);
+                interfaces.put(port.name(), node(path, port.componentId(), port.internalPortName(),
+                        PortSlice.Whole.INSTANCE));
+            }
+
+            for (ComponentInstance component : document.components()) {
+                ComponentKey key = new ComponentKey(path, component.id());
+                if (interfaceComponents.contains(key)) {
+                    continue;
+                }
+                if (SubcircuitSupport.isInstanceDefinition(component.definitionId())) {
+                    String childName = SubcircuitSupport.circuitName(component.definitionId());
+                    String childPath = path + "/" + component.id();
+                    Map<String, Node> childPorts = visit(childName, childPath, false);
+                    subcircuitPorts.put(key, childPorts);
+                    for (Map.Entry<String, Node> port : childPorts.entrySet()) {
+                        union(node(path, component.id(), port.getKey(), PortSlice.Whole.INSTANCE),
+                                port.getValue());
+                    }
+                } else {
+                    UUID flatId = root ? component.id() : deterministicId(path, component.id());
+                    ComponentInstance clone = component.withId(flatId);
+                    primitiveByKey.put(key, clone);
+                    componentUuidByPath.put(path + "/" + component.id(), flatId);
+                    flat.addComponent(clone);
+                }
+            }
+
+            for (Connection connection : document.connections()) {
+                Node from = endpointNode(path, connection.from());
+                Node to = endpointNode(path, connection.to());
+                union(from, to);
+                if (root) {
+                    rootConnectionNode.put(connection.id(), from);
+                }
+            }
+            circuitStack.removeLast();
+            return interfaces;
+        }
+
+        private Node endpointNode(String path, PortEndpoint endpoint) {
+            ComponentKey key = new ComponentKey(path, endpoint.componentId());
+            if (interfaceComponents.contains(key)) {
+                if (endpoint.isBit()) {
+                    throw new IllegalArgumentException(
+                            "First hierarchy iteration requires whole interface wiring: " + endpoint);
+                }
+                return node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
+            }
+            Map<String, Node> childPorts = subcircuitPorts.get(key);
+            if (childPorts != null) {
+                if (endpoint.isBit()) {
+                    throw new IllegalArgumentException(
+                            "First hierarchy iteration requires whole subcircuit wiring: " + endpoint);
+                }
+                Node port = childPorts.get(endpoint.portName());
+                if (port == null) {
+                    throw new IllegalArgumentException("Subcircuit has no interface port '"
+                            + endpoint.portName() + "'");
+                }
+                return node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
+            }
+
+            ComponentInstance primitive = primitiveByKey.get(key);
+            Node node = node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
+            if (primitive != null) {
+                flatEndpointByNode.putIfAbsent(node, new PortEndpoint(
+                        new PortReference(primitive.id(), endpoint.portName()), endpoint.slice()));
+            }
+            return node;
+        }
+
+        private void emitConnections() {
+            Map<Node, LinkedHashSet<PortEndpoint>> endpointsByGroup = new LinkedHashMap<>();
+            for (Map.Entry<Node, PortEndpoint> entry : flatEndpointByNode.entrySet()) {
+                endpointsByGroup.computeIfAbsent(find(entry.getKey()), ignored -> new LinkedHashSet<>())
+                        .add(entry.getValue());
+            }
+            Map<Node, List<UUID>> rootIdsByGroup = new LinkedHashMap<>();
+            rootConnectionNode.forEach((id, node) -> rootIdsByGroup
+                    .computeIfAbsent(find(node), ignored -> new ArrayList<>()).add(id));
+
+            int groupIndex = 0;
+            for (Map.Entry<Node, LinkedHashSet<PortEndpoint>> entry : endpointsByGroup.entrySet()) {
+                List<PortEndpoint> endpoints = List.copyOf(entry.getValue());
+                PortEndpoint representative = endpoints.get(0);
+                for (Node node : parent.keySet()) {
+                    if (find(node).equals(entry.getKey())) {
+                        flatEndpointByPath.put(nodePath(node), representative);
+                    }
+                }
+                if (endpoints.size() < 2) {
+                    groupIndex++;
+                    continue;
+                }
+                List<UUID> rootIds = rootIdsByGroup.getOrDefault(entry.getKey(), List.of());
+                UUID firstId = rootIds.isEmpty()
+                        ? generatedConnectionId(groupIndex, 1) : rootIds.get(0);
+                flat.addConnection(new Connection(firstId, endpoints.get(0), endpoints.get(1), List.of()));
+                for (int i = 1; i < rootIds.size(); i++) {
+                    flat.addConnection(new Connection(rootIds.get(i), endpoints.get(0), endpoints.get(1), List.of()));
+                }
+                for (int i = 2; i < endpoints.size(); i++) {
+                    flat.addConnection(new Connection(generatedConnectionId(groupIndex, i),
+                            endpoints.get(0), endpoints.get(i), List.of()));
+                }
+                groupIndex++;
+            }
+        }
+
+        private Node node(String path, UUID componentId, String portName, PortSlice slice) {
+            Node node = new Node(path, componentId, portName, slice);
+            parent.putIfAbsent(node, node);
+            return node;
+        }
+
+        private Node find(Node node) {
+            parent.putIfAbsent(node, node);
+            Node current = node;
+            while (!parent.get(current).equals(current)) {
+                current = parent.get(current);
+            }
+            Node root = current;
+            current = node;
+            while (!parent.get(current).equals(current)) {
+                Node next = parent.get(current);
+                parent.put(current, root);
+                current = next;
+            }
+            return root;
+        }
+
+        private void union(Node left, Node right) {
+            Node a = find(left);
+            Node b = find(right);
+            if (!a.equals(b)) {
+                parent.put(b, a);
+            }
+        }
+
+        private UUID generatedConnectionId(int group, int index) {
+            return UUID.nameUUIDFromBytes((rootCircuit + ":net:" + group + ":" + index)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+
+        private static UUID deterministicId(String path, UUID original) {
+            return UUID.nameUUIDFromBytes((path + ":" + original)
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private record ComponentKey(String path, UUID componentId) {
+    }
+
+    private record Node(String path, UUID componentId, String portName, PortSlice slice) {
+    }
+
+    public record FlatteningResult(
+            CircuitDocument document,
+            Map<String, UUID> flattenedComponentUuidByPath,
+            Map<String, PortEndpoint> flattenedEndpointByPath) {
+        public FlatteningResult {
+            flattenedComponentUuidByPath = Map.copyOf(flattenedComponentUuidByPath);
+            flattenedEndpointByPath = Map.copyOf(flattenedEndpointByPath);
+        }
+    }
+
+    private static String nodePath(Node node) {
+        return node.path() + "/" + node.componentId() + "."
+                + endpointSuffix(new PortEndpoint(
+                new PortReference(node.componentId(), node.portName()), node.slice()));
+    }
+
+    private static String endpointSuffix(PortEndpoint endpoint) {
+        return endpoint.slice() instanceof PortSlice.Bit bit
+                ? endpoint.portName() + "[" + bit.index() + "]" : endpoint.portName();
+    }
+}

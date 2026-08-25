@@ -54,7 +54,7 @@ public final class Workbench extends BorderPane {
     public Workbench(Stage stage) {
         this.editor = new CircuitEditor(ComponentRegistry.standard());
         this.canvas = new CircuitCanvasView(editor);
-        this.palette = new PaletteView(editor.registry(), canvas);
+        this.palette = new PaletteView(editor, canvas);
         this.statusBar = new StatusBarView(editor, canvas.viewport());
         this.projects = new ProjectController(editor, stage, statusBar::showMessage);
         this.analyzerController = new LogicAnalyzerController(editor);
@@ -91,7 +91,9 @@ public final class Workbench extends BorderPane {
                 .map(ComponentInstance::label)
                 .filter(label -> !label.isBlank())
                 .orElseGet(() -> reference.componentId().toString().substring(0, 8));
-        analyzerController.addSignal(endpoint, componentLabel + "." + endpoint);
+        String pin = endpoint.slice() instanceof dev.logicforge.circuit.document.PortSlice.Bit bit
+                ? reference.portName() + "[" + bit.index() + "]" : reference.portName();
+        analyzerController.addSignal(endpoint, componentLabel + "." + pin);
         if (!analyzerToggle.isSelected()) {
             analyzerToggle.setSelected(true);
             toggleAnalyzer();

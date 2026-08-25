@@ -144,6 +144,7 @@ public record AluBehavior(BitWidth width) implements ComponentBehavior {
             overflow = ((aVal ^ result) & (bVal ^ result) & signBit) != 0;
         } else {
             long mask = (1L << bits) - 1;
+            bVal &= mask;
             long signBit = 1L << (bits - 1);
             long rawSum = aVal + bVal + cinBit;
             carryOut = (rawSum >>> bits & 1L) != 0;

@@ -3,6 +3,9 @@ package dev.logicforge.ui.view;
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.library.ComponentType;
+import dev.logicforge.circuit.document.CircuitProject;
+import dev.logicforge.circuit.document.SubcircuitSupport;
+import dev.logicforge.ui.edit.CircuitEditor;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.geometry.Pos;
@@ -34,11 +37,13 @@ public final class PaletteView extends VBox {
     }
 
     private final ComponentRegistry registry;
+    private final CircuitEditor editor;
     private final ListView<Entry> list = new ListView<>();
     private final TextField search = new TextField();
 
-    public PaletteView(ComponentRegistry registry, CircuitCanvasView canvas) {
-        this.registry = registry;
+    public PaletteView(CircuitEditor editor, CircuitCanvasView canvas) {
+        this.editor = editor;
+        this.registry = editor.registry();
         getStyleClass().add("side-panel");
 
         Label header = new Label("COMPONENTS");
@@ -61,6 +66,7 @@ public final class PaletteView extends VBox {
         });
 
         getChildren().addAll(header, search, list);
+        editor.addChangeListener(() -> refresh(search.getText()));
         refresh("");
     }
 
@@ -72,15 +78,34 @@ public final class PaletteView extends VBox {
 
     private void refresh(String query) {
         List<Entry> entries = new ArrayList<>();
+        List<ComponentType> available = availableTypes();
         if (query == null || query.isBlank()) {
-            for (ComponentCategory category : registry.populatedCategories()) {
+            for (ComponentCategory category : ComponentCategory.values()) {
+                List<ComponentType> categoryTypes = available.stream()
+                        .filter(type -> type.definition().category() == category).toList();
+                if (categoryTypes.isEmpty()) continue;
                 entries.add(new Entry.Category(category));
-                registry.byCategory(category).forEach(type -> entries.add(new Entry.Component(type)));
+                categoryTypes.forEach(type -> entries.add(new Entry.Component(type)));
             }
         } else {
-            registry.search(query).forEach(type -> entries.add(new Entry.Component(type)));
+            String needle = query.trim().toLowerCase(java.util.Locale.ROOT);
+            available.stream().filter(type -> type.displayName().toLowerCase(java.util.Locale.ROOT).contains(needle)
+                            || type.id().toLowerCase(java.util.Locale.ROOT).contains(needle)
+                            || type.definition().searchKeywords().stream().anyMatch(keyword ->
+                            keyword.toLowerCase(java.util.Locale.ROOT).contains(needle)))
+                    .forEach(type -> entries.add(new Entry.Component(type)));
         }
         list.getItems().setAll(entries);
+    }
+
+    private List<ComponentType> availableTypes() {
+        List<ComponentType> types = new ArrayList<>(registry.all());
+        for (var circuit : editor.project().circuits()) {
+            if (circuit.metadata().name().equals(CircuitProject.MAIN_CIRCUIT)) continue;
+            var definition = SubcircuitSupport.definitionFor(circuit.metadata().name(), circuit);
+            types.add(ComponentType.of(definition, context -> { }));
+        }
+        return types;
     }
 
     /** One row: a quiet category heading, or a draggable component. */

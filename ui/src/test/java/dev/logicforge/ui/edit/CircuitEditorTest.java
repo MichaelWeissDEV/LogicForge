@@ -10,6 +10,7 @@ import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortDisplayMode;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.library.ComponentRegistry;
@@ -164,6 +165,67 @@ class CircuitEditorTest {
         editor.undo();
         assertEquals(LogicVector.fromUnsignedLong(0x34, 8),
                 editor.memorySnapshot(rom.id()).orElseThrow().wordAt(1));
+    }
+
+    @Test
+    void restoredCounterImmediatelyRedrivesItsCountAfterRecompile() {
+        ComponentInstance clock = add("source.toggle", 0, 0);
+        ComponentInstance enable = add("source.one", 0, 80);
+        ComponentInstance reset = add("source.zero", 0, 160);
+        ComponentInstance counter = add("sequential.counter_up", 220, 80);
+        connect(clock, "OUT", counter, "CLK");
+        connect(enable, "OUT", counter, "ENABLE");
+        connect(reset, "OUT", counter, "RESET");
+        editor.toggleInput(clock.id());
+        assertEquals(LogicVector.fromUnsignedLong(1, 8), valueAt(counter, "COUNT"));
+
+        add("logic.not", 500, 300);
+
+        assertEquals(LogicVector.fromUnsignedLong(1, 8), valueAt(counter, "COUNT"));
+    }
+
+    @Test
+    void restoredRamImmediatelyRedrivesCurrentlySelectedWord() {
+        ParameterValues addressParameters = editor.definition("routing.bus_constant").orElseThrow()
+                .defaultParameters().with(LibraryParameters.WIDTH, 2)
+                .with(LibraryParameters.BUS_CONSTANT_VALUE, "0");
+        ParameterValues ramParameters = editor.definition("memory.ram").orElseThrow()
+                .defaultParameters().with(LibraryParameters.ADDRESS_WIDTH, 2)
+                .with(LibraryParameters.WIDTH, 8);
+        ComponentInstance address = add("routing.bus_constant", 0, 0, addressParameters);
+        ComponentInstance we = add("source.zero", 0, 80);
+        ComponentInstance oe = add("source.one", 0, 160);
+        ComponentInstance cs = add("source.one", 0, 240);
+        ComponentInstance ram = add("memory.ram", 240, 100, ramParameters);
+        connect(address, "OUT", ram, "ADDRESS");
+        connect(we, "OUT", ram, "WE");
+        connect(oe, "OUT", ram, "OE");
+        connect(cs, "OUT", ram, "CS");
+        editor.writeMemoryWord(ram.id(), 0, LogicVector.fromUnsignedLong(0xA5, 8));
+        assertEquals(LogicVector.fromUnsignedLong(0xA5, 8), valueAt(ram, "DATA"));
+
+        add("logic.not", 500, 300);
+
+        assertEquals(LogicVector.fromUnsignedLong(0xA5, 8), valueAt(ram, "DATA"));
+    }
+
+    @Test
+    void analyzerCanExtractBusBitWithoutCreatingASimulationNet() {
+        ParameterValues value = editor.definition("routing.bus_constant").orElseThrow()
+                .defaultParameters().with(LibraryParameters.WIDTH, 8)
+                .with(LibraryParameters.BUS_CONSTANT_VALUE, "A5");
+        ComponentInstance source = add("routing.bus_constant", 0, 0, value);
+        ComponentInstance probe = add("routing.bus_probe", 200, 0);
+        connect(source, "OUT", probe, "IN");
+        int netCount = editor.compilation().orElseThrow().circuit().netCount();
+        PortEndpoint bit = PortEndpoint.bit(new PortReference(source.id(), "OUT"), 2);
+        LogicAnalyzerController analyzer = new LogicAnalyzerController(editor);
+
+        analyzer.addSignal(bit, "DATA[2]");
+
+        assertEquals(LogicVector.ONE, analyzer.traceFor(bit).orElseThrow()
+                .transitions().get(0).value());
+        assertEquals(netCount, editor.compilation().orElseThrow().circuit().netCount());
     }
 
     @Test

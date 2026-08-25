@@ -13,6 +13,7 @@ import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortDisplayMode;
+import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.library.ComponentRegistry;
@@ -224,6 +225,28 @@ class ProjectFormatTest {
         ProjectFormatException error = assertThrows(ProjectFormatException.class,
                 () -> ProjectFormat.fromJson(json, "bad-v1"));
         assertTrue(error.getMessage().contains("formatVersion 2"));
+    }
+
+    @Test
+    void childCircuitAndParentInstanceRoundTripTogether() {
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance childInstance = SubcircuitSupport.instantiate(
+                "BytePipe", new CircuitPoint(120, 80));
+        main.addComponent(childInstance);
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("BytePipe", ""));
+        child.addComponent(ComponentInstance.create(SubcircuitSupport.INPUT_DEFINITION_ID,
+                new CircuitPoint(0, 0), ParameterValues.defaultsOf(java.util.List.of(
+                                SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                        .with(SubcircuitSupport.INTERFACE_NAME, "DATA")
+                        .with(SubcircuitSupport.INTERFACE_WIDTH, 8)));
+        CircuitProject project = CircuitProject.of("hierarchy", main);
+        project.putCircuit(child);
+
+        CircuitProject loaded = roundTrip(project);
+
+        assertTrue(loaded.circuit("BytePipe").isPresent());
+        assertEquals(SubcircuitSupport.definitionId("BytePipe"),
+                loaded.mainCircuit().requireComponent(childInstance.id()).definitionId());
     }
 
     @Test

@@ -4,6 +4,7 @@ import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.component.PortDirection;
 import dev.logicforge.circuit.component.PortSpec;
 import dev.logicforge.circuit.document.CircuitDocument;
+import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortEndpoint;
@@ -67,6 +68,43 @@ public final class CircuitCompiler {
         }
         compilation.validateNetTopology();
         return compilation.emit();
+    }
+
+    /** Flattens and compiles one circuit from a multi-document project. */
+    public CompilationResult compile(CircuitProject project, String circuitName) {
+        try {
+            ComponentRegistry projectRegistry = new ComponentRegistry();
+            registry.all().forEach(projectRegistry::register);
+            for (CircuitDocument child : project.circuits()) {
+                var definition = dev.logicforge.circuit.document.SubcircuitSupport.definitionFor(
+                        child.metadata().name(), child);
+                projectRegistry.register(ComponentType.of(definition, context -> { }));
+            }
+            CircuitCompiler projectValidator = new CircuitCompiler(projectRegistry);
+            List<ValidationIssue> projectIssues = new ArrayList<>();
+            for (CircuitDocument child : project.circuits()) {
+                projectIssues.addAll(projectValidator.validate(child));
+            }
+            if (projectIssues.stream().anyMatch(ValidationIssue::isError)) {
+                throw new CircuitCompileException(projectIssues);
+            }
+            CircuitFlattener.FlatteningResult flattened =
+                    CircuitFlattener.flattenWithMap(project, circuitName);
+            CompilationResult result = compile(flattened.document());
+            Map<String, Integer> components = new LinkedHashMap<>();
+            flattened.flattenedComponentUuidByPath().forEach((path, uuid) ->
+                    result.sourceMap().componentId(uuid).ifPresent(id -> components.put(path, id)));
+            Map<String, Integer> nets = new LinkedHashMap<>();
+            flattened.flattenedEndpointByPath().forEach((path, endpoint) ->
+                    result.sourceMap().netOf(endpoint).ifPresent(id -> nets.put(path, id)));
+            return new CompilationResult(result.circuit(), result.sourceMap(), result.issues(),
+                    new HierarchySourceMap(components, nets));
+        } catch (CircuitCompileException failure) {
+            throw failure;
+        } catch (IllegalArgumentException failure) {
+            throw new CircuitCompileException(List.of(
+                    ValidationIssue.error(failure.getMessage(), null, null)));
+        }
     }
 
     /** One canonical compilation run. A DSU element is an effective electrical endpoint. */

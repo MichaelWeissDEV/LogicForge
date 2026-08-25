@@ -44,6 +44,10 @@ final class BehaviorHarness implements ComponentContext {
         return new BehaviorHarness(behavior, outputCount, vectors);
     }
 
+    static BehaviorHarness ofVectors(ComponentBehavior behavior, int outputCount, LogicVector... inputs) {
+        return new BehaviorHarness(behavior, outputCount, inputs);
+    }
+
     LogicState run(ComponentBehavior behavior) {
         behavior.evaluate(this);
         return outputs[0].singleBit();
@@ -54,9 +58,17 @@ final class BehaviorHarness implements ComponentContext {
         inputs[index] = LogicVector.single(value);
     }
 
+    void setInput(int index, LogicVector value) {
+        inputs[index] = value;
+    }
+
     /** The value output port {@code index} was last driven with. */
     LogicState output(int index) {
         return outputs[index].singleBit();
+    }
+
+    LogicVector outputVector(int index) {
+        return outputs[index];
     }
 
     @Override

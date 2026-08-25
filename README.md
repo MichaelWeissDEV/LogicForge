@@ -21,25 +21,32 @@ driver conflicts behave the way they do in hardware.
 
 | Category | Components |
 | --- | --- |
-| Sources | Logic 0, Logic 1, Logic X, Logic Z, Toggle Switch, Push Button |
+| Sources | Logic 0, Logic 1, Logic X, Logic Z, Toggle Switch, Push Button, Clock |
 | Logic | Buffer, NOT, Tri-State Buffer, Inverting Tri-State Buffer, AND, NAND, OR, NOR, XOR, XNOR |
-| Outputs | LED, Logic Probe, Output Pin |
+| Sequential | Latches, flip-flops, registers, shift registers, counters |
+| Routing | MUX/DEMUX, encoders/decoders, splitter/joiner, bus constants/probes and wide tri-state buffers |
+| Arithmetic | Half/full adders, adder/subtractor, ALU, comparator, shifts, parity and increment/decrement |
+| Memory | Register File, RAM, ROM |
+| Outputs | LED, Logic Probe, Output Pin, Bus Probe |
 
 The six multi-input gates take 2 to 16 inputs, configurable per instance in the inspector.
 
 **Editor.** Drag components out of a searchable palette, wire ports together with
 orthogonal wires that follow when components move or rotate, select with clicks or a rubber
 band, move, rotate, copy, paste, delete, undo and redo everything, zoom around the cursor,
-pan, and watch signal values on the wires while the circuit runs.
+pan, expand bus ports into individual bit pins, and watch signals in the docked logic
+analyzer while the circuit runs. RAM and ROM contents are inspectable and support raw
+binary load/save.
 
 **Projects.** Circuits are saved as versioned JSON (`.logic`). Loading a saved project
 restores the same circuit structurally, wire for wire.
 
 ### Not in this version
 
-There is no
-hierarchical subcircuits, no logic analyser and no CPU. Those are on the roadmap below;
-nothing half-finished is shipped or shown in the UI.
+Initial project-backed subcircuits can declare named Input/Output interfaces and are
+flattened into the parent simulation. Opening/editing child internals is still a later UI
+milestone. There is no complete CPU yet; the ALU and register file are available as CPU
+datapath building blocks.
 
 ## Architecture
 
