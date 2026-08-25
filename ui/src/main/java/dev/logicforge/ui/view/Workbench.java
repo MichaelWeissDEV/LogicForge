@@ -72,6 +72,7 @@ public final class Workbench extends BorderPane {
         setBottom(statusBar);
         analyzerToggle.setSelected(true);
         updateToolbarState();
+        playback.start();
     }
 
     private SplitPane buildContent() {

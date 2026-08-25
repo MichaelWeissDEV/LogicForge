@@ -308,6 +308,29 @@ class CircuitEditorTest {
         assertTrue(editor.simulation().isPresent(), "removing the offender makes it runnable again");
     }
 
+    @Test
+    void pausedStateIsPreservedAcrossRecompile() {
+        ComponentInstance sw = add("source.toggle", 0, 0);
+        ComponentInstance led = add("output.led", 200, 0);
+        connect(sw, "OUT", led, "IN");
+        // Pause the editor
+        editor.setRunning(false);
+        assertFalse(editor.isRunning(), "editor should be paused");
+        // Trigger recompile by adding a component
+        add("logic.not", 100, 50);
+        assertFalse(editor.isRunning(), "editor must still be paused after recompile");
+    }
+
+    @Test
+    void runningStateIsPreservedAcrossRecompile() {
+        ComponentInstance sw = add("source.toggle", 0, 0);
+        editor.setRunning(true);
+        assertTrue(editor.isRunning());
+        // Trigger recompile
+        add("logic.not", 100, 50);
+        assertTrue(editor.isRunning(), "editor must still be running after recompile");
+    }
+
     // ------------------------------------------------------------------
 
     private ComponentInstance add(String definitionId, double x, double y) {

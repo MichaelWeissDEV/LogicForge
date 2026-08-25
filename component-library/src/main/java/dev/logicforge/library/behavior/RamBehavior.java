@@ -35,24 +35,38 @@ public record RamBehavior(BitWidth addressWidth, BitWidth dataWidth) implements 
     @Override
     public void evaluate(ComponentContext context) {
         RamState state = (RamState) context.state();
+        // Read raw control signals (Z treated as X per gate semantics via asGateInput)
         LogicState cs = LogicOperations.asGateInput(context.readInput(CS).singleBit());
         LogicState we = LogicOperations.asGateInput(context.readInput(WE).singleBit());
         LogicState oe = LogicOperations.asGateInput(context.readInput(OE).singleBit());
         OptionalLong address = context.readInput(ADDRESS).toUnsignedLong();
 
+        // Write: only when all three signals are definitely in write state
         if (cs == LogicState.ONE && we == LogicState.ONE && address.isPresent()) {
             state.write((int) address.getAsLong(), LogicOperations.asGateInput(context.readInput(DATA_IN)));
         }
 
-        boolean reading = cs == LogicState.ONE && we == LogicState.ZERO && oe == LogicState.ONE;
-        boolean definitelyNotDriving = cs != LogicState.ONE || we == LogicState.ONE || oe == LogicState.ZERO;
-        if (reading && address.isPresent()) {
-            context.driveOutput(DATA_OUT, state.read((int) address.getAsLong()));
-        } else if (definitelyNotDriving) {
-            context.driveOutput(DATA_OUT, LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth));
+        // Determine DATA output
+        LogicVector output;
+        if (cs == LogicState.ZERO) {
+            // Definitely disabled — output floats
+            output = LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth);
+        } else if (cs == LogicState.ONE && we == LogicState.ONE) {
+            // Definitely writing — RAM does not drive the bus during a write
+            output = LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth);
+        } else if (cs == LogicState.ONE && we == LogicState.ZERO && oe == LogicState.ONE) {
+            // Definitely reading
+            output = address.isPresent()
+                    ? state.read((int) address.getAsLong())
+                    : LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
+        } else if (cs == LogicState.ONE && we == LogicState.ZERO && oe == LogicState.ZERO) {
+            // Output-enable inactive — RAM doesn't drive
+            output = LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth);
         } else {
-            context.driveOutput(DATA_OUT, LogicVector.repeat(LogicState.UNKNOWN, dataWidth));
+            // Ambiguous combination (CS=X, WE=X, OE=X, etc.) — could be driving or not
+            output = LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
         }
+        context.driveOutput(DATA_OUT, output);
     }
 
     @Override

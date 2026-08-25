@@ -118,8 +118,8 @@ public final class ProjectFormat {
     private static JsonValue.JsonObject writeConnection(Connection connection) {
         JsonValue.JsonObject object = new JsonValue.JsonObject();
         object.put("id", connection.id().toString());
-        object.put("from", writePort(connection.from()));
-        object.put("to", writePort(connection.to()));
+        object.put("from", writeEndpoint(connection.from()));
+        object.put("to", writeEndpoint(connection.to()));
         if (!connection.waypoints().isEmpty()) {
             JsonValue.JsonArray waypoints = new JsonValue.JsonArray();
             for (CircuitPoint point : connection.waypoints()) {
@@ -130,10 +130,14 @@ public final class ProjectFormat {
         return object;
     }
 
-    private static JsonValue.JsonObject writePort(PortReference port) {
-        return new JsonValue.JsonObject()
-                .put("component", port.componentId().toString())
-                .put("port", port.portName());
+    private static JsonValue.JsonObject writeEndpoint(dev.logicforge.circuit.document.PortEndpoint endpoint) {
+        JsonValue.JsonObject obj = new JsonValue.JsonObject()
+                .put("component", endpoint.componentId().toString())
+                .put("port", endpoint.portName());
+        if (endpoint.isBit()) {
+            obj.put("bit", ((dev.logicforge.circuit.document.PortSlice.Bit) endpoint.slice()).index());
+        }
+        return obj;
     }
 
     private static JsonValue toJsonValue(Object value) {
@@ -231,8 +235,8 @@ public final class ProjectFormat {
     }
 
     private static Connection readConnection(JsonValue.JsonObject object, CircuitDocument circuit) {
-        PortReference from = readPort(object.object("from"));
-        PortReference to = readPort(object.object("to"));
+        dev.logicforge.circuit.document.PortEndpoint from = readEndpoint(object.object("from"));
+        dev.logicforge.circuit.document.PortEndpoint to = readEndpoint(object.object("to"));
         if (circuit.component(from.componentId()).isEmpty() || circuit.component(to.componentId()).isEmpty()) {
             throw new ProjectFormatException("A wire refers to a component that is not in the file");
         }

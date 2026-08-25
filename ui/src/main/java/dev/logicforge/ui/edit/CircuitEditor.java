@@ -23,6 +23,7 @@ import dev.logicforge.ui.command.CircuitCommand;
 import dev.logicforge.ui.command.UndoStack;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -60,6 +61,13 @@ public final class CircuitEditor {
     private List<ValidationIssue> lastValidationIssues = List.of();
     private boolean dirty;
     private CircuitDocumentListener documentListener;
+    /**
+     * The user's run/pause intent, independent of any particular {@link Simulation}
+     * instance. A recompile replaces {@code simulation} outright (a fresh object, not an
+     * update of the old one), so this is what makes Pause survive a topology edit instead
+     * of every new Simulation silently defaulting back to running.
+     */
+    private boolean desiredRunning = true;
 
     public CircuitEditor(ComponentRegistry registry) {
         this.registry = registry;
@@ -84,7 +92,7 @@ public final class CircuitEditor {
         this.dirty = markDirty;
         // Clear lastValidationIssues before recompiling
         this.lastValidationIssues = List.of();
-        recompile(Map.of());
+        recompile(Map.of(), Map.of());
         notifyChanged();
     }
 
@@ -184,14 +192,14 @@ public final class CircuitEditor {
     }
 
     public boolean isRunning() {
-        return simulation != null && simulation.isRunning();
+        return desiredRunning;
     }
 
     public void setRunning(boolean running) {
-        if (simulation == null) {
-            return;
+        desiredRunning = running;
+        if (simulation != null) {
+            guarded(() -> simulation.setRunning(running));
         }
-        guarded(() -> simulation.setRunning(running));
         notifyChanged();
     }
 
@@ -273,6 +281,14 @@ public final class CircuitEditor {
 
     public boolean hasDriverConflict(int netId) {
         return simulation != null && simulation.hasDriverConflict(netId);
+    }
+
+    /** Returns the width in bits of the net carrying this connection, or 0 if unknown. */
+    public int netWidth(UUID connectionId) {
+        if (compilation == null) return 0;
+        OptionalInt net = compilation.sourceMap().netOfConnection(connectionId);
+        if (net.isEmpty()) return 0;
+        return compilation.circuit().net(net.getAsInt()).width().bits();
     }
 
     /** {@code true} if this component can be driven by clicking it. */
@@ -369,18 +385,22 @@ public final class CircuitEditor {
     private void onCircuitChanged(CircuitDocument changed, CircuitChange change) {
         dirty = true;
         if (change.affectsTopology()) {
-            recompile(captureInputValues());
+            Map<UUID, LogicVector> previousInputs = captureInputValues();
+            Map<UUID, Object> previousStates = captureRuntimeStates();
+            recompile(previousInputs, previousStates);
         }
         notifyChanged();
     }
 
-    private void recompile(Map<UUID, LogicVector> previousInputs) {
+    private void recompile(Map<UUID, LogicVector> previousInputs, Map<UUID, Object> previousStates) {
         try {
             compilation = compiler.compile(document);
             compileError = null;
             lastValidationIssues = compilation.issues();
             simulation = new Simulation(compilation.circuit());
+            simulation.setRunning(desiredRunning);
             restoreInputValues(previousInputs);
+            restoreRuntimeStates(previousStates);
         } catch (CircuitCompileException failure) {
             compilation = null;
             simulation = null;
@@ -414,6 +434,39 @@ public final class CircuitEditor {
             if (runtimeId.isPresent()
                     && simulation.stateOf(runtimeId.getAsInt()) instanceof InputSourceState) {
                 guarded(() -> simulation.restoreInputState(runtimeId.getAsInt(), value));
+            }
+        });
+    }
+
+    /**
+     * Snapshots every component's runtime state (registers, RAM, etc.) so the values can
+     * be carried across a recompile. Components that return {@code null} from
+     * {@link dev.logicforge.simulation.ComponentRuntimeState#snapshot()} are skipped.
+     */
+    private Map<UUID, Object> captureRuntimeStates() {
+        Map<UUID, Object> snapshots = new LinkedHashMap<>();
+        if (compilation == null || simulation == null) {
+            return snapshots;
+        }
+        for (Map.Entry<UUID, Integer> entry : compilation.sourceMap().componentIdByUuid().entrySet()) {
+            Object snap = simulation.stateOf(entry.getValue()).snapshot();
+            if (snap != null) {
+                snapshots.put(entry.getKey(), snap);
+            }
+        }
+        return snapshots;
+    }
+
+    /**
+     * Restores previously-captured runtime-state snapshots into the freshly-built
+     * simulation. Components that no longer exist in the new circuit (UUID gone) or
+     * whose configuration has changed (incompatible snapshot) are silently skipped.
+     */
+    private void restoreRuntimeStates(Map<UUID, Object> snapshots) {
+        snapshots.forEach((uuid, snap) -> {
+            OptionalInt id = compilation.sourceMap().componentId(uuid);
+            if (id.isPresent()) {
+                simulation.stateOf(id.getAsInt()).restore(snap);
             }
         });
     }

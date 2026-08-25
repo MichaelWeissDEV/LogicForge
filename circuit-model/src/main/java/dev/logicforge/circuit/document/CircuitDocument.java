@@ -152,8 +152,8 @@ public final class CircuitDocument {
     }
 
     public void addConnection(Connection connection) {
-        requireComponent(connection.from().componentId());
-        requireComponent(connection.to().componentId());
+        requireComponent(connection.fromPort().componentId());
+        requireComponent(connection.toPort().componentId());
         if (connections.putIfAbsent(connection.id(), connection) != null) {
             throw new IllegalStateException("Connection " + connection.id() + " already exists");
         }
@@ -174,7 +174,7 @@ public final class CircuitDocument {
         if (previous == null) {
             throw new IllegalStateException("No connection " + connection.id() + " in this circuit");
         }
-        if (!previous.from().equals(connection.from()) || !previous.to().equals(connection.to())) {
+        if (!previous.from().equals(connection.fromPort()) || !previous.to().equals(connection.toPort())) {
             throw new IllegalArgumentException("Rewiring must remove and add a connection");
         }
         connections.put(connection.id(), connection);
@@ -193,8 +193,8 @@ public final class CircuitDocument {
 
     public boolean isConnected(PortReference a, PortReference b) {
         return connections.values().stream()
-                .anyMatch(connection -> (connection.from().equals(a) && connection.to().equals(b))
-                        || (connection.from().equals(b) && connection.to().equals(a)));
+                .anyMatch(connection -> (connection.fromPort().equals(a) && connection.toPort().equals(b))
+                        || (connection.fromPort().equals(b) && connection.toPort().equals(a)));
     }
 
     // ------------------------------------------------------------------

@@ -15,6 +15,7 @@ import dev.logicforge.ui.viewport.Grid;
 import dev.logicforge.ui.viewport.ViewportTransform;
 import dev.logicforge.ui.wiring.WireRoute;
 import dev.logicforge.ui.wiring.WireRouter;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import javafx.geometry.VPos;

@@ -4,6 +4,7 @@ import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.ComponentRuntimeState;
+import dev.logicforge.simulation.MemorySnapshot;
 import java.util.Arrays;
 
 /**
@@ -41,4 +42,27 @@ final class RamState implements ComponentRuntimeState {
         memory = new LogicVector[wordCount];
         Arrays.fill(memory, LogicVector.repeat(LogicState.ZERO, dataWidth));
     }
+
+    @Override
+    public Object snapshot() {
+        // Deep-copy the memory array so the snapshot is independent of live state
+        return new Snapshot(memory.clone(), wordCount, dataWidth);
+    }
+
+    @Override
+    public void restore(Object snap) {
+        if (snap instanceof Snapshot s
+                && s.wordCount() == wordCount
+                && s.dataWidth().equals(dataWidth)) {
+            System.arraycopy(s.memory(), 0, memory, 0, wordCount);
+        }
+        // else: incompatible configuration — keep zero-initialised reset state
+    }
+
+    @Override
+    public MemorySnapshot memorySnapshot() {
+        return new MemorySnapshot(memory.clone());
+    }
+
+    record Snapshot(LogicVector[] memory, int wordCount, BitWidth dataWidth) {}
 }

@@ -183,8 +183,8 @@ public final class CircuitCompiler {
             }
 
             for (Connection connection : document.connections()) {
-                Integer from = portIndex.get(connection.from());
-                Integer to = portIndex.get(connection.to());
+                Integer from = portIndex.get(connection.fromPort());
+                Integer to = portIndex.get(connection.toPort());
                 if (from == null || to == null) {
                     issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.WARNING,
                             "Wire refers to a port that no longer exists and is ignored",
@@ -233,8 +233,8 @@ public final class CircuitCompiler {
 
         private void mergeConnectedPorts() {
             for (Connection connection : document.connections()) {
-                Integer from = portIndex.get(connection.from());
-                Integer to = portIndex.get(connection.to());
+                Integer from = portIndex.get(connection.fromPort());
+                Integer to = portIndex.get(connection.toPort());
                 if (from == null || to == null) {
                     issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.WARNING,
                             "Wire refers to a port that no longer exists and is ignored", connection.id()));
@@ -376,7 +376,7 @@ public final class CircuitCompiler {
             }
             Map<UUID, Integer> netByConnection = new LinkedHashMap<>();
             for (Connection connection : mergedConnections) {
-                netByConnection.put(connection.id(), netOfPort[portIndex.get(connection.from())]);
+                netByConnection.put(connection.id(), netOfPort[portIndex.get(connection.fromPort())]);
             }
 
             CircuitSourceMap sourceMap = new CircuitSourceMap(componentIdByUuid, uuidByComponentId,

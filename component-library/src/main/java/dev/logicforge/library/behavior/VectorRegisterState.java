@@ -26,4 +26,20 @@ final class VectorRegisterState implements ComponentRuntimeState {
         value = LogicVector.repeat(LogicState.ZERO, width);
         lastClock = LogicState.UNKNOWN;
     }
+
+    @Override
+    public Object snapshot() {
+        return new Snapshot(value, width, lastClock);
+    }
+
+    @Override
+    public void restore(Object snap) {
+        if (snap instanceof Snapshot s && s.width().equals(width)) {
+            this.value = s.value();
+            this.lastClock = s.lastClock();
+        }
+        // else: incompatible (e.g. bit-width changed) — keep reset state
+    }
+
+    record Snapshot(LogicVector value, BitWidth width, LogicState lastClock) {}
 }

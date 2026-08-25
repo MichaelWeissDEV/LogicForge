@@ -1,6 +1,7 @@
 package dev.logicforge.ui.render;
 
 import dev.logicforge.logic.LogicState;
+import dev.logicforge.logic.LogicVector;
 import javafx.scene.paint.Color;
 
 /**
@@ -39,6 +40,8 @@ public final class Theme {
     private static final Color SIGNAL_HIGH_Z = Color.web("#38bdf8");
     public static final Color SIGNAL_CONFLICT = Color.web("#ef4444");
     public static final Color WIRE_UNPOWERED = Color.web("#4a5361");
+    /** Bus wire color — purple/violet for a multi-bit net with a defined (non-zero) value. */
+    public static final Color BUS_DEFINED = Color.web("#a78bfa");
 
     // Measurements (circuit units) ---------------------------------------
     public static final double BODY_STROKE = 1.6;
@@ -59,6 +62,32 @@ public final class Theme {
             case UNKNOWN -> SIGNAL_UNKNOWN;
             case HIGH_IMPEDANCE -> SIGNAL_HIGH_Z;
         };
+    }
+
+    /**
+     * The color to use for a multi-bit bus wire.
+     * <ul>
+     *   <li>Any bit UNKNOWN → {@link #SIGNAL_UNKNOWN} (amber)</li>
+     *   <li>All bits HIGH_IMPEDANCE → {@link #SIGNAL_HIGH_Z} (cyan)</li>
+     *   <li>All bits ZERO → {@link #SIGNAL_ZERO} (dark grey, same as an idle 1-bit wire)</li>
+     *   <li>Mix of 0/1 → {@link #BUS_DEFINED} (purple/violet)</li>
+     * </ul>
+     * Conflict (multiple drivers) is handled at the call site using {@link #SIGNAL_CONFLICT}.
+     */
+    public static Color busColor(LogicVector value) {
+        boolean hasUnknown = false;
+        boolean allHighZ = true;
+        boolean allZero = true;
+        for (int i = 0; i < value.width(); i++) {
+            LogicState bit = value.getBit(i);
+            if (bit == LogicState.UNKNOWN) hasUnknown = true;
+            if (bit != LogicState.HIGH_IMPEDANCE) allHighZ = false;
+            if (bit != LogicState.ZERO) allZero = false;
+        }
+        if (hasUnknown) return SIGNAL_UNKNOWN;
+        if (allHighZ) return SIGNAL_HIGH_Z;
+        if (allZero) return SIGNAL_ZERO;
+        return BUS_DEFINED;
     }
 
     /** The colour of an LED body for the configured colour name. */

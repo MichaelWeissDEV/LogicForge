@@ -16,4 +16,31 @@ public interface ComponentRuntimeState {
 
     /** Restores the power-on state. */
     void reset();
+
+    /**
+     * Returns an opaque snapshot of this component's runtime state, or {@code null} if
+     * this component has no persistent state worth preserving.
+     * The returned object must be serialization-safe (no live references to simulation internals).
+     */
+    default Object snapshot() {
+        return null;
+    }
+
+    /**
+     * Attempts to restore from a snapshot previously captured by {@link #snapshot()}.
+     * Implementations should validate that the snapshot is compatible (e.g., same width)
+     * before applying it. If incompatible, silently ignore and keep current (reset) state.
+     *
+     * @param snap the snapshot object (may be {@code null}, in which case do nothing)
+     */
+    default void restore(Object snap) {}
+
+    /**
+     * Returns a read-only memory snapshot if this component has addressable memory,
+     * otherwise {@code null}. Used by the UI to display RAM/ROM contents without
+     * direct access to behavior internals.
+     */
+    default MemorySnapshot memorySnapshot() {
+        return null;
+    }
 }
