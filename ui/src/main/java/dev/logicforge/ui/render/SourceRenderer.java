@@ -18,7 +18,8 @@ public record SourceRenderer(Kind kind, LogicState constantValue) implements Com
     public enum Kind {
         CONSTANT,
         TOGGLE,
-        BUTTON
+        BUTTON,
+        CLOCK
     }
 
     @Override
@@ -37,7 +38,27 @@ public record SourceRenderer(Kind kind, LogicState constantValue) implements Com
             case CONSTANT -> drawValue(graphics, value);
             case TOGGLE -> drawSwitch(graphics, halfWidth, halfHeight, value);
             case BUTTON -> drawButton(graphics, value, context);
+            case CLOCK -> drawClock(graphics, halfWidth, halfHeight, value);
         }
+    }
+
+    /** A little square wave glyph, lit in the signal colour of the level it is driving. */
+    private void drawClock(GraphicsContext graphics, double halfWidth, double halfHeight, LogicState value) {
+        double margin = 8;
+        double left = -halfWidth + margin;
+        double right = halfWidth - margin;
+        double high = -halfHeight + margin + 2;
+        double low = halfHeight - margin - 2;
+        double step = (right - left) / 4;
+
+        graphics.setStroke(Theme.signalColor(value));
+        graphics.setLineWidth(1.8);
+        graphics.strokeLine(left, low, left, high);
+        graphics.strokeLine(left, high, left + step, high);
+        graphics.strokeLine(left + step, high, left + step, low);
+        graphics.strokeLine(left + step, low, left + step * 3, low);
+        graphics.strokeLine(left + step * 3, low, left + step * 3, high);
+        graphics.strokeLine(left + step * 3, high, right, high);
     }
 
     private void drawValue(GraphicsContext graphics, LogicState value) {

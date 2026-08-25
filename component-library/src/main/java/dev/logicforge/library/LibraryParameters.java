@@ -27,6 +27,22 @@ public final class LibraryParameters {
             new ParameterSpec.EnumParameter("color", "Colour", "green",
                     List.of("green", "red", "amber", "blue"));
 
+    /** Clock frequency in Hz; the period follows as one second divided by this value. */
+    public static final ParameterSpec.IntegerParameter FREQUENCY_HZ =
+            new ParameterSpec.IntegerParameter("frequencyHz", "Frequency (Hz)", 1, 1, 50_000_000);
+
+    /** Percentage of the clock's period spent at the high level. */
+    public static final ParameterSpec.IntegerParameter DUTY_CYCLE_PERCENT =
+            new ParameterSpec.IntegerParameter("dutyCycle", "Duty Cycle (%)", 50, 1, 99);
+
+    /** The level a clock starts at after reset. */
+    public static final ParameterSpec.BooleanParameter INITIALLY_HIGH =
+            new ParameterSpec.BooleanParameter("initiallyHigh", "Initially High", false);
+
+    /** Whether a clock actually runs, or sits at its initial level like a constant. */
+    public static final ParameterSpec.BooleanParameter ENABLED =
+            new ParameterSpec.BooleanParameter("enabled", "Enabled", true);
+
     private LibraryParameters() {
     }
 }

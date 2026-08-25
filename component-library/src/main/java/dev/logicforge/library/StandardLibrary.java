@@ -10,6 +10,7 @@ import dev.logicforge.circuit.component.InputInteraction;
 
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
+import dev.logicforge.library.behavior.ClockBehavior;
 import dev.logicforge.library.behavior.ConstantBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
 import dev.logicforge.library.behavior.SinkBehavior;
@@ -83,6 +84,18 @@ final class StandardLibrary {
                         List.of("button", "momentary", "input", "push"), MOMENTARY),
                 values -> new UserInputBehavior(LogicState.ZERO,
                         values.getBoolean(LibraryParameters.INVERTED))));
+
+        registry.register(new ComponentType(
+                definition("source.clock", "Clock", SOURCES,
+                        "Free-running square wave, driven entirely by virtual simulation time",
+                        List.of(LibraryParameters.FREQUENCY_HZ, LibraryParameters.DUTY_CYCLE_PERCENT,
+                                LibraryParameters.INITIALLY_HIGH, LibraryParameters.ENABLED),
+                        PortLayouts.source(), List.of("clock", "oscillator", "clk", "timer", "pulse")),
+                values -> ClockBehavior.ofFrequency(
+                        values.getInt(LibraryParameters.FREQUENCY_HZ),
+                        values.getInt(LibraryParameters.DUTY_CYCLE_PERCENT),
+                        values.getBoolean(LibraryParameters.INITIALLY_HIGH),
+                        values.getBoolean(LibraryParameters.ENABLED))));
     }
 
     private static void registerDrivers(ComponentRegistry registry) {

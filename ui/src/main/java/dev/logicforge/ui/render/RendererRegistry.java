@@ -27,6 +27,7 @@ public final class RendererRegistry {
                 new SourceRenderer(SourceRenderer.Kind.CONSTANT, LogicState.HIGH_IMPEDANCE));
         registry.register("source.toggle", new SourceRenderer(SourceRenderer.Kind.TOGGLE, null));
         registry.register("source.button", new SourceRenderer(SourceRenderer.Kind.BUTTON, null));
+        registry.register("source.clock", new SourceRenderer(SourceRenderer.Kind.CLOCK, null));
 
         registry.register("logic.buffer", new DriverRenderer(false, false));
         registry.register("logic.not", new DriverRenderer(true, false));
