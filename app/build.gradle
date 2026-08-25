@@ -57,3 +57,12 @@ tasks.register('examples', JavaExec) {
     mainClass = 'dev.logicforge.app.ExampleGenerator'
     args = [rootProject.file('examples').absolutePath]
 }
+
+tasks.register('scratchAnalyzerScreenshot', JavaExec) {
+    group = 'verification'
+    description = 'SCRATCH: throwaway verification screenshot, remove before finishing'
+    dependsOn tasks.named('toolsClasses')
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'dev.logicforge.app.ScratchAnalyzerScreenshot'
+    args = ["${layout.buildDirectory.get()}/scratch-analyzer.png"]
+}

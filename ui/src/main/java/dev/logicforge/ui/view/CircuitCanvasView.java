@@ -4,6 +4,7 @@ import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PlacedPort;
+import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.geometry.CircuitBounds;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
@@ -80,6 +81,8 @@ public final class CircuitCanvasView extends Region {
     private String pendingPlacement;
     private Runnable statusListener = () -> {
     };
+    private java.util.function.Consumer<PortReference> analyzerListener = reference -> {
+    };
     
     // For momentary button handling: track which component is being pressed
     private UUID pressedComponentId = null;
@@ -112,6 +115,11 @@ public final class CircuitCanvasView extends Region {
     /** Called whenever something the status bar shows may have changed. */
     public void setStatusListener(Runnable listener) {
         this.statusListener = listener;
+    }
+
+    /** Called with the port a user picked "Add to Logic Analyzer" for. */
+    public void setAnalyzerListener(java.util.function.Consumer<PortReference> listener) {
+        this.analyzerListener = listener;
     }
 
     /** Arms click-to-place: the next click on the canvas drops this component. */
@@ -621,12 +629,26 @@ public final class CircuitCanvasView extends Region {
 
     private void showContextMenu(MouseEvent event) {
         CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
+        Optional<PlacedPort> port = hitTester.portAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
         Optional<ComponentInstance> component = hitTester.componentAt(world);
-        if (component.isPresent()) {
+        Optional<Connection> wire = port.isEmpty() && component.isEmpty()
+                ? hitTester.connectionAt(world, worldTolerance(WIRE_TOLERANCE_PIXELS))
+                : Optional.empty();
+        if (port.isPresent()) {
+            contextMenu.showForPort(this, event.getScreenX(), event.getScreenY(),
+                    () -> analyzerListener.accept(port.get().reference()));
+        } else if (component.isPresent()) {
             if (!editor.selection().containsComponent(component.get().id())) {
                 editor.selection().selectComponent(component.get().id());
             }
             contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
+        } else if (wire.isPresent()) {
+            PortReference reference = wire.get().from();
+            if (!editor.selection().containsConnection(wire.get().id())) {
+                editor.selection().selectConnection(wire.get().id());
+            }
+            contextMenu.showForWire(this, event.getScreenX(), event.getScreenY(),
+                    () -> analyzerListener.accept(reference));
         } else {
             contextMenu.showForCanvas(this, event.getScreenX(), event.getScreenY());
         }

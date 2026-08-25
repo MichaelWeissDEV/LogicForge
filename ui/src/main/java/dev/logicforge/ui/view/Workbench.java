@@ -1,7 +1,10 @@
 package dev.logicforge.ui.view;
 
+import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.ui.edit.CircuitEditor;
+import dev.logicforge.ui.edit.LogicAnalyzerController;
 import javafx.geometry.Orientation;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -31,11 +34,16 @@ public final class Workbench extends BorderPane {
     private final PaletteView palette;
     private final StatusBarView statusBar;
     private final ProjectController projects;
+    private final LogicAnalyzerController analyzerController;
+    private final LogicAnalyzerView analyzerView;
+    private final SplitPane verticalSplit = new SplitPane();
 
     private final Button undoButton = toolButton("Undo");
     private final Button redoButton = toolButton("Redo");
     private final ToggleButton runButton = new ToggleButton("Pause");
     private final Button stepButton = toolButton("Step");
+    private final Button stepTimeButton = toolButton("Step Time");
+    private final ToggleButton analyzerToggle = new ToggleButton("Analyzer");
 
     public Workbench(Stage stage) {
         this.editor = new CircuitEditor(ComponentRegistry.standard());
@@ -43,13 +51,20 @@ public final class Workbench extends BorderPane {
         this.palette = new PaletteView(editor.registry(), canvas);
         this.statusBar = new StatusBarView(editor, canvas.viewport());
         this.projects = new ProjectController(editor, stage, statusBar::showMessage);
+        this.analyzerController = new LogicAnalyzerController(editor);
+        this.analyzerView = new LogicAnalyzerView(analyzerController);
 
         canvas.setStatusListener(statusBar::update);
+        canvas.setAnalyzerListener(this::addToAnalyzer);
         editor.addChangeListener(this::updateToolbarState);
 
         setTop(buildToolbar());
-        setCenter(buildContent());
+        verticalSplit.setOrientation(Orientation.VERTICAL);
+        verticalSplit.getItems().setAll(buildContent(), analyzerView);
+        verticalSplit.setDividerPositions(0.72);
+        setCenter(verticalSplit);
         setBottom(statusBar);
+        analyzerToggle.setSelected(true);
         updateToolbarState();
     }
 
@@ -59,6 +74,29 @@ public final class Workbench extends BorderPane {
         split.setDividerPositions(0.17, 0.80);
         SplitPane.setResizableWithParent(palette, false);
         return split;
+    }
+
+    /** Adds the port the user right-clicked to the analyzer, labelled by its component. */
+    private void addToAnalyzer(PortReference reference) {
+        String componentLabel = editor.document().component(reference.componentId())
+                .map(ComponentInstance::label)
+                .filter(label -> !label.isBlank())
+                .orElseGet(() -> reference.componentId().toString().substring(0, 8));
+        analyzerController.addSignal(reference, componentLabel + "." + reference.portName());
+        if (!analyzerToggle.isSelected()) {
+            analyzerToggle.setSelected(true);
+            toggleAnalyzer();
+        }
+    }
+
+    private void toggleAnalyzer() {
+        boolean visible = analyzerToggle.isSelected();
+        if (visible && !verticalSplit.getItems().contains(analyzerView)) {
+            verticalSplit.getItems().add(analyzerView);
+            verticalSplit.setDividerPositions(0.72);
+        } else if (!visible) {
+            verticalSplit.getItems().remove(analyzerView);
+        }
     }
 
     private HBox buildToolbar() {
@@ -78,8 +116,12 @@ public final class Workbench extends BorderPane {
         runButton.getStyleClass().add("tool-button");
         runButton.setOnAction(event -> toggleRunning());
         stepButton.setOnAction(event -> editor.step());
+        stepTimeButton.setOnAction(event -> editor.stepTime());
         Button resetButton = toolButton("Reset");
         resetButton.setOnAction(event -> editor.resetSimulation());
+
+        analyzerToggle.getStyleClass().add("tool-button");
+        analyzerToggle.setOnAction(event -> toggleAnalyzer());
 
         Button zoomOut = toolButton("−");
         zoomOut.setOnAction(event -> canvas.zoomOut());
@@ -94,7 +136,8 @@ public final class Workbench extends BorderPane {
         HBox toolbar = new HBox(title,
                 newButton, openButton, saveButton, separator(),
                 undoButton, redoButton, separator(),
-                runButton, stepButton, resetButton,
+                runButton, stepButton, stepTimeButton, resetButton, separator(),
+                analyzerToggle,
                 spacer,
                 zoomOut, zoomIn, zoomFit);
         toolbar.getStyleClass().add("toolbar");
@@ -114,6 +157,7 @@ public final class Workbench extends BorderPane {
         runButton.setText(running ? "Pause" : "Run");
         // Stepping is only meaningful while the simulation is paused.
         stepButton.setDisable(running);
+        stepTimeButton.setDisable(editor.nextScheduledTime().isEmpty());
     }
 
     private static Button toolButton(String text) {

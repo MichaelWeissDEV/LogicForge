@@ -8,6 +8,7 @@ dependencies {
     api project(':component-library')
     api project(':circuit-compiler')
     api project(':simulation-core')
+    api project(':logic-analyzer')
     api project(':project-format')
 }
 

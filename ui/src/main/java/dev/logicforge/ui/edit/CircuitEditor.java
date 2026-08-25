@@ -202,6 +202,23 @@ public final class CircuitEditor {
         }
     }
 
+    /**
+     * Jumps straight to the next scheduled event, wherever in virtual time that is, and
+     * settles there — how a clocked circuit is advanced without single-stepping every
+     * intervening delta cycle.
+     */
+    public void stepTime() {
+        if (simulation != null) {
+            guarded(simulation::advanceToNextEvent);
+            notifyChanged();
+        }
+    }
+
+    /** The next scheduled simulation time, if a future event (e.g. a clock edge) is pending. */
+    public java.util.OptionalLong nextScheduledTime() {
+        return simulation == null ? java.util.OptionalLong.empty() : simulation.nextScheduledTime();
+    }
+
     /** Puts the simulation back into its initial state without touching the circuit. */
     public void resetSimulation() {
         if (simulation != null) {

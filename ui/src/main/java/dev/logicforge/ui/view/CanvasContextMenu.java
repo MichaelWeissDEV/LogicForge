@@ -36,6 +36,19 @@ final class CanvasContextMenu {
         menu.show(owner, screenX, screenY);
     }
 
+    void showForPort(Node owner, double screenX, double screenY, Runnable addToAnalyzer) {
+        menu.getItems().setAll(item("Add to Logic Analyzer", addToAnalyzer));
+        menu.show(owner, screenX, screenY);
+    }
+
+    void showForWire(Node owner, double screenX, double screenY, Runnable addToAnalyzer) {
+        menu.getItems().setAll(
+                item("Add to Logic Analyzer", addToAnalyzer),
+                new SeparatorMenuItem(),
+                item("Delete", canvas::deleteSelection));
+        menu.show(owner, screenX, screenY);
+    }
+
     void hide() {
         menu.hide();
     }
