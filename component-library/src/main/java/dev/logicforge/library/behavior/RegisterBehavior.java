@@ -60,4 +60,11 @@ public record RegisterBehavior(BitWidth width, boolean risingEdge, boolean hasRe
     public ComponentRuntimeState createState() {
         return new VectorRegisterState(width);
     }
+
+    @Override
+    public dev.logicforge.simulation.ComponentDebugSnapshot debugSnapshot(ComponentRuntimeState state) {
+        return new dev.logicforge.simulation.ComponentDebugSnapshot(
+                java.util.Map.of("Stored", ((VectorRegisterState) state).value),
+                java.util.List.of(), null, java.util.Map.of());
+    }
 }

@@ -199,6 +199,7 @@ public final class InspectorView extends VBox {
         }
 
         showState(instance, component);
+        showDebugState(instance);
 
         body.getChildren().add(spacer());
         body.getChildren().add(sectionHeader("PLACEMENT"));
@@ -264,6 +265,52 @@ public final class InspectorView extends VBox {
         }
         body.getChildren().add(spacer());
         body.getChildren().add(sectionHeader("STATE"));
+        body.getChildren().addAll(rows);
+    }
+
+    /**
+     * A component's internal state (a register's stored word, a register file's contents,
+     * a memory's last access) rendered generically from {@link
+     * dev.logicforge.simulation.ComponentDebugSnapshot} — never by casting the UI down to a
+     * specific behavior's state class, so any future stateful component gets an inspector
+     * view for free just by populating the snapshot.
+     */
+    private void showDebugState(ComponentInstance instance) {
+        if (editor.isDefinitionMode()) {
+            return;
+        }
+        Optional<dev.logicforge.simulation.ComponentDebugSnapshot> snapshot = editor.debugSnapshot(instance.id());
+        if (snapshot.isEmpty()) {
+            return;
+        }
+        dev.logicforge.simulation.ComponentDebugSnapshot debug = snapshot.get();
+        List<javafx.scene.Node> rows = new ArrayList<>();
+        debug.namedValues().entrySet().stream()
+                .sorted(java.util.Map.Entry.comparingByKey())
+                .forEach(entry -> rows.add(readOnly(entry.getKey(), formatState(entry.getValue()))));
+        List<LogicVector> registers = debug.registers();
+        for (int i = 0; i < registers.size(); i++) {
+            rows.add(readOnly("R" + i, formatState(registers.get(i))));
+        }
+        debug.counters().entrySet().stream()
+                .sorted(java.util.Map.Entry.comparingByKey())
+                .forEach(entry -> rows.add(readOnly(entry.getKey(), String.valueOf(entry.getValue()))));
+        debug.memoryOptional().ifPresent(memory -> {
+            if (memory.lastReadAddress() >= 0) {
+                rows.add(readOnly("Last read", "0x" + Integer.toHexString(memory.lastReadAddress())));
+            }
+            if (memory.lastWriteAddress() >= 0) {
+                rows.add(readOnly("Last write", "0x" + Integer.toHexString(memory.lastWriteAddress())));
+                if (memory.lastWrittenValue() != null) {
+                    rows.add(readOnly("Last value", formatState(memory.lastWrittenValue())));
+                }
+            }
+        });
+        if (rows.isEmpty()) {
+            return;
+        }
+        body.getChildren().add(spacer());
+        body.getChildren().add(sectionHeader("DEBUG STATE"));
         body.getChildren().addAll(rows);
     }
 

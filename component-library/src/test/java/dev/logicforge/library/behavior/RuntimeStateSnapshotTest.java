@@ -221,4 +221,39 @@ class RuntimeStateSnapshotTest {
     void statelessComponentHasNullMemorySnapshot() {
         assertNull(ComponentRuntimeState.STATELESS.memorySnapshot());
     }
+
+    // ------------------------------------------------------------------
+    // ComponentDebugSnapshot: generic introspection the Inspector renders
+    // without ever casting down to a specific behavior's state class.
+    // ------------------------------------------------------------------
+
+    @Test
+    void registerDebugSnapshotExposesItsStoredValue() {
+        RegisterCircuit rc = buildRegister(WIDTH4);
+        Simulation sim = rc.simulation();
+        sim.setInput(rc.loadSrc(), LogicVector.ONE);
+        sim.setInput(rc.dataSrc(), LogicVector.fromUnsignedLong(0b1010, 4));
+        sim.setInput(rc.clkSrc(), LogicVector.ONE);
+
+        dev.logicforge.simulation.ComponentDebugSnapshot debug = sim.debugSnapshot(rc.regComponent());
+
+        assertEquals(LogicVector.fromUnsignedLong(0b1010, 4), debug.namedValues().get("Stored"));
+    }
+
+    @Test
+    void ramDebugSnapshotCarriesTheMemorySnapshotByDefault() {
+        RamCircuit rc = buildRam(WIDTH4, WIDTH8);
+        Simulation sim = rc.simulation();
+        sim.setInput(rc.csSrc(), LogicVector.ONE);
+        sim.setInput(rc.addrSrc(), LogicVector.fromUnsignedLong(3, 4));
+        sim.setInput(rc.dataSrc(), LogicVector.fromUnsignedLong(0xAB, 8));
+        sim.setInput(rc.weSrc(), LogicVector.ONE);
+        sim.setInput(rc.weSrc(), LogicVector.ZERO);
+
+        dev.logicforge.simulation.ComponentDebugSnapshot debug = sim.debugSnapshot(rc.ramComponent());
+
+        assertNotNull(debug.memory(), "the default debugSnapshot() must fall through to memorySnapshot()");
+        assertEquals(3, debug.memory().lastWriteAddress());
+        assertEquals(LogicVector.fromUnsignedLong(0xAB, 8), debug.memory().lastWrittenValue());
+    }
 }
