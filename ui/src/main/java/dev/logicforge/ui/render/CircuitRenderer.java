@@ -78,8 +78,16 @@ public final class CircuitRenderer {
             graphics.setStroke(Theme.GRID_MINOR);
             strokeGridLines(graphics, viewport, visible, width, height, step, majorStep);
         }
+
+        // Zoomed out enough that even the major tier would be sub-4px clutter: fall back to
+        // a coarser multiple of it instead of drawing nothing, so the grid stays a usable
+        // reference at any zoom level. MIN_SCALE bounds this to a handful of iterations.
+        double coarseStep = majorStep;
+        while (viewport.worldToScreenLength(coarseStep) < 4) {
+            coarseStep *= Grid.MAJOR_EVERY;
+        }
         graphics.setStroke(Theme.GRID_MAJOR);
-        strokeGridLines(graphics, viewport, visible, width, height, majorStep, 0);
+        strokeGridLines(graphics, viewport, visible, width, height, coarseStep, 0);
     }
 
     /** Draws lines every {@code step} units, skipping those that a stronger line covers. */
