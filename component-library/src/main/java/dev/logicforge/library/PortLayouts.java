@@ -32,29 +32,29 @@ public final class PortLayouts {
 
     /** A component with one output on the right: constants, switches, buttons. */
     public static PortLayout source() {
-        return fixed(SMALL_BODY, List.of(outputPort("OUT", SMALL_BODY)));
+        return fixed(SMALL_BODY, List.of(described(outputPort("OUT", SMALL_BODY), "Driven output")));
     }
 
     /** A component with one input on the left: LEDs, probes, output pins. */
     public static PortLayout sink() {
-        return fixed(SMALL_BODY, List.of(inputPort("IN", SMALL_BODY, 0)));
+        return fixed(SMALL_BODY, List.of(described(inputPort("IN", SMALL_BODY, 0), "Input observed by this component")));
     }
 
     /** One input on the left, one output on the right: buffer and inverter. */
     public static PortLayout unary() {
         return fixed(UNARY_BODY, List.of(
-                inputPort("A", UNARY_BODY, 0),
-                outputPort("Y", UNARY_BODY)));
+                described(inputPort("A", UNARY_BODY, 0), "Input"),
+                described(outputPort("Y", UNARY_BODY), "Output")));
     }
 
     /** Data in on the left, enable from below, output on the right. */
     public static PortLayout triState() {
         return fixed(UNARY_BODY, List.of(
-                inputPort("A", UNARY_BODY, 0),
+                described(inputPort("A", UNARY_BODY, 0), "Data input"),
                 new PortSpec("ENABLE", PortDirection.INPUT, dev.logicforge.logic.BitWidth.ONE,
                         new CircuitPoint(0, UNARY_BODY.halfHeight() + PortLayout.PORT_STUB),
                         PortSide.BOTTOM, "Drives the output when active, otherwise the output floats"),
-                outputPort("Y", UNARY_BODY)));
+                described(outputPort("Y", UNARY_BODY), "Y = A while enabled, otherwise high-impedance (Z)")));
     }
 
     /**
@@ -74,9 +74,9 @@ public final class PortLayouts {
                     double y = (i - (inputs - 1) / 2.0) * PORT_SPACING;
                     ports.add(new PortSpec("IN" + i, PortDirection.INPUT,
                             dev.logicforge.logic.BitWidth.ONE,
-                            new CircuitPoint(-body.halfWidth() - PORT_STUB, y), PortSide.LEFT, ""));
+                            new CircuitPoint(-body.halfWidth() - PORT_STUB, y), PortSide.LEFT, "Gate input"));
                 }
-                ports.add(outputPort("OUT", body));
+                ports.add(described(outputPort("OUT", body), "Gate output"));
                 return ports;
             }
 
@@ -205,6 +205,10 @@ public final class PortLayouts {
                 return new CircuitSize(width, Math.max(48, rows * PORT_SPACING + PORT_SPACING));
             }
         };
+    }
+
+    private static PortSpec described(PortSpec port, String description) {
+        return new PortSpec(port.name(), port.direction(), port.width(), port.anchor(), port.side(), description);
     }
 
     private static PortSpec inputPort(String name, CircuitSize body, double y) {

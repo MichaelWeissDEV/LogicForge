@@ -96,6 +96,12 @@
     -fx-padding: 12 14 6 14;
 }
 
+.section-header {
+    -fx-text-fill: -lf-text-muted;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
 .panel-body {
     -fx-padding: 4 10 12 10;
     -fx-spacing: 8;

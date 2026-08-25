@@ -162,25 +162,41 @@ final class StandardLibrary {
                 new NaryGateBehavior(operation, invert)));
     }
 
+    /** {@code Q}/{@code Q'} outputs shared by every latch and flip-flop below. */
+    private static List<PortLayouts.PortDef> qOutputs() {
+        return List.of(
+                new PortLayouts.PortDef("Q", dev.logicforge.logic.BitWidth.ONE, "Stored output"),
+                new PortLayouts.PortDef("Q'", dev.logicforge.logic.BitWidth.ONE, "Inverted stored output"));
+    }
+
     private static void registerSequential(ComponentRegistry registry) {
         registry.register(ComponentType.of(
                 definition("sequential.sr_latch", "SR Latch", SEQUENTIAL,
                         "Level-sensitive set/reset latch (NOR-based, active-high S/R)",
-                        List.of(), PortLayouts.box(List.of("S", "R"), List.of("Q", "Q'")),
+                        List.of(), PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("S", BitWidth.ONE, "Set: forces Q to 1 while high"),
+                                new PortLayouts.PortDef("R", BitWidth.ONE, "Reset: forces Q to 0 while high")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("latch", "sr", "set", "reset", "nor")),
                 new SrLatchBehavior(false)));
 
         registry.register(ComponentType.of(
                 definition("sequential.sr_latch_nand", "SR Latch (Active-Low)", SEQUENTIAL,
                         "Level-sensitive set/reset latch (NAND-based, active-low S/R)",
-                        List.of(), PortLayouts.box(List.of("S", "R"), List.of("Q", "Q'")),
+                        List.of(), PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("S", BitWidth.ONE, "Set: forces Q to 1 while low"),
+                                new PortLayouts.PortDef("R", BitWidth.ONE, "Reset: forces Q to 0 while low")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("latch", "sr", "set", "reset", "nand")),
                 new SrLatchBehavior(true)));
 
         registry.register(ComponentType.of(
                 definition("sequential.d_latch", "D Latch", SEQUENTIAL,
                         "Level-sensitive latch: Q follows D while EN is 1, holds while EN is 0",
-                        List.of(), PortLayouts.box(List.of("D", "EN"), List.of("Q", "Q'")),
+                        List.of(), PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("D", BitWidth.ONE, "Data input, sampled while EN is high"),
+                                new PortLayouts.PortDef("EN", BitWidth.ONE, "Enable: transparent while high, latched while low")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("latch", "d", "transparent")),
                 DLatchBehavior.INSTANCE));
 
@@ -188,7 +204,10 @@ final class StandardLibrary {
                 definition("sequential.d_ff", "D Flip-Flop", SEQUENTIAL,
                         "Edge-triggered: Q takes D's value on the configured clock edge",
                         List.of(LibraryParameters.CLOCK_EDGE),
-                        PortLayouts.box(List.of("D", "CLK"), List.of("Q", "Q'")),
+                        PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("D", BitWidth.ONE, "Data sampled on the active clock edge"),
+                                new PortLayouts.PortDef("CLK", BitWidth.ONE, "Clock input")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("flipflop", "flip-flop", "d", "register bit")),
                 values -> new DFlipFlopBehavior(isRisingEdge(values), false)));
 
@@ -196,7 +215,12 @@ final class StandardLibrary {
                 definition("sequential.d_ff_sr", "D Flip-Flop (Set/Reset)", SEQUENTIAL,
                         "Edge-triggered D flip-flop with asynchronous SET and RESET",
                         List.of(LibraryParameters.CLOCK_EDGE),
-                        PortLayouts.box(List.of("D", "CLK", "SET", "RESET"), List.of("Q", "Q'")),
+                        PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("D", BitWidth.ONE, "Data sampled on the active clock edge"),
+                                new PortLayouts.PortDef("CLK", BitWidth.ONE, "Clock input"),
+                                new PortLayouts.PortDef("SET", BitWidth.ONE, "Asynchronous set: forces Q to 1 while high"),
+                                new PortLayouts.PortDef("RESET", BitWidth.ONE, "Asynchronous reset: forces Q to 0 while high")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("flipflop", "flip-flop", "d", "set", "reset", "async")),
                 values -> new DFlipFlopBehavior(isRisingEdge(values), true)));
 
@@ -204,7 +228,11 @@ final class StandardLibrary {
                 definition("sequential.jk_ff", "JK Flip-Flop", SEQUENTIAL,
                         "Edge-triggered: hold, set, reset or toggle depending on J and K",
                         List.of(LibraryParameters.CLOCK_EDGE),
-                        PortLayouts.box(List.of("J", "K", "CLK"), List.of("Q", "Q'")),
+                        PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("J", BitWidth.ONE, "Set input: J=1,K=0 forces Q to 1"),
+                                new PortLayouts.PortDef("K", BitWidth.ONE, "Reset input: J=0,K=1 forces Q to 0; J=K=1 toggles"),
+                                new PortLayouts.PortDef("CLK", BitWidth.ONE, "Clock input")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("flipflop", "flip-flop", "jk", "toggle")),
                 values -> new JkFlipFlopBehavior(isRisingEdge(values))));
 
@@ -212,7 +240,10 @@ final class StandardLibrary {
                 definition("sequential.t_ff", "T Flip-Flop", SEQUENTIAL,
                         "Edge-triggered: toggles Q when T is 1, holds when T is 0",
                         List.of(LibraryParameters.CLOCK_EDGE),
-                        PortLayouts.box(List.of("T", "CLK"), List.of("Q", "Q'")),
+                        PortLayouts.box(List.of(
+                                new PortLayouts.PortDef("T", BitWidth.ONE, "Toggle enable: 1 flips Q on the active edge"),
+                                new PortLayouts.PortDef("CLK", BitWidth.ONE, "Clock input")),
+                                qOutputs(), PortLayouts.GATE_WIDTH),
                         List.of("flipflop", "flip-flop", "t", "toggle", "counter bit")),
                 values -> new TFlipFlopBehavior(isRisingEdge(values))));
     }
@@ -230,10 +261,13 @@ final class StandardLibrary {
                         "Parallel-in/parallel-out register: Q loads DATA on the clock edge while LOAD is 1",
                         List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
                         PortLayouts.dynamicBox(
-                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH),
-                                        PortLayouts.DynamicPortDef.fixed("CLK"),
-                                        PortLayouts.DynamicPortDef.fixed("LOAD")),
-                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH)),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                                "Parallel data input"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("LOAD",
+                                                "While high, Q captures DATA on the active clock edge")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH,
+                                        "Stored register value")),
                                 REGISTER_WIDTH),
                         List.of("register", "pipo", "latch", "storage")),
                 values -> new RegisterBehavior(
@@ -244,11 +278,15 @@ final class StandardLibrary {
                         "Parallel register with an asynchronous RESET that clears Q to zero",
                         List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
                         PortLayouts.dynamicBox(
-                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH),
-                                        PortLayouts.DynamicPortDef.fixed("CLK"),
-                                        PortLayouts.DynamicPortDef.fixed("LOAD"),
-                                        PortLayouts.DynamicPortDef.fixed("RESET")),
-                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH)),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                                "Parallel data input"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("LOAD",
+                                                "While high, Q captures DATA on the active clock edge"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces Q to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH,
+                                        "Stored register value")),
                                 REGISTER_WIDTH),
                         List.of("register", "pipo", "reset", "clear", "storage")),
                 values -> new RegisterBehavior(
@@ -259,11 +297,14 @@ final class StandardLibrary {
                         "Serial-in/parallel-out: shifts one bit towards the MSB on every clock edge",
                         List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
                         PortLayouts.dynamicBox(
-                                List.of(PortLayouts.DynamicPortDef.fixed("SIN"),
-                                        PortLayouts.DynamicPortDef.fixed("CLK"),
-                                        PortLayouts.DynamicPortDef.fixed("RESET")),
-                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH),
-                                        PortLayouts.DynamicPortDef.fixed("SOUT")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("SIN", "Serial data input, enters at bit 0"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces Q to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH,
+                                                "Current shift register contents"),
+                                        PortLayouts.DynamicPortDef.fixed("SOUT",
+                                                "Current most significant bit, the next value shifted out")),
                                 REGISTER_WIDTH),
                         List.of("shift register", "siso", "sipo", "serial")),
                 values -> new ShiftRegisterBehavior(
@@ -274,22 +315,29 @@ final class StandardLibrary {
         registerCounter(registry, "sequential.counter_up", "Up Counter",
                 "Counts up by one on every clock edge while ENABLE is 1, wrapping at the top",
                 CounterBehavior.Direction.UP,
-                List.of(PortLayouts.DynamicPortDef.fixed("CLK"), PortLayouts.DynamicPortDef.fixed("ENABLE"),
-                        PortLayouts.DynamicPortDef.fixed("RESET")),
+                List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                        PortLayouts.DynamicPortDef.fixed("ENABLE", "While high, COUNT advances on the active edge"),
+                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                "Asynchronous clear: forces COUNT to zero, independent of CLK")),
                 List.of("counter", "up", "increment", "binary counter"));
 
         registerCounter(registry, "sequential.counter_down", "Down Counter",
                 "Counts down by one on every clock edge while ENABLE is 1, wrapping at zero",
                 CounterBehavior.Direction.DOWN,
-                List.of(PortLayouts.DynamicPortDef.fixed("CLK"), PortLayouts.DynamicPortDef.fixed("ENABLE"),
-                        PortLayouts.DynamicPortDef.fixed("RESET")),
+                List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                        PortLayouts.DynamicPortDef.fixed("ENABLE", "While high, COUNT advances on the active edge"),
+                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                "Asynchronous clear: forces COUNT to zero, independent of CLK")),
                 List.of("counter", "down", "decrement", "binary counter"));
 
         registerCounter(registry, "sequential.counter_updown", "Up/Down Counter",
                 "Counts up or down depending on UP_DOWN, on every clock edge while ENABLE is 1",
                 CounterBehavior.Direction.SELECTABLE,
-                List.of(PortLayouts.DynamicPortDef.fixed("CLK"), PortLayouts.DynamicPortDef.fixed("ENABLE"),
-                        PortLayouts.DynamicPortDef.fixed("RESET"), PortLayouts.DynamicPortDef.fixed("UP_DOWN")),
+                List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                        PortLayouts.DynamicPortDef.fixed("ENABLE", "While high, COUNT advances on the active edge"),
+                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                "Asynchronous clear: forces COUNT to zero, independent of CLK"),
+                        PortLayouts.DynamicPortDef.fixed("UP_DOWN", "1 counts up, 0 counts down")),
                 List.of("counter", "updown", "up/down", "bidirectional", "binary counter"));
     }
 
