@@ -43,4 +43,9 @@ public interface ComponentRuntimeState {
     default MemorySnapshot memorySnapshot() {
         return null;
     }
+
+    /**
+     * Writes a word to position {@code address} in this component's memory, if it has one.
+     */
+    default void writeMemoryWord(int address, dev.logicforge.logic.LogicVector value) {}
 }

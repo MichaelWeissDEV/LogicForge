@@ -485,6 +485,24 @@ public final class CircuitEditor {
     // Listeners
     // ------------------------------------------------------------------
 
+    public java.util.Optional<dev.logicforge.simulation.MemorySnapshot> memorySnapshot(java.util.UUID componentId) {
+        if (simulation == null || compilation == null) return java.util.Optional.empty();
+        java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        if (runtimeId.isEmpty()) return java.util.Optional.empty();
+        return java.util.Optional.ofNullable(simulation.stateOf(runtimeId.getAsInt()).memorySnapshot());
+    }
+
+    public void writeMemoryWord(java.util.UUID componentId, int address, dev.logicforge.logic.LogicVector value) {
+        if (simulation == null || compilation == null) return;
+        java.util.OptionalInt runtimeId = compilation.sourceMap().componentId(componentId);
+        if (runtimeId.isEmpty()) return;
+        dev.logicforge.simulation.ComponentRuntimeState state = simulation.stateOf(runtimeId.getAsInt());
+        // Since we cannot cast to RamState easily without depending on component-library,
+        // we assume ComponentRuntimeState has a writeMemoryWord method (we will add it).
+        state.writeMemoryWord(address, value);
+        notifyChanged();
+    }
+
     public void addChangeListener(Runnable listener) {
         changeListeners.add(listener);
     }

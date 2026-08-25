@@ -40,7 +40,6 @@ public final class Theme {
     private static final Color SIGNAL_HIGH_Z = Color.web("#38bdf8");
     public static final Color SIGNAL_CONFLICT = Color.web("#ef4444");
     public static final Color WIRE_UNPOWERED = Color.web("#4a5361");
-    /** Bus wire color — purple/violet for a multi-bit net with a defined (non-zero) value. */
     public static final Color BUS_DEFINED = Color.web("#a78bfa");
 
     // Measurements (circuit units) ---------------------------------------

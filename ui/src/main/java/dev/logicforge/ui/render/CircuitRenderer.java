@@ -128,14 +128,60 @@ public final class CircuitRenderer {
             }
             WireRoute route = router.route(from.get(), to.get(), connection.waypoints());
             graphics.setStroke(wireColor(connection));
+            
+            int width = editor.netWidth(connection.id());
+            if (width > 1) {
+                graphics.setLineWidth(Theme.WIRE_STROKE + 1.0);
+            }
+            
             if (editor.selection().containsConnection(connection.id())) {
                 graphics.setLineWidth(Theme.WIRE_STROKE + 1.4);
                 graphics.setStroke(Theme.SELECTION);
             }
             strokeRoute(graphics, route);
+            
+            if (!editor.selection().containsConnection(connection.id())) {
+                drawBusWidthMarker(graphics, connection, route, width);
+            }
+            
             graphics.setLineWidth(Theme.WIRE_STROKE);
         }
         drawJunctions(graphics);
+    }
+    
+    private void drawBusWidthMarker(GraphicsContext graphics, Connection connection, WireRoute route, int width) {
+        if (width <= 1) return;
+        java.util.List<CircuitPoint> points = route.points();
+        if (points.size() < 2) return;
+        
+        double totalLen = 0;
+        for (int i = 1; i < points.size(); i++) {
+            double dx = points.get(i).x() - points.get(i-1).x();
+            double dy = points.get(i).y() - points.get(i-1).y();
+            totalLen += Math.sqrt(dx*dx + dy*dy);
+        }
+        
+        double target = totalLen / 2;
+        double walked = 0;
+        CircuitPoint mid = points.get(points.size()-1);
+        
+        for (int i = 1; i < points.size(); i++) {
+            double dx = points.get(i).x() - points.get(i-1).x();
+            double dy = points.get(i).y() - points.get(i-1).y();
+            double segLen = Math.sqrt(dx*dx + dy*dy);
+            if (walked + segLen >= target) {
+                double t = (target - walked) / segLen;
+                mid = new CircuitPoint(points.get(i-1).x() + t*dx, points.get(i-1).y() + t*dy);
+                break;
+            }
+            walked += segLen;
+        }
+        
+        graphics.setFill(Theme.TEXT_MUTED);
+        graphics.setFont(Font.font(Theme.PIN_LABEL_SIZE - 1));
+        graphics.setTextAlign(TextAlignment.LEFT);
+        graphics.setTextBaseline(VPos.CENTER);
+        graphics.fillText("/" + width, mid.x() + 2, mid.y() - 4);
     }
 
     private Color wireColor(Connection connection) {
@@ -147,7 +193,9 @@ public final class CircuitRenderer {
             return Theme.SIGNAL_CONFLICT;
         }
         return editor.valueOfConnection(connection.id())
-                .map(value -> Theme.signalColor(value.getBit(0)))
+                .map(value -> value.width() == 1
+                        ? Theme.signalColor(value.getBit(0))
+                        : Theme.busColor(value))
                 .orElse(Theme.WIRE_UNPOWERED);
     }
 
@@ -365,7 +413,9 @@ public final class CircuitRenderer {
             return Theme.SIGNAL_CONFLICT;
         }
         return editor.valueAt(reference)
-                .map(value -> Theme.signalColor(value.getBit(0)))
+                .map(value -> value.width() == 1
+                        ? Theme.signalColor(value.getBit(0))
+                        : Theme.busColor(value))
                 .orElse(Theme.WIRE_UNPOWERED);
     }
 

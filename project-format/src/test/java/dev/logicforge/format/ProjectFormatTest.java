@@ -82,7 +82,7 @@ class ProjectFormatTest {
         circuit.addComponent(source);
         circuit.addComponent(sink);
         circuit.addConnection(new Connection(java.util.UUID.randomUUID(),
-                new PortReference(source.id(), "OUT"), new PortReference(sink.id(), "IN"),
+                dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(source.id(), "OUT")), dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(sink.id(), "IN")),
                 java.util.List.of(new CircuitPoint(64, 0), new CircuitPoint(64, 48))));
 
         CircuitDocument loaded = roundTrip(CircuitProject.of("p", circuit)).mainCircuit();

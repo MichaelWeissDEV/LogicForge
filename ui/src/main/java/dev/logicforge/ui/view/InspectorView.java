@@ -18,6 +18,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import javafx.geometry.Insets;
+import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
@@ -138,6 +139,16 @@ public final class InspectorView extends VBox {
 
         if (component.id().equals("source.clock")) {
             showClockTiming(instance);
+        }
+        
+        if (editor.memorySnapshot(instance.id()).isPresent()) {
+            body.getChildren().add(spacer());
+            Button memBtn = new Button("Open Memory");
+            memBtn.setOnAction(e -> {
+                String title = instance.label().isBlank() ? component.displayName() : instance.label();
+                new MemoryView(editor, instance.id(), title).show();
+            });
+            body.getChildren().add(memBtn);
         }
 
         showState(instance, component);

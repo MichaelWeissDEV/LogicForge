@@ -72,6 +72,10 @@ public final class LibraryParameters {
     public static final ParameterSpec.StringParameter ROM_CONTENTS =
             new ParameterSpec.StringParameter("contents", "Contents (hex, comma-separated)", "");
 
+    /** How many registers a register file contains. */
+    public static final ParameterSpec.IntegerParameter REGISTER_COUNT =
+            new ParameterSpec.IntegerParameter("registerCount", "Register Count", 8, 2, 32);
+
     private LibraryParameters() {
     }
 }

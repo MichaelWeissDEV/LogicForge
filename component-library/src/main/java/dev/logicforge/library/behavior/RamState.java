@@ -33,6 +33,11 @@ final class RamState implements ComponentRuntimeState {
         }
     }
 
+    @Override
+    public void writeMemoryWord(int address, LogicVector value) {
+        write(address, value);
+    }
+
     int wordCount() {
         return wordCount;
     }
