@@ -60,6 +60,51 @@ class HierarchyRuntimeContextTest {
                 "writing cpuA's RAM must not be visible through cpuB's local UUID");
     }
 
+    /**
+     * A widget like MemoryView that stays open across navigation (unlike the Inspector,
+     * which always re-derives its component from the currently selected instance) must
+     * capture the hierarchy instance path active when it opened and keep using it — not the
+     * editor's ambient "currently open circuit", which changes as the user navigates and
+     * would otherwise silently start showing a different instance's memory.
+     */
+    @Test
+    void explicitInstancePathKeepsResolvingTheSameInstanceAfterTheEditorNavigatesElsewhere() {
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("Cpu", ""));
+        ComponentInstance ram = ComponentInstance.create("memory.ram", new CircuitPoint(0, 0),
+                ComponentRegistry.standard().require("memory.ram").definition().defaultParameters());
+        child.addComponent(ram);
+
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance cpuA = SubcircuitSupport.instantiate("Cpu", new CircuitPoint(0, 0)).withLabel("cpuA");
+        ComponentInstance cpuB = SubcircuitSupport.instantiate("Cpu", new CircuitPoint(200, 0)).withLabel("cpuB");
+        main.addComponent(cpuA);
+        main.addComponent(cpuB);
+
+        CircuitProject project = CircuitProject.of("memory-view-identity", main);
+        project.putCircuit(child);
+        editor.setProject(project, false);
+
+        // Simulate opening a MemoryView on cpuA's RAM: capture the path the way MemoryView does.
+        editor.openSubcircuit(cpuA);
+        Optional<String> capturedPath = editor.activeInstancePath();
+        editor.writeMemoryWord(capturedPath, ram.id(), 3, LogicVector.fromUnsignedLong(0xAB, 8));
+
+        // The user navigates away to cpuB while the memory window stays open.
+        editor.navigateBack();
+        editor.openSubcircuit(cpuB);
+        assertNotEquals(capturedPath, editor.activeInstancePath());
+
+        // Resolving with the captured path must still show cpuA's RAM, not cpuB's (the
+        // ambient overload, driven by the editor's now-current view, would show cpuB's).
+        Optional<MemorySnapshot> stillCpuA = editor.memorySnapshot(capturedPath, ram.id());
+        assertTrue(stillCpuA.isPresent());
+        assertEquals(0xAB, stillCpuA.get().wordAt(3).toUnsignedLong().orElseThrow());
+
+        Optional<MemorySnapshot> ambientCpuB = editor.memorySnapshot(ram.id());
+        assertNotEquals(0xAB, ambientCpuB.get().wordAt(3).toUnsignedLong().orElse(-1),
+                "the ambient (no-path) overload correctly reflects the now-active cpuB instead");
+    }
+
     @Test
     void definitionModeHasNoRuntimeInstance() {
         CircuitDocument child = new CircuitDocument(new CircuitMetadata("Cpu", ""));

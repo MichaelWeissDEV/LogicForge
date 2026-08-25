@@ -704,15 +704,34 @@ public final class CircuitEditor {
     // ------------------------------------------------------------------
 
     public java.util.Optional<dev.logicforge.simulation.MemorySnapshot> memorySnapshot(java.util.UUID componentId) {
+        return memorySnapshot(view.instancePath(), componentId);
+    }
+
+    /**
+     * Resolves against an explicitly given hierarchy instance path rather than whatever
+     * circuit the editor currently has open. A long-lived widget like {@link
+     * dev.logicforge.ui.view.MemoryView} must capture the instance path active when it was
+     * opened and keep using it — the component id alone is ambiguous once the user
+     * navigates elsewhere, since the same shared child-circuit document (and so the same
+     * local UUID) may back a different live instance there.
+     */
+    public java.util.Optional<dev.logicforge.simulation.MemorySnapshot> memorySnapshot(
+            Optional<String> instancePath, java.util.UUID componentId) {
         if (simulation == null || compilation == null) return java.util.Optional.empty();
-        java.util.OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
+        java.util.OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath)
+                .resolveComponent(componentId);
         if (runtimeId.isEmpty()) return java.util.Optional.empty();
         return simulation.memorySnapshot(runtimeId.getAsInt());
     }
 
     public long memoryRevision(UUID componentId) {
+        return memoryRevision(view.instancePath(), componentId);
+    }
+
+    /** @see #memorySnapshot(Optional, UUID) */
+    public long memoryRevision(Optional<String> instancePath, UUID componentId) {
         if (simulation == null || compilation == null) return -1;
-        OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
+        OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath).resolveComponent(componentId);
         return runtimeId.isEmpty() ? -1 : simulation.memoryRevision(runtimeId.getAsInt());
     }
 
@@ -725,9 +744,15 @@ public final class CircuitEditor {
     }
 
     public void writeMemoryWord(java.util.UUID componentId, int address, dev.logicforge.logic.LogicVector value) {
+        writeMemoryWord(view.instancePath(), componentId, address, value);
+    }
+
+    /** @see #memorySnapshot(Optional, UUID) */
+    public void writeMemoryWord(Optional<String> instancePath, java.util.UUID componentId, int address,
+                               dev.logicforge.logic.LogicVector value) {
         document.component(componentId).ifPresent(instance -> {
             if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
-                memorySnapshot(componentId).ifPresent(snapshot -> {
+                memorySnapshot(instancePath, componentId).ifPresent(snapshot -> {
                     List<LogicVector> words = new ArrayList<>();
                     for (int i = 0; i < snapshot.size(); i++) {
                         words.add(i == address ? value : snapshot.wordAt(i));
@@ -737,7 +762,8 @@ public final class CircuitEditor {
                 return;
             }
             if (simulation == null || compilation == null) return;
-            java.util.OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
+            java.util.OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath)
+                    .resolveComponent(componentId);
             if (runtimeId.isEmpty()) return;
             guarded(() -> simulation.writeMemoryWord(runtimeId.getAsInt(), address, value));
             notifyChanged();
@@ -746,13 +772,18 @@ public final class CircuitEditor {
 
     /** Loads complete contents into project-backed ROM or live RAM. */
     public void loadMemory(UUID componentId, List<LogicVector> words) {
+        loadMemory(view.instancePath(), componentId, words);
+    }
+
+    /** @see #memorySnapshot(Optional, UUID) */
+    public void loadMemory(Optional<String> instancePath, UUID componentId, List<LogicVector> words) {
         document.component(componentId).ifPresent(instance -> {
             if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
                 updateRomContents(instance, words);
                 return;
             }
             if (simulation == null || compilation == null) return;
-            OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
+            OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath).resolveComponent(componentId);
             if (runtimeId.isEmpty()) return;
             int id = runtimeId.getAsInt();
             for (int address = 0; address < words.size(); address++) {

@@ -28,6 +28,13 @@ public final class MemoryView extends Stage {
 
     private final CircuitEditor editor;
     private final UUID componentId;
+    /**
+     * The hierarchy instance active when this window was opened, captured so the view keeps
+     * showing that same instance even if the user navigates the editor elsewhere afterward
+     * — the component id alone is ambiguous once a different instance of the same shared
+     * child-circuit document becomes active.
+     */
+    private final Optional<String> instancePath;
     private final TableView<MemoryRow> table = new TableView<>();
     private final ObservableList<MemoryRow> rows = FXCollections.observableArrayList();
     private final TextField jumpField = new TextField();
@@ -44,6 +51,7 @@ public final class MemoryView extends Stage {
     public MemoryView(CircuitEditor editor, UUID componentId, String title) {
         this.editor = editor;
         this.componentId = componentId;
+        this.instancePath = editor.activeInstancePath();
         setTitle("Memory: " + title);
         
         TableColumn<MemoryRow, String> addrCol = new TableColumn<>("Address");
@@ -62,7 +70,7 @@ public final class MemoryView extends Stage {
             try {
                 long val = Long.parseUnsignedLong(text, 16);
                 LogicVector value = LogicVector.fromUnsignedLong(val, dataWidth);
-                editor.writeMemoryWord(componentId, address, value);
+                editor.writeMemoryWord(instancePath, componentId, address, value);
             } catch (NumberFormatException e) {
                 // Ignore invalid input
             }
@@ -131,11 +139,11 @@ public final class MemoryView extends Stage {
     }
 
     private void refresh(boolean force) {
-        long revision = editor.memoryRevision(componentId);
+        long revision = editor.memoryRevision(instancePath, componentId);
         if (!force && revision >= 0 && revision == lastRevision) {
             return;
         }
-        Optional<MemorySnapshot> snap = editor.memorySnapshot(componentId);
+        Optional<MemorySnapshot> snap = editor.memorySnapshot(instancePath, componentId);
         if (snap.isEmpty()) {
             rows.clear();
             memorySize = 0;
@@ -205,7 +213,7 @@ public final class MemoryView extends Stage {
                 }
                 words.add(LogicVector.fromUnsignedLong(value, dataWidth));
             }
-            editor.loadMemory(componentId, words);
+            editor.loadMemory(instancePath, componentId, words);
             refresh();
         } catch (IOException failure) {
             showIoError("Could not load memory image", failure);
@@ -213,7 +221,7 @@ public final class MemoryView extends Stage {
     }
 
     private void saveBinary() {
-        Optional<MemorySnapshot> snapshot = editor.memorySnapshot(componentId);
+        Optional<MemorySnapshot> snapshot = editor.memorySnapshot(instancePath, componentId);
         if (snapshot.isEmpty()) return;
         FileChooser chooser = binaryChooser("Save memory image");
         java.io.File file = chooser.showSaveDialog(this);
