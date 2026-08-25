@@ -249,13 +249,17 @@ public final class ProjectFormat {
         return new Connection(readId(object, "wire"), from, to, waypoints);
     }
 
-    private static PortReference readPort(JsonValue.JsonObject object) {
+    private static dev.logicforge.circuit.document.PortEndpoint readEndpoint(JsonValue.JsonObject object) {
         String component = object.string("component", "");
         String port = object.string("port", "");
         if (component.isBlank() || port.isBlank()) {
             throw new ProjectFormatException("A wire endpoint is missing its component or port");
         }
-        return new PortReference(parseUuid(component, "wire endpoint"), port);
+        PortReference ref = new PortReference(parseUuid(component, "wire endpoint"), port);
+        if (object.members().containsKey("bit")) {
+            return dev.logicforge.circuit.document.PortEndpoint.bit(ref, object.integer("bit", 0));
+        }
+        return dev.logicforge.circuit.document.PortEndpoint.whole(ref);
     }
 
     private static UUID readId(JsonValue.JsonObject object, String what) {
