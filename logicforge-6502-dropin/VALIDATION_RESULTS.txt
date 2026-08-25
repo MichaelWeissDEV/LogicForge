@@ -1,0 +1,27 @@
+LogicForge MOS 6502 drop-in validation summary
+Generated: 2026-08-25
+
+PASS  Headless Java source compilation
+      Modules: processor-core, transistor-core, processor-6502
+      Flags: javac -Xlint:all -Xlint:-serial
+
+PASS  MOS 6502 functional smoke harness
+      RESET, LDA, ADC, STA, JSR/RTS, INX, JMP-indirect NMOS wraparound quirk
+
+PASS  Official opcode dispatch coverage
+      151 / 151 documented NMOS 6502 opcodes enter implemented paths
+
+PASS  Valid packed-BCD exhaustive accumulator/carry sweep
+      ADC and SBC over 00..99 x 00..99 x carry-in {0,1}
+
+PASS  Switch-level NMOS inverter test
+
+PENDING Full Klaus Dormann functional/interrupt/decimal suite
+        Harness included; third-party binary intentionally not bundled.
+
+PENDING Full half-cycle differential validation against Visual6502
+        Importer/solver/facade included; Visual6502 raw chip data intentionally not bundled.
+
+Scope note:
+The fast MOS6502 model is instruction-functional and documented-cycle-count accurate.
+It is not advertised as exact bus-microcycle/silicon timing. The transistor path exists for that.

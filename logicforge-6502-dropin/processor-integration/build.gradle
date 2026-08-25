@@ -1,0 +1,6 @@
+dependencies {
+    implementation project(':logic-core')
+    implementation project(':simulation-core')
+    implementation project(':transistor-core')
+    implementation project(':processor-6502')
+}

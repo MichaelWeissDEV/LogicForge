@@ -1,0 +1,5 @@
+// Append to LogicForge/settings.gradle
+include 'processor-core'
+include 'transistor-core'
+include 'processor-6502'
+include 'processor-integration'
