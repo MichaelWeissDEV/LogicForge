@@ -126,6 +126,21 @@ public final class Lf8Microcode {
         set(code, Lf8Isa.EI, 1, IE_LOAD, IE_DATA);
         set(code, Lf8Isa.DI, 1, IE_LOAD);
 
+        // IRET: the mirror image of the interrupt entry sequence below. Entry pushes
+        // PC_HIGH, PC_LOW, FLAGS (FLAGS topmost/most recent); IRET pops in the reverse
+        // order - FLAGS, then PC_LOW, then PC_HIGH - restoring FLAGS from the popped byte's
+        // low nibble and unconditionally re-enabling interrupts as it jumps back (a
+        // deliberately simple convention: interrupts are always disabled for the whole
+        // handler and always re-enabled on return, rather than round-tripping the enable
+        // bit through the stack frame).
+        set(code, Lf8Isa.IRET, 1, SP_INCREMENT);
+        set(code, Lf8Isa.IRET, 2, ADDRESS_FROM_SP, MEMORY_READ, FLAGS_FROM_DATA, FLAGS_LOAD);
+        set(code, Lf8Isa.IRET, 3, SP_INCREMENT);
+        set(code, Lf8Isa.IRET, 4, ADDRESS_FROM_SP, MEMORY_READ, MAR_LOW_LOAD);
+        set(code, Lf8Isa.IRET, 5, SP_INCREMENT);
+        set(code, Lf8Isa.IRET, 6, ADDRESS_FROM_SP, MEMORY_READ, MAR_HIGH_LOAD);
+        set(code, Lf8Isa.IRET, 7, PC_LOAD, IE_LOAD, IE_DATA);
+
         branch(code, Lf8Isa.JZ, ZERO_FLAG, true);
         branch(code, Lf8Isa.JNZ, ZERO_FLAG, false);
         branch(code, Lf8Isa.JC, CARRY_FLAG, true);
@@ -135,6 +150,34 @@ public final class Lf8Microcode {
         for (int step = 1; step < MICROSTEPS; step++) {
             set(code, Lf8Isa.HLT, step, HALT);
         }
+
+        // Interrupt entry sequence. Occupies the IRQ_TAKEN half of the flags address space
+        // (flags 16..31) uniformly across every possible (stale) opcode value, for every
+        // microstep - this MUST run last, after every per-opcode set()/setAlu()/branch()
+        // call above, because those calls each write across the FULL flags range (0..31,
+        // now that FLAG_SLOTS is 32), including the upper half, for their own opcode. Since
+        // IRQ_TAKEN can only ever be latched at microstep 0 and stays frozen until this
+        // sequence's own IRQ_ACK, no real instruction's own steps are ever reachable while
+        // IRQ_TAKEN is set - this just has to be the final, unconditional word for that
+        // whole address range so nothing above it can leak through by opcode coincidence.
+        //
+        // Stack frame pushed (SP grows down): high address -> low address is
+        // PC_HIGH, PC_LOW, FLAGS (FLAGS on top / most recently pushed) - see IRET above for
+        // the matching pop order. PC is left untouched (no PC_INCREMENT): nothing was
+        // fetched or consumed this cycle, so PC already holds the correct return address.
+        // The entry sequence spans the CPU's entire MICROSTEPS budget (0..7) with no idle
+        // gap: IRQ_ACK fires on the very last step so the latch is still 1 (and therefore
+        // still routing through this same uniform definition, safe from stale-opcode
+        // leakage) for every step of the sequence, and only clears on the edge that leaves
+        // the sequence for the handler's own first fetch.
+        setIrqEntry(code, 0, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, PC_HIGH_TO_DATA));
+        setIrqEntry(code, 1, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, PC_LOW_TO_DATA));
+        setIrqEntry(code, 2, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, FLAGS_TO_DATA));
+        setIrqEntry(code, 3, word(IE_LOAD));
+        setIrqEntry(code, 4, word(VECTOR_LOW_TO_DATA, MAR_LOW_LOAD));
+        setIrqEntry(code, 5, word(VECTOR_HIGH_TO_DATA, MAR_HIGH_LOAD));
+        setIrqEntry(code, 6, word(PC_LOAD));
+        setIrqEntry(code, 7, word(IRQ_ACK));
         return code;
     }
 
@@ -189,6 +232,20 @@ public final class Lf8Microcode {
             boolean isSet = (flags & flagMask) != 0;
             contents[address(instruction.opcode(), flags, 3)] =
                     isSet == branchWhenSet ? word(PC_LOAD) : 0;
+        }
+    }
+
+    /**
+     * Writes {@code value} for every opcode (0..255) at the given microstep, restricted to
+     * the IRQ_TAKEN half of the flags address space (flags 16..31) - the interrupt entry
+     * sequence, uniform regardless of whatever opcode happens to be stale in IR.
+     */
+    private static void setIrqEntry(long[] contents, int step, long value) {
+        int irqTakenBase = FLAG_SLOTS / 2;
+        for (int opcode = 0; opcode < 256; opcode++) {
+            for (int flags = irqTakenBase; flags < FLAG_SLOTS; flags++) {
+                contents[address(opcode, flags, step)] = value;
+            }
         }
     }
 

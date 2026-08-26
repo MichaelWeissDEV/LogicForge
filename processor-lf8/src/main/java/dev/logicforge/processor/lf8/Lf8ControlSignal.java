@@ -35,7 +35,16 @@ public enum Lf8ControlSignal {
     /** Control-internal: forces the IRQ_TAKEN latch back to 0 once an interrupt entry
      *  sequence has staged the handler's address, so the handler's own fetch does not
      *  immediately re-trigger a second entry. */
-    IRQ_ACK(32);
+    IRQ_ACK(32),
+    /** Drives the live FLAGS_REGISTER nibble (zero-extended to a byte) onto DATA. */
+    FLAGS_TO_DATA(33),
+    /** Selects a popped DATA-bus byte's low nibble, instead of the live ALU-derived
+     *  flags, as FLAGS_REGISTER's next value; used by IRET. */
+    FLAGS_FROM_DATA(34),
+    /** Drives the low byte of the fixed interrupt handler entry point onto DATA. */
+    VECTOR_LOW_TO_DATA(35),
+    /** Drives the high byte of the fixed interrupt handler entry point onto DATA. */
+    VECTOR_HIGH_TO_DATA(36);
 
     private final int bit;
 

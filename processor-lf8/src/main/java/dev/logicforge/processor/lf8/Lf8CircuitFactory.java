@@ -46,7 +46,18 @@ public final class Lf8CircuitFactory {
             Lf8ControlSignal.SP_DECREMENT,
             Lf8ControlSignal.PC_LOW_TO_DATA,
             Lf8ControlSignal.PC_HIGH_TO_DATA,
-            Lf8ControlSignal.SOURCE_TO_DATA);
+            Lf8ControlSignal.SOURCE_TO_DATA,
+            Lf8ControlSignal.FLAGS_TO_DATA,
+            Lf8ControlSignal.FLAGS_FROM_DATA,
+            Lf8ControlSignal.VECTOR_LOW_TO_DATA,
+            Lf8ControlSignal.VECTOR_HIGH_TO_DATA);
+
+    /**
+     * Temporary fixed interrupt handler entry point, until a real vector table (P1.3) reads
+     * it from memory instead. An assembly program using interrupts must place its ISR (or a
+     * {@code JMP} to it) at this address.
+     */
+    public static final int IRQ_HANDLER_ADDRESS = 0x0008;
 
     private Lf8CircuitFactory() {
     }
@@ -151,6 +162,46 @@ public final class Lf8CircuitFactory {
         ComponentInstance carryInput = mux(document, registry, 730, 350, 1, "CARRY_INPUT");
         ComponentInstance overflowInput = mux(document, registry, 730, 400, 1, "OVERFLOW_INPUT");
 
+        // FLAGS_REGISTER's next value is either the live ALU-derived nibble (as before) or,
+        // for IRET, a popped stack byte's low nibble. Z/C/N/V are joined into one 4-bit bus,
+        // muxed against the popped byte, then split back out to the register's four separate
+        // 1-bit inputs.
+        ComponentInstance liveFlagsJoiner = add(document, registry, "routing.joiner", 760, 350,
+                defaults(registry, "routing.joiner").with(LibraryParameters.WIDTH, 4),
+                "LIVE_FLAGS_JOINER");
+        ComponentInstance poppedFlags = slice(document, registry, 760, 450, 8, 4, "POPPED_FLAGS");
+        ComponentInstance flagsSource = mux(document, registry, 790, 400, 4, "FLAGS_SOURCE");
+        ComponentInstance flagsSourceSplitter = add(document, registry, "routing.splitter", 800, 330,
+                defaults(registry, "routing.splitter").with(LibraryParameters.WIDTH, 4),
+                "FLAGS_SOURCE_SPLITTER");
+
+        // Pushing FLAGS onto the stack drives the live nibble, zero-extended to a byte, onto
+        // DATA - independent of the restore mux above, which only affects the register's own
+        // next-value input.
+        ComponentInstance flagsZeroPad = constant(document, registry, 850, 470, 4, 0,
+                "FLAGS_ZERO_PAD");
+        ComponentInstance flagsByte = add(document, registry, "routing.bus_concat", 850, 500,
+                defaults(registry, "routing.bus_concat")
+                        .with(LibraryParameters.LOW_WIDTH, 4)
+                        .with(LibraryParameters.HIGH_WIDTH, 4), "FLAGS_BYTE");
+        ComponentInstance flagsDriver = add(document, registry, "routing.tristate_n", 900, 500,
+                defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
+                "FLAGS_DRIVER");
+
+        // Temporary fixed IRQ handler address (IRQ_HANDLER_ADDRESS), driven onto DATA and
+        // staged through MAR exactly like a JMP/CALL target, until vectors-in-memory (P1.3)
+        // replace these constants with a real memory read.
+        ComponentInstance handlerLowConst = constant(document, registry, 60, 500, 8,
+                IRQ_HANDLER_ADDRESS & 0xff, "IRQ_HANDLER_LOW_CONST");
+        ComponentInstance handlerHighConst = constant(document, registry, 60, 540, 8,
+                (IRQ_HANDLER_ADDRESS >>> 8) & 0xff, "IRQ_HANDLER_HIGH_CONST");
+        ComponentInstance handlerLowDriver = add(document, registry, "routing.tristate_n", 130, 500,
+                defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
+                "IRQ_HANDLER_LOW_DRIVER");
+        ComponentInstance handlerHighDriver = add(document, registry, "routing.tristate_n", 130, 540,
+                defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
+                "IRQ_HANDLER_HIGH_DRIVER");
+
         for (ComponentInstance target : List.of(pc, ir, destination, source, marLow, marHigh, registers, sp)) {
             wire(document, clk, "OUT", target, "CLK");
         }
@@ -200,17 +251,36 @@ public final class Lf8CircuitFactory {
         wire(document, registers, "RD_DATA_B", writeDriver, "A");
         wire(document, writeDriver, "Y", data, "BUS");
         wire(document, ir, "Q", opcode, "IN");
-        wire(document, alu, "ZERO", flags, "Z");
-        wire(document, alu, "NEGATIVE", flags, "N");
         wire(document, alu, "CARRY", carryInput, "IN0");
         wire(document, alu, "OVERFLOW", overflowInput, "IN0");
         wire(document, flags, "FLAGS", storedCarry, "IN");
         wire(document, flags, "FLAGS", storedOverflow, "IN");
         wire(document, storedCarry, "OUT", carryInput, "IN1");
         wire(document, storedOverflow, "OUT", overflowInput, "IN1");
-        wire(document, carryInput, "OUT", flags, "C");
-        wire(document, overflowInput, "OUT", flags, "V");
         wire(document, flags, "FLAGS", flagsOut, "IN");
+
+        wire(document, alu, "ZERO", liveFlagsJoiner, "BIT0");
+        wire(document, carryInput, "OUT", liveFlagsJoiner, "BIT1");
+        wire(document, alu, "NEGATIVE", liveFlagsJoiner, "BIT2");
+        wire(document, overflowInput, "OUT", liveFlagsJoiner, "BIT3");
+        wire(document, data, "BUS", poppedFlags, "IN");
+        wire(document, liveFlagsJoiner, "BUS", flagsSource, "IN0");
+        wire(document, poppedFlags, "OUT", flagsSource, "IN1");
+        wire(document, flagsSource, "OUT", flagsSourceSplitter, "BUS");
+        wire(document, flagsSourceSplitter, "BIT0", flags, "Z");
+        wire(document, flagsSourceSplitter, "BIT1", flags, "C");
+        wire(document, flagsSourceSplitter, "BIT2", flags, "N");
+        wire(document, flagsSourceSplitter, "BIT3", flags, "V");
+
+        wire(document, flags, "FLAGS", flagsByte, "LOW");
+        wire(document, flagsZeroPad, "OUT", flagsByte, "HIGH");
+        wire(document, flagsByte, "OUT", flagsDriver, "A");
+        wire(document, flagsDriver, "Y", data, "BUS");
+
+        wire(document, handlerLowConst, "OUT", handlerLowDriver, "A");
+        wire(document, handlerHighConst, "OUT", handlerHighDriver, "A");
+        wire(document, handlerLowDriver, "Y", data, "BUS");
+        wire(document, handlerHighDriver, "Y", data, "BUS");
 
         controlWire(document, controls, Lf8ControlSignal.PC_INCREMENT, pc, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.IR_LOAD, ir, "LOAD");
@@ -238,6 +308,10 @@ public final class Lf8CircuitFactory {
         controlWire(document, controls, Lf8ControlSignal.SP_DECREMENT, sp, "LOAD");
         controlWire(document, controls, Lf8ControlSignal.PC_LOW_TO_DATA, pcLowDriver, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.PC_HIGH_TO_DATA, pcHighDriver, "ENABLE");
+        controlWire(document, controls, Lf8ControlSignal.FLAGS_TO_DATA, flagsDriver, "ENABLE");
+        controlWire(document, controls, Lf8ControlSignal.FLAGS_FROM_DATA, flagsSource, "SEL");
+        controlWire(document, controls, Lf8ControlSignal.VECTOR_LOW_TO_DATA, handlerLowDriver, "ENABLE");
+        controlWire(document, controls, Lf8ControlSignal.VECTOR_HIGH_TO_DATA, handlerHighDriver, "ENABLE");
         return document;
     }
 
@@ -295,19 +369,33 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.WIDTH, 1), "IE_REGISTER");
 
         // IRQ_TAKEN latches "IRQ is asserted and interrupts are enabled" once per
-        // instruction boundary (microstep 0) and holds that value for the whole
-        // instruction/entry sequence regardless of what IE or IRQ do mid-sequence -
-        // otherwise IE being cleared partway through the entry sequence would make this
-        // combinational AND flip mid-sequence and corrupt its own ROM addressing. It can
-        // only latch 0->1 at a fetch boundary (gated by IS_FETCH_STEP and not already
-        // latched) and is explicitly force-cleared by IRQ_ACK, asserted at the end of the
-        // entry sequence once the handler's own fetch is about to begin.
+        // instruction boundary and holds that value for the whole instruction/entry
+        // sequence regardless of what IE or IRQ do mid-sequence - otherwise IE being
+        // cleared partway through the entry sequence would make this combinational AND
+        // flip mid-sequence and corrupt its own ROM addressing. It is explicitly
+        // force-cleared by IRQ_ACK, asserted at the end of the entry sequence once the
+        // handler's own fetch is about to begin.
+        //
+        // The sample point is deliberately the LAST microstep of an instruction (count ==
+        // MICROSTEPS - 1), not the first. IRQ_TAKEN and MICROSTEP are both clocked by the
+        // same CLK edge; a flip-flop's next state depends only on its D input as settled
+        // *before* that edge, so if IS_LAST_STEP were instead "count == 0", the counter and
+        // the latch would wrap 7->0 on the very same edge that IS_LAST_STEP is trying to
+        // observe count == 0, and the latch would always see the pre-edge (non-zero, non-
+        // fetch) count - i.e. it could only ever fire one full instruction late, walking
+        // into the entry sequence's ROM row for microstep 1 instead of microstep 0 and
+        // silently skipping the PC_HIGH push. Sampling on count == MICROSTEPS - 1 instead
+        // means IS_LAST_STEP is already settled to 1 for that entire microstep's window, so
+        // IRQ_TAKEN and MICROSTEP wrap together on the same edge: MICROSTEP becomes 0 at
+        // exactly the edge IRQ_TAKEN becomes 1, landing squarely on the entry sequence's own
+        // step 0 - the fetch that would have happened is the one being replaced, and the
+        // pushed PC is the interrupted instruction's own address.
         ComponentInstance microstepBits = add(document, registry, "routing.splitter", 250, 40,
                 defaults(registry, "routing.splitter").with(LibraryParameters.WIDTH, 3),
                 "MICROSTEP_BITS");
-        ComponentInstance isFetchStep = add(document, registry, "logic.nor", 320, 40,
-                defaults(registry, "logic.nor").with(LibraryParameters.INPUT_COUNT, 3),
-                "IS_FETCH_STEP");
+        ComponentInstance isFetchStep = add(document, registry, "logic.and", 320, 40,
+                defaults(registry, "logic.and").with(LibraryParameters.INPUT_COUNT, 3),
+                "IS_LAST_STEP");
         ComponentInstance irqLiveSample = add(document, registry, "logic.and", 60, 320,
                 ParameterValues.empty(), "IRQ_LIVE_SAMPLE");
         ComponentInstance irqTakenNot = add(document, registry, "logic.not", 60, 360,
@@ -429,7 +517,7 @@ public final class Lf8CircuitFactory {
                 ParameterValues.empty(), "CLK");
         ComponentInstance reset = add(document, registry, "source.toggle", 0, 40,
                 ParameterValues.empty(), "RESET");
-        ComponentInstance irq = add(document, registry, "source.zero", 0, 80,
+        ComponentInstance irq = add(document, registry, "source.toggle", 0, 80,
                 ParameterValues.empty(), "IRQ");
         ComponentInstance cpu = subcircuit(document, CPU_CIRCUIT, 220, 60, "CPU");
         ComponentInstance rom = add(document, registry, "memory.rom", 680, 0,
