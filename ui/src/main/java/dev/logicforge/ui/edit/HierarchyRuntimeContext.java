@@ -2,8 +2,10 @@ package dev.logicforge.ui.edit;
 
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.PortSlice;
 import dev.logicforge.compiler.CircuitFlattener;
 import dev.logicforge.compiler.CompilationResult;
+import dev.logicforge.compiler.ResolvedSignal;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.UUID;
@@ -95,5 +97,89 @@ public final class HierarchyRuntimeContext {
      */
     public Optional<String> canonicalPath(PortEndpoint localEndpoint) {
         return instancePath.map(path -> CircuitFlattener.endpointPath(path, localEndpoint));
+    }
+
+    /** Ports are never mixed whole-port and bit-level; this is a generous, cheap cap. */
+    private static final int MAX_PROBE_WIDTH = 256;
+
+    /**
+     * Resolves a local port endpoint to the runtime net(s) that actually carry its value.
+     *
+     * <p>A port is either entirely "whole-net" (one net for the full port, because every
+     * connection to it is whole-port) or entirely "bit-mode" (every bit its own net,
+     * because at least one connection touches a bit or a range) — the compiler rejects a
+     * port with both kinds of connection, so this is exhaustive, not a heuristic.
+     *
+     * <ul>
+     *   <li>Whole-net port: any endpoint (whole, bit or range) is a slice of that one net
+     *       — {@link ResolvedSignal.VectorNet}.
+     *   <li>Bit-mode port, a single bit: that bit's own dedicated net —
+     *       {@link ResolvedSignal.ScalarNet}.
+     *   <li>Bit-mode port, a range or whole read: reconstructed from each bit's own net —
+     *       {@link ResolvedSignal.BitVector}.
+     * </ul>
+     */
+    public Optional<ResolvedSignal> resolveSignal(PortEndpoint localEndpoint) {
+        if (compilation == null) {
+            return Optional.empty();
+        }
+        PortReference port = localEndpoint.port();
+        OptionalInt wholeNet = resolveNet(PortEndpoint.whole(port));
+        if (wholeNet.isPresent()) {
+            int netId = wholeNet.getAsInt();
+            int netWidth = compilation.circuit().net(netId).width().bits();
+            int offset;
+            int width;
+            switch (localEndpoint.slice()) {
+                case PortSlice.Whole ignored -> {
+                    offset = 0;
+                    width = netWidth;
+                }
+                case PortSlice.Bit bit -> {
+                    offset = bit.index();
+                    width = 1;
+                }
+                case PortSlice.Range range -> {
+                    offset = range.lsb();
+                    width = range.width();
+                }
+                default -> throw new IllegalStateException("Unreachable: " + localEndpoint.slice());
+            }
+            if (offset < 0 || offset + width > netWidth) {
+                return Optional.empty();
+            }
+            return Optional.of(new ResolvedSignal.VectorNet(netId, netWidth, offset, width));
+        }
+        return switch (localEndpoint.slice()) {
+            case PortSlice.Bit bit -> resolveNet(PortEndpoint.bit(port, bit.index()))
+                    .stream().mapToObj(net -> (ResolvedSignal) new ResolvedSignal.ScalarNet(net)).findFirst();
+            case PortSlice.Range range -> resolveBitVector(port, range.lsb(), range.width());
+            case PortSlice.Whole ignored -> resolveBitVector(port, 0, probeWidth(port));
+        };
+    }
+
+    /** Bit-mode ports have every declared bit as its own atom regardless of wiring, so
+     *  probing sequential bit indices finds the true width exactly, not heuristically. */
+    private int probeWidth(PortReference port) {
+        int width = 0;
+        while (width < MAX_PROBE_WIDTH && resolveNet(PortEndpoint.bit(port, width)).isPresent()) {
+            width++;
+        }
+        return width;
+    }
+
+    private Optional<ResolvedSignal> resolveBitVector(PortReference port, int lsb, int width) {
+        if (width <= 0) {
+            return Optional.empty();
+        }
+        int[] nets = new int[width];
+        for (int i = 0; i < width; i++) {
+            OptionalInt net = resolveNet(PortEndpoint.bit(port, lsb + i));
+            if (net.isEmpty()) {
+                return Optional.empty();
+            }
+            nets[i] = net.getAsInt();
+        }
+        return Optional.of(new ResolvedSignal.BitVector(nets));
     }
 }

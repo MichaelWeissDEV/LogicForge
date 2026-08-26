@@ -8,7 +8,6 @@ import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
-import dev.logicforge.circuit.document.PortSlice;
 import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.compiler.CircuitCompileException;
 import dev.logicforge.compiler.CircuitCompiler;
@@ -407,57 +406,44 @@ public final class CircuitEditor {
 
     /** The value currently on the net a port is attached to. */
     public Optional<LogicVector> valueAt(PortReference port) {
-        if (simulation == null || compilation == null) {
-            return Optional.empty();
-        }
-        OptionalInt net = netOf(port);
-        return net.isPresent() ? Optional.of(simulation.readNet(net.getAsInt())) : Optional.empty();
+        return valueAt(PortEndpoint.whole(port));
     }
 
-    /** Value at an exact whole or bit endpoint. A bit of a whole vector is extracted. */
+    /**
+     * Value at a whole, bit or range endpoint. A RANGE (or a WHOLE read of a bit-mode port)
+     * may genuinely span several independent nets — see {@link
+     * dev.logicforge.compiler.ResolvedSignal} — so this always resolves through {@link
+     * #signalAt} rather than assuming one net.
+     */
     public Optional<LogicVector> valueAt(PortEndpoint endpoint) {
-        if (simulation == null || compilation == null) {
+        if (simulation == null) {
             return Optional.empty();
         }
-        OptionalInt net = netOf(endpoint);
-        if (net.isEmpty()) {
-            return Optional.empty();
-        }
-        LogicVector value = simulation.readNet(net.getAsInt());
-        if (endpoint.slice() instanceof PortSlice.Bit bit && value.width() > 1) {
-            return Optional.of(LogicVector.single(value.getBit(bit.index())));
-        }
-        if (endpoint.slice() instanceof PortSlice.Range range) {
-            LogicState[] bits = new LogicState[range.width()];
-            HierarchyRuntimeContext hierarchy = hierarchyContext();
-            for (int offset = 0; offset < bits.length; offset++) {
-                OptionalInt bitNet = hierarchy.resolveNet(
-                        PortEndpoint.bit(endpoint.port(), range.lsb() + offset));
-                if (bitNet.isEmpty()) {
-                    return Optional.empty();
-                }
-                LogicVector bitValue = simulation.readNet(bitNet.getAsInt());
-                bits[offset] = bitValue.width() == 1 ? bitValue.singleBit()
-                        : bitValue.getBit(range.lsb() + offset);
-            }
-            return Optional.of(LogicVector.ofLsbFirst(bits));
-        }
-        return Optional.of(value);
+        return signalAt(endpoint).map(signal -> signal.read(simulation));
+    }
+
+    /** The runtime net(s) backing a local port endpoint; see {@link #valueAt(PortEndpoint)}. */
+    public Optional<dev.logicforge.compiler.ResolvedSignal> signalAt(PortEndpoint endpoint) {
+        return compilation == null ? Optional.empty() : hierarchyContext().resolveSignal(endpoint);
     }
 
     /** The value on a wire, for drawing it in the colour of its signal. */
     public Optional<LogicVector> valueOfConnection(UUID connectionId) {
-        if (simulation == null || compilation == null) {
+        if (simulation == null) {
             return Optional.empty();
         }
-        OptionalInt net = netOfConnection(connectionId);
-        return net.isPresent() ? Optional.of(simulation.readNet(net.getAsInt())) : Optional.empty();
+        return signalOfConnection(connectionId).map(signal -> signal.read(simulation));
     }
 
     public OptionalInt netOf(PortReference port) {
         return hierarchyContext().resolveNet(port);
     }
 
+    /**
+     * The net carrying a whole or bit endpoint. Kept for the common single-net case (most
+     * ports are whole-mode); a RANGE endpoint, or any endpoint on a bit-mode port, may span
+     * several nets and is not representable as one — use {@link #signalAt} for those.
+     */
     public OptionalInt netOf(PortEndpoint endpoint) {
         return hierarchyContext().resolveNet(endpoint);
     }
@@ -472,7 +458,8 @@ public final class CircuitEditor {
      * The net a wire belongs to. Root-level connection ids pass straight through the flat
      * source map; a connection local to a nested circuit has no such direct mapping (only
      * root wire ids survive flattening unchanged), so it is resolved via either endpoint
-     * through the hierarchy instance instead.
+     * through the hierarchy instance instead. Kept for the common single-net case; a wire
+     * between two RANGE endpoints may span several nets — see {@link #signalOfConnection}.
      */
     public OptionalInt netOfConnection(UUID connectionId) {
         if (compilation == null) {
@@ -488,16 +475,33 @@ public final class CircuitEditor {
                 : OptionalInt.empty();
     }
 
+    /**
+     * The runtime net(s) a wire belongs to, resolved through either of its endpoints (both
+     * name the same signal by construction). Correct for a RANGE connection regardless of
+     * whether it spans one net (a slice of a whole-mode bus) or several (a bit-mode port).
+     */
+    public Optional<dev.logicforge.compiler.ResolvedSignal> signalOfConnection(UUID connectionId) {
+        if (compilation == null) {
+            return Optional.empty();
+        }
+        return document.connection(connectionId).flatMap(connection -> signalAt(connection.from()));
+    }
+
     public boolean hasDriverConflict(int netId) {
         return simulation != null && simulation.hasDriverConflict(netId);
     }
 
-    /** Returns the width in bits of the net carrying this connection, or 0 if unknown. */
-    public int netWidth(UUID connectionId) {
-        if (compilation == null) return 0;
-        OptionalInt net = netOfConnection(connectionId);
-        if (net.isEmpty()) return 0;
-        return compilation.circuit().net(net.getAsInt()).width().bits();
+    /** {@code true} if any net backing this wire currently has conflicting drivers. */
+    public boolean hasDriverConflict(dev.logicforge.compiler.ResolvedSignal signal) {
+        return simulation != null && signal.hasDriverConflict(simulation);
+    }
+
+    /**
+     * The width in bits of the wire's signal — correct for a RANGE connection, which may
+     * span several nets and so cannot be answered from a single net's width alone.
+     */
+    public int connectionWidth(UUID connectionId) {
+        return signalOfConnection(connectionId).map(dev.logicforge.compiler.ResolvedSignal::width).orElse(0);
     }
 
     /** {@code true} if this component can be driven by clicking it. */

@@ -19,7 +19,6 @@ import dev.logicforge.ui.wiring.WireRoute;
 import dev.logicforge.ui.wiring.WireRouter;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import javafx.geometry.VPos;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
@@ -129,9 +128,10 @@ public final class CircuitRenderer {
                 continue;
             }
             WireRoute route = router.route(from.get(), to.get(), connection.waypoints());
-            graphics.setStroke(wireColor(connection));
-            
-            int width = editor.netWidth(connection.id());
+            Optional<dev.logicforge.compiler.ResolvedSignal> signal = editor.signalOfConnection(connection.id());
+            graphics.setStroke(wireColor(signal));
+
+            int width = signal.map(dev.logicforge.compiler.ResolvedSignal::width).orElse(0);
             if (width > 1) {
                 graphics.setLineWidth(Theme.WIRE_STROKE + 1.0);
             }
@@ -186,15 +186,14 @@ public final class CircuitRenderer {
         graphics.fillText("/" + width, mid.x() + 2, mid.y() - 4);
     }
 
-    private Color wireColor(Connection connection) {
-        OptionalInt net = editor.netOfConnection(connection.id());
-        if (net.isEmpty()) {
+    private Color wireColor(Optional<dev.logicforge.compiler.ResolvedSignal> signal) {
+        if (signal.isEmpty()) {
             return Theme.WIRE_UNPOWERED;
         }
-        if (editor.hasDriverConflict(net.getAsInt())) {
+        if (editor.hasDriverConflict(signal.get())) {
             return Theme.SIGNAL_CONFLICT;
         }
-        return editor.valueOfConnection(connection.id())
+        return editor.simulation().map(signal.get()::read)
                 .map(value -> value.width() == 1
                         ? Theme.signalColor(value.getBit(0))
                         : Theme.busColor(value))
@@ -470,8 +469,8 @@ public final class CircuitRenderer {
     }
 
     private Color signalColorOf(PortEndpoint endpoint) {
-        OptionalInt net = editor.netOf(endpoint);
-        if (net.isPresent() && editor.hasDriverConflict(net.getAsInt())) {
+        Optional<dev.logicforge.compiler.ResolvedSignal> signal = editor.signalAt(endpoint);
+        if (signal.isPresent() && editor.hasDriverConflict(signal.get())) {
             return Theme.SIGNAL_CONFLICT;
         }
         return editor.valueAt(endpoint)
