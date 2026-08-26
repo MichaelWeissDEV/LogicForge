@@ -60,6 +60,20 @@ public final class Lf8Microcode {
         setAlu(code, Lf8Isa.SHR, 2, Lf8AluOperation.SHR,
                 REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, FLAGS_PRESERVE_OVERFLOW);
 
+        for (Lf8Instruction instruction : new Lf8Instruction[]{
+                Lf8Isa.NOT, Lf8Isa.ROL, Lf8Isa.ROR, Lf8Isa.NEG}) {
+            set(code, instruction, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
+        }
+        setAlu(code, Lf8Isa.NOT, 2, Lf8AluOperation.NOT,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD,
+                FLAGS_PRESERVE_CARRY, FLAGS_PRESERVE_OVERFLOW);
+        setAlu(code, Lf8Isa.ROL, 2, Lf8AluOperation.ROL,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, FLAGS_PRESERVE_OVERFLOW);
+        setAlu(code, Lf8Isa.ROR, 2, Lf8AluOperation.ROR,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, FLAGS_PRESERVE_OVERFLOW);
+        setAlu(code, Lf8Isa.NEG, 2, Lf8AluOperation.NEG,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_CARRY_IN);
+
         set(code, Lf8Isa.LOAD, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
         set(code, Lf8Isa.STORE, 1, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
         for (Lf8Instruction instruction : new Lf8Instruction[]{Lf8Isa.LOAD, Lf8Isa.STORE}) {

@@ -262,6 +262,76 @@ class Lf8CpuIntegrationTest {
                 "SHL 0x80 must set Z/C, clear N, and preserve the prior V flag");
     }
 
+    @Test
+    void newSingleOperandAluInstructionsProduceCorrectResults() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x0f,
+                opcode(Lf8Isa.NOT), 0,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.LDI), 1, 0x81,
+                opcode(Lf8Isa.ROL), 1,
+                opcode(Lf8Isa.STORE), 1, 0x01, 0x80,
+                opcode(Lf8Isa.LDI), 2, 0x01,
+                opcode(Lf8Isa.ROR), 2,
+                opcode(Lf8Isa.STORE), 2, 0x02, 0x80,
+                opcode(Lf8Isa.LDI), 3, 0x01,
+                opcode(Lf8Isa.NEG), 3,
+                opcode(Lf8Isa.STORE), 3, 0x03, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int[] expected = {0xf0, 0x03, 0x80, 0xff};
+        for (int address = 0; address < expected.length; address++) {
+            assertEquals(LogicVector.fromUnsignedLong(expected[address], 8),
+                    simulation.memoryPage(probe.ramId(), address, 1).orElseThrow().wordAt(address),
+                    "RAM result slot " + address);
+        }
+    }
+
+    @Test
+    void rotateSetsCarryFromTheWrappedBitWhilePreservingOverflow() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x81,
+                opcode(Lf8Isa.ROL), 0,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0b0010, 4), simulation.readOutput(flagsId, 0),
+                "ROL 0x81 -> 0x03 must set C from the wrapped MSB and clear Z/N");
+    }
+
+    @Test
+    void negateProducesTwosComplementFlags() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x00,
+                opcode(Lf8Isa.NEG), 0,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0b0011, 4), simulation.readOutput(flagsId, 0),
+                "NEG 0x00 -> 0x00 must set Z and C (no borrow) and clear N/V");
+    }
+
     private void assertBranchPath(BranchCase branchCase) {
         int[] program = {
                 opcode(Lf8Isa.LDI), 0, branchCase.left(),

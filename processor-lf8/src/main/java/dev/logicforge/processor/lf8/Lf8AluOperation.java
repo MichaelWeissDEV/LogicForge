@@ -11,7 +11,10 @@ public enum Lf8AluOperation {
     SHL(6),
     SHR(7),
     PASS_A(8),
-    PASS_B(9);
+    PASS_B(9),
+    ROL(10),
+    ROR(11),
+    NEG(12);
 
     private final int code;
 

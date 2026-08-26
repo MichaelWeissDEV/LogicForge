@@ -23,7 +23,7 @@ import java.util.OptionalLong;
  * <ul>
  *   <li>INPUT 0: A (width bits)</li>
  *   <li>INPUT 1: B (width bits)</li>
- *   <li>INPUT 2: OP (4 bits — covers operations 0..9, values 10..15 produce X)</li>
+ *   <li>INPUT 2: OP (4 bits — covers operations 0..12, values 13..15 produce X)</li>
  *   <li>INPUT 3: CIN (1 bit, carry/borrow in)</li>
  *   <li>OUTPUT 0: RESULT (width bits)</li>
  *   <li>OUTPUT 1: ZERO (1 if RESULT==0)</li>
@@ -44,7 +44,10 @@ import java.util.OptionalLong;
  *   <li>SHR  — RESULT = A logical-shifted right 1; LSB shifted out to CARRY</li>
  *   <li>PASS A — RESULT = A</li>
  *   <li>PASS B — RESULT = B</li>
- *   <li>10..15 — unknown OP: RESULT=X, all flags=X</li>
+ *   <li>ROL  — RESULT = A rotated left 1; MSB of A goes to CARRY and wraps to LSB</li>
+ *   <li>ROR  — RESULT = A rotated right 1; LSB of A goes to CARRY and wraps to MSB</li>
+ *   <li>NEG  — RESULT = two's-complement negation of A (0 - A)</li>
+ *   <li>13..15 — unknown OP: RESULT=X, all flags=X</li>
  * </ol>
  *
  * @param width bus width of A, B and RESULT
@@ -75,6 +78,9 @@ public record AluBehavior(BitWidth width) implements ComponentBehavior {
     private static final int OP_SHR   = 7;
     private static final int OP_PASSA = 8;
     private static final int OP_PASSB = 9;
+    private static final int OP_ROL   = 10;
+    private static final int OP_ROR   = 11;
+    private static final int OP_NEG   = 12;
 
     @Override
     public void evaluate(ComponentContext context) {
@@ -101,6 +107,9 @@ public record AluBehavior(BitWidth width) implements ComponentBehavior {
             case OP_SHR   -> evaluateShr(context, a);
             case OP_PASSA -> evaluatePass(context, a);
             case OP_PASSB -> evaluatePass(context, b);
+            case OP_ROL   -> evaluateRol(context, a);
+            case OP_ROR   -> evaluateRor(context, a);
+            case OP_NEG   -> evaluateAddSub(context, LogicVector.repeat(ZERO, width), a, true);
             default       -> driveAllUnknown(context);
         }
     }
@@ -204,6 +213,38 @@ public record AluBehavior(BitWidth width) implements ComponentBehavior {
         for (int i = 0; i < bits - 1; i++) {
             result = result.withBit(i, a.getBit(i + 1));
         }
+        context.driveOutput(OUT_RESULT,   result);
+        context.driveOutput(OUT_ZERO,     zeroFlag(result));
+        context.driveOutput(OUT_CARRY,    LogicVector.single(carry));
+        context.driveOutput(OUT_OVERFLOW, LogicVector.ZERO);
+        context.driveOutput(OUT_NEGATIVE, LogicVector.single(result.getBit(bits - 1)));
+    }
+
+    /** ROL: A rotated left 1; MSB of A goes to CARRY and wraps around to the LSB. */
+    private void evaluateRol(ComponentContext context, LogicVector a) {
+        int bits = width.bits();
+        LogicState carry = a.getBit(bits - 1);
+        LogicVector result = LogicVector.repeat(ZERO, bits);
+        for (int i = 1; i < bits; i++) {
+            result = result.withBit(i, a.getBit(i - 1));
+        }
+        result = result.withBit(0, carry);
+        context.driveOutput(OUT_RESULT,   result);
+        context.driveOutput(OUT_ZERO,     zeroFlag(result));
+        context.driveOutput(OUT_CARRY,    LogicVector.single(carry));
+        context.driveOutput(OUT_OVERFLOW, LogicVector.ZERO);
+        context.driveOutput(OUT_NEGATIVE, LogicVector.single(result.getBit(bits - 1)));
+    }
+
+    /** ROR: A rotated right 1; LSB of A goes to CARRY and wraps around to the MSB. */
+    private void evaluateRor(ComponentContext context, LogicVector a) {
+        int bits = width.bits();
+        LogicState carry = a.getBit(0);
+        LogicVector result = LogicVector.repeat(ZERO, bits);
+        for (int i = 0; i < bits - 1; i++) {
+            result = result.withBit(i, a.getBit(i + 1));
+        }
+        result = result.withBit(bits - 1, carry);
         context.driveOutput(OUT_RESULT,   result);
         context.driveOutput(OUT_ZERO,     zeroFlag(result));
         context.driveOutput(OUT_CARRY,    LogicVector.single(carry));

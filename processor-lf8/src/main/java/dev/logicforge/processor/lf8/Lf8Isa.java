@@ -63,13 +63,22 @@ public final class Lf8Isa {
             List.of(REGISTER), Set.of(ZERO, CARRY, NEGATIVE));
     public static final Lf8Instruction SHR = instruction("SHR", 0x15,
             List.of(REGISTER), Set.of(ZERO, CARRY, NEGATIVE));
+    public static final Lf8Instruction NOT = instruction("NOT", 0x16,
+            List.of(REGISTER), Set.of(ZERO, NEGATIVE));
+    public static final Lf8Instruction ROL = instruction("ROL", 0x17,
+            List.of(REGISTER), Set.of(ZERO, CARRY, NEGATIVE));
+    public static final Lf8Instruction ROR = instruction("ROR", 0x18,
+            List.of(REGISTER), Set.of(ZERO, CARRY, NEGATIVE));
+    public static final Lf8Instruction NEG = instruction("NEG", 0x19,
+            List.of(REGISTER), ARITHMETIC_FLAGS);
     public static final Lf8Instruction HLT = instruction("HLT", 0xff,
             List.of(), Set.of());
 
     private static final List<Lf8Instruction> INSTRUCTIONS = List.of(
             NOP, LDI, MOV, ADD, SUB, LOAD, STORE, JMP,
             JZ, JNZ, JC, JNC, JN, JNN,
-            AND, OR, XOR, CMP, INC, DEC, SHL, SHR, HLT);
+            AND, OR, XOR, CMP, INC, DEC, SHL, SHR,
+            NOT, ROL, ROR, NEG, HLT);
     private static final Map<Integer, Lf8Instruction> BY_OPCODE = byOpcode();
 
     private Lf8Isa() {
