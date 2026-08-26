@@ -58,8 +58,8 @@ public final class HierarchyRuntimeContext {
     /**
      * The runtime id of a component local to the open circuit. Definition mode
      * ({@code instancePath} empty) never resolves anything — there is no single live
-     * instance to point at. Root component UUIDs are already flat; nested UUIDs must resolve
-     * exclusively through their full hierarchy path.
+     * instance to point at. A nested local component is resolved through its full path
+     * first; only a miss may represent a caller deliberately holding a root-scoped UUID.
      */
     public OptionalInt resolveComponent(UUID localComponentId) {
         if (compilation == null || instancePath.isEmpty()) {
@@ -68,8 +68,9 @@ public final class HierarchyRuntimeContext {
         if (isRoot()) {
             return compilation.sourceMap().componentId(localComponentId);
         }
-        return compilation.hierarchySourceMap()
+        OptionalInt nested = compilation.hierarchySourceMap()
                 .componentId(instancePath.get() + "/" + localComponentId);
+        return nested.isPresent() ? nested : compilation.sourceMap().componentId(localComponentId);
     }
 
     /**

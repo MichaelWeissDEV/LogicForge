@@ -631,6 +631,10 @@ public final class CircuitEditor {
             lastValidationIssues = compilation.issues();
             simulation = new Simulation(compilation.circuit(), false);
             restoreInputValues(previousInputs);
+            // Let source outputs and their nets settle before restoring sequential state.
+            // Otherwise a restored register can observe a temporary Z on RESET during the
+            // all-components re-evaluation and conservatively (but spuriously) latch X.
+            simulation.runUntilStableAtCurrentTime();
             restoreRuntimeStates(previousStates);
             simulation.reevaluateAllAtCurrentTime();
             simulation.runUntilStableAtCurrentTime();
