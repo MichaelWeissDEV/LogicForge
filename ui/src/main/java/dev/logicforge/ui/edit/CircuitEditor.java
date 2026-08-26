@@ -728,8 +728,31 @@ public final class CircuitEditor {
         return simulation.memorySnapshot(runtimeId.getAsInt());
     }
 
+    /** @see #writeMemoryWord(ComponentViewTarget, int, LogicVector) */
+    public java.util.Optional<dev.logicforge.simulation.MemorySnapshot> memorySnapshot(ComponentViewTarget target) {
+        return memorySnapshot(target.instancePath(), target.componentId());
+    }
+
+    /** A stable target capturing the circuit and hierarchy instance a component is opened
+     *  in right now, for a widget that must keep addressing it after the editor navigates
+     *  elsewhere. See {@link #writeMemoryWord(ComponentViewTarget, int, LogicVector)}. */
+    public ComponentViewTarget viewTarget(UUID componentId) {
+        return new ComponentViewTarget(view.circuitName(), view.instancePath(), componentId);
+    }
+
     public long memoryRevision(UUID componentId) {
         return memoryRevision(view.instancePath(), componentId);
+    }
+
+    /** @see #writeMemoryWord(ComponentViewTarget, int, LogicVector) */
+    public long memoryRevision(ComponentViewTarget target) {
+        return memoryRevision(target.instancePath(), target.componentId());
+    }
+
+    /** @see #writeMemoryWord(ComponentViewTarget, int, LogicVector) */
+    public java.util.Optional<dev.logicforge.simulation.ComponentDebugSnapshot> debugSnapshot(
+            ComponentViewTarget target) {
+        return debugSnapshot(target.instancePath(), target.componentId());
     }
 
     /** @see #memorySnapshot(Optional, UUID) */
@@ -740,28 +763,52 @@ public final class CircuitEditor {
     }
 
     public java.util.Optional<dev.logicforge.simulation.ComponentDebugSnapshot> debugSnapshot(UUID componentId) {
+        return debugSnapshot(view.instancePath(), componentId);
+    }
+
+    /** @see #memorySnapshot(Optional, UUID) */
+    public java.util.Optional<dev.logicforge.simulation.ComponentDebugSnapshot> debugSnapshot(
+            Optional<String> instancePath, UUID componentId) {
         if (simulation == null || compilation == null) return java.util.Optional.empty();
-        OptionalInt runtimeId = hierarchyContext().resolveComponent(componentId);
+        OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath).resolveComponent(componentId);
         if (runtimeId.isEmpty()) return java.util.Optional.empty();
         var snapshot = simulation.debugSnapshot(runtimeId.getAsInt());
         return snapshot.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(snapshot);
     }
 
     public void writeMemoryWord(java.util.UUID componentId, int address, dev.logicforge.logic.LogicVector value) {
-        writeMemoryWord(view.instancePath(), componentId, address, value);
+        writeMemoryWord(document, view.instancePath(), componentId, address, value);
     }
 
     /** @see #memorySnapshot(Optional, UUID) */
     public void writeMemoryWord(Optional<String> instancePath, java.util.UUID componentId, int address,
                                dev.logicforge.logic.LogicVector value) {
-        document.component(componentId).ifPresent(instance -> {
+        writeMemoryWord(document, instancePath, componentId, address, value);
+    }
+
+    /**
+     * Resolves against an explicit target rather than the editor's ambient current circuit
+     * and instance path — the correct call for a long-lived widget like {@link
+     * dev.logicforge.ui.view.MemoryView} that must stay editable after the user navigates
+     * elsewhere. A project-backed ROM's contents live on {@code target.circuitName()}'s own
+     * definition document, not whichever document the editor currently has open; a runtime
+     * RAM write is resolved against {@code target.instancePath()}, not the current view.
+     */
+    public void writeMemoryWord(ComponentViewTarget target, int address, dev.logicforge.logic.LogicVector value) {
+        project.circuit(target.circuitName()).ifPresent(owner ->
+                writeMemoryWord(owner, target.instancePath(), target.componentId(), address, value));
+    }
+
+    private void writeMemoryWord(CircuitDocument owner, Optional<String> instancePath, java.util.UUID componentId,
+                                 int address, dev.logicforge.logic.LogicVector value) {
+        owner.component(componentId).ifPresent(instance -> {
             if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
                 memorySnapshot(instancePath, componentId).ifPresent(snapshot -> {
                     List<LogicVector> words = new ArrayList<>();
                     for (int i = 0; i < snapshot.size(); i++) {
                         words.add(i == address ? value : snapshot.wordAt(i));
                     }
-                    updateRomContents(instance, words);
+                    updateRomContents(owner, instance, words);
                 });
                 return;
             }
@@ -776,14 +823,25 @@ public final class CircuitEditor {
 
     /** Loads complete contents into project-backed ROM or live RAM. */
     public void loadMemory(UUID componentId, List<LogicVector> words) {
-        loadMemory(view.instancePath(), componentId, words);
+        loadMemory(document, view.instancePath(), componentId, words);
     }
 
     /** @see #memorySnapshot(Optional, UUID) */
     public void loadMemory(Optional<String> instancePath, UUID componentId, List<LogicVector> words) {
-        document.component(componentId).ifPresent(instance -> {
+        loadMemory(document, instancePath, componentId, words);
+    }
+
+    /** @see #writeMemoryWord(ComponentViewTarget, int, LogicVector) */
+    public void loadMemory(ComponentViewTarget target, List<LogicVector> words) {
+        project.circuit(target.circuitName()).ifPresent(owner ->
+                loadMemory(owner, target.instancePath(), target.componentId(), words));
+    }
+
+    private void loadMemory(CircuitDocument owner, Optional<String> instancePath, UUID componentId,
+                            List<LogicVector> words) {
+        owner.component(componentId).ifPresent(instance -> {
             if (instance.parameters().asMap().containsKey(LibraryParameters.ROM_CONTENTS.key())) {
-                updateRomContents(instance, words);
+                updateRomContents(owner, instance, words);
                 return;
             }
             if (simulation == null || compilation == null) return;
@@ -799,14 +857,27 @@ public final class CircuitEditor {
         });
     }
 
-    private void updateRomContents(ComponentInstance instance, List<LogicVector> words) {
+    /**
+     * Edits a project-backed ROM's contents parameter on its own definition document and
+     * undo history — {@code owner} may not be the circuit currently open in the editor, in
+     * which case this must not go through {@link #execute}, which would push onto the
+     * wrong undo stack and touch a selection that belongs to a different document.
+     */
+    private void updateRomContents(CircuitDocument owner, ComponentInstance instance, List<LogicVector> words) {
         String csv = words.stream().map(word -> word.toUnsignedLong().isPresent()
                         ? Long.toHexString(word.toUnsignedLong().getAsLong()).toUpperCase(java.util.Locale.ROOT)
                         : "0")
                 .collect(java.util.stream.Collectors.joining(","));
-        definitionOf(instance).ifPresent(definition -> execute(new ChangeParameterCommand(
-                document, definition, document.requireComponent(instance.id()),
-                LibraryParameters.ROM_CONTENTS.key(), csv)));
+        definitionOf(instance).ifPresent(definition -> {
+            ChangeParameterCommand command = new ChangeParameterCommand(owner, definition,
+                    owner.requireComponent(instance.id()), LibraryParameters.ROM_CONTENTS.key(), csv);
+            if (owner == document) {
+                execute(command);
+            } else {
+                undoStacks.computeIfAbsent(owner.metadata().name(), ignored -> new UndoStack()).execute(command);
+                notifyChanged();
+            }
+        });
     }
 
     public void addChangeListener(Runnable listener) {

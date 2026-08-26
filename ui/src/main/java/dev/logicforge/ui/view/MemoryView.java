@@ -27,14 +27,15 @@ public final class MemoryView extends Stage {
     private static final int PAGE_SIZE = 256;
 
     private final CircuitEditor editor;
-    private final UUID componentId;
     /**
-     * The hierarchy instance active when this window was opened, captured so the view keeps
-     * showing that same instance even if the user navigates the editor elsewhere afterward
-     * — the component id alone is ambiguous once a different instance of the same shared
-     * child-circuit document becomes active.
+     * Captured when this window was opened: which circuit definition owns the component
+     * (needed to edit a project-backed ROM's contents on its own document) and which
+     * concrete hierarchy instance is live (needed for a runtime RAM write) — both stay
+     * fixed for this window's lifetime even if the user navigates the editor elsewhere
+     * afterward. The component id alone is ambiguous once a different instance of the same
+     * shared child-circuit document becomes active, or once a different circuit is open.
      */
-    private final Optional<String> instancePath;
+    private final dev.logicforge.ui.edit.ComponentViewTarget target;
     private final TableView<MemoryRow> table = new TableView<>();
     private final ObservableList<MemoryRow> rows = FXCollections.observableArrayList();
     private final TextField jumpField = new TextField();
@@ -50,8 +51,7 @@ public final class MemoryView extends Stage {
 
     public MemoryView(CircuitEditor editor, UUID componentId, String title) {
         this.editor = editor;
-        this.componentId = componentId;
-        this.instancePath = editor.activeInstancePath();
+        this.target = editor.viewTarget(componentId);
         setTitle("Memory: " + title);
         
         TableColumn<MemoryRow, String> addrCol = new TableColumn<>("Address");
@@ -70,7 +70,7 @@ public final class MemoryView extends Stage {
             try {
                 long val = Long.parseUnsignedLong(text, 16);
                 LogicVector value = LogicVector.fromUnsignedLong(val, dataWidth);
-                editor.writeMemoryWord(instancePath, componentId, address, value);
+                editor.writeMemoryWord(target, address, value);
             } catch (NumberFormatException e) {
                 // Ignore invalid input
             }
@@ -139,11 +139,11 @@ public final class MemoryView extends Stage {
     }
 
     private void refresh(boolean force) {
-        long revision = editor.memoryRevision(instancePath, componentId);
+        long revision = editor.memoryRevision(target);
         if (!force && revision >= 0 && revision == lastRevision) {
             return;
         }
-        Optional<MemorySnapshot> snap = editor.memorySnapshot(instancePath, componentId);
+        Optional<MemorySnapshot> snap = editor.memorySnapshot(target);
         if (snap.isEmpty()) {
             rows.clear();
             memorySize = 0;
@@ -172,10 +172,10 @@ public final class MemoryView extends Stage {
     }
 
     private void changePage(int delta) {
-        int target = Math.max(0, Math.min(pageStart + delta,
+        int newPageStart = Math.max(0, Math.min(pageStart + delta,
                 Math.max(0, ((memorySize - 1) / PAGE_SIZE) * PAGE_SIZE)));
-        if (target != pageStart) {
-            pageStart = target;
+        if (newPageStart != pageStart) {
+            pageStart = newPageStart;
             refresh(true);
         }
     }
@@ -213,7 +213,7 @@ public final class MemoryView extends Stage {
                 }
                 words.add(LogicVector.fromUnsignedLong(value, dataWidth));
             }
-            editor.loadMemory(instancePath, componentId, words);
+            editor.loadMemory(target, words);
             refresh();
         } catch (IOException failure) {
             showIoError("Could not load memory image", failure);
@@ -221,7 +221,7 @@ public final class MemoryView extends Stage {
     }
 
     private void saveBinary() {
-        Optional<MemorySnapshot> snapshot = editor.memorySnapshot(instancePath, componentId);
+        Optional<MemorySnapshot> snapshot = editor.memorySnapshot(target);
         if (snapshot.isEmpty()) return;
         FileChooser chooser = binaryChooser("Save memory image");
         java.io.File file = chooser.showSaveDialog(this);
