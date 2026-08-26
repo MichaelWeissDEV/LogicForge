@@ -74,6 +74,14 @@ public final class Lf8Microcode {
         setAlu(code, Lf8Isa.NEG, 2, Lf8AluOperation.NEG,
                 REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_CARRY_IN);
 
+        set(code, Lf8Isa.PUSH, 1, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
+        set(code, Lf8Isa.PUSH, 2, MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT);
+
+        set(code, Lf8Isa.POP, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
+        set(code, Lf8Isa.POP, 2, SP_INCREMENT);
+        set(code, Lf8Isa.POP, 3, REGISTER_FILE_WRITE, ALTERNATE_SOURCE,
+                MEMORY_READ, ADDRESS_FROM_SP);
+
         set(code, Lf8Isa.LOAD, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
         set(code, Lf8Isa.STORE, 1, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
         for (Lf8Instruction instruction : new Lf8Instruction[]{Lf8Isa.LOAD, Lf8Isa.STORE}) {

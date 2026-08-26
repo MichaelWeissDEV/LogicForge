@@ -453,7 +453,8 @@ final class StandardLibrary {
                         "Counts up by one on every clock edge while ENABLE is 1; LOAD instead "
                                 + "captures DATA, taking priority over ENABLE — the shape a program "
                                 + "counter needs for jumps and branches",
-                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE,
+                                LibraryParameters.RESET_VALUE),
                         PortLayouts.dynamicBox(
                                 List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
                                                 "Parallel value captured when LOAD is 1"),
@@ -463,14 +464,17 @@ final class StandardLibrary {
                                         PortLayouts.DynamicPortDef.fixed("LOAD",
                                                 "While high, COUNT captures DATA on the active edge instead of counting"),
                                         PortLayouts.DynamicPortDef.fixed("RESET",
-                                                "Asynchronous clear: forces COUNT to zero, independent of CLK")),
+                                                "Asynchronous clear: forces COUNT to RESET_VALUE, independent of CLK")),
                                 List.of(PortLayouts.DynamicPortDef.bus("COUNT", LibraryParameters.WIDTH),
                                         PortLayouts.DynamicPortDef.fixed("TC",
                                                 "Terminal count: 1 when COUNT is at its maximum value")),
                                 REGISTER_WIDTH),
                         List.of("counter", "program counter", "pc", "loadable", "jump")),
-                values -> new LoadableCounterBehavior(
-                        BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values))));
+                values -> {
+                    int width = values.getInt(LibraryParameters.WIDTH);
+                    return new LoadableCounterBehavior(BitWidth.of(width), isRisingEdge(values),
+                            parseBusConstant(values.get(LibraryParameters.RESET_VALUE), width));
+                }));
 
         registry.register(new ComponentType(
                 definition("sequential.modulo_counter", "Modulo Counter", SEQUENTIAL,

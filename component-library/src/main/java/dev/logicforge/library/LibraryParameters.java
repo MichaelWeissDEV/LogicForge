@@ -114,6 +114,10 @@ public final class LibraryParameters {
     public static final ParameterSpec.IntegerParameter DIVIDE_BY =
             new ParameterSpec.IntegerParameter("divideBy", "Divide By", 2, 2, 1 << 24);
 
+    /** The value a loadable counter's COUNT returns to when RESET is asserted, in hex. */
+    public static final ParameterSpec.StringParameter RESET_VALUE =
+            new ParameterSpec.StringParameter("resetValue", "Reset Value (hex)", "0");
+
     private LibraryParameters() {
     }
 }

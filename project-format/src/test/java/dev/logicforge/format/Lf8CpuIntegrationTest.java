@@ -332,6 +332,72 @@ class Lf8CpuIntegrationTest {
                 "NEG 0x00 -> 0x00 must set Z and C (no borrow) and clear N/V");
     }
 
+    @Test
+    void pushAndPopFollowLastInFirstOutOrder() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 11,
+                opcode(Lf8Isa.LDI), 1, 22,
+                opcode(Lf8Isa.PUSH), 0,
+                opcode(Lf8Isa.PUSH), 1,
+                opcode(Lf8Isa.POP), 2,
+                opcode(Lf8Isa.POP), 3,
+                opcode(Lf8Isa.STORE), 2, 0x00, 0x80,
+                opcode(Lf8Isa.STORE), 3, 0x01, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        assertEquals(LogicVector.fromUnsignedLong(22, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "R2 must receive the most recently pushed value (22)");
+        assertEquals(LogicVector.fromUnsignedLong(11, 8),
+                simulation.memoryPage(probe.ramId(), 1, 1).orElseThrow().wordAt(1),
+                "R3 must receive the first-pushed value (11)");
+    }
+
+    @Test
+    void pushWritesAtCurrentSpThenDecrementsAndPopIncrementsThenReads() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x42,
+                opcode(Lf8Isa.PUSH), 0,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0xbffe, 16), simulation.readOutput(spId, 0),
+                "a single PUSH must move SP from 0xbfff down to 0xbffe");
+        assertEquals(LogicVector.fromUnsignedLong(0x42, 8),
+                simulation.memoryPage(probe.ramId(), 0x3fff, 1).orElseThrow().wordAt(0x3fff),
+                "PUSH must write the register's value at the pre-decrement SP address (0xbfff, "
+                        + "RAM-relative 0x3fff)");
+    }
+
+    @Test
+    void stackPointerResetsToTheTopOfRam() {
+        CircuitProject project = Lf8ComputerFactory.create(opcode(Lf8Isa.HLT));
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        simulation.setInput(probe.resetId(), LogicState.ONE);
+        simulation.setInput(probe.resetId(), LogicState.ZERO);
+
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0),
+                "SP must reset to the top of the 0x8000-0xbfff RAM region");
+    }
+
     private void assertBranchPath(BranchCase branchCase) {
         int[] program = {
                 opcode(Lf8Isa.LDI), 0, branchCase.left(),

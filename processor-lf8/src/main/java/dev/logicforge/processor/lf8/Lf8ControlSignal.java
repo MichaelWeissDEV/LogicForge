@@ -21,7 +21,10 @@ public enum Lf8ControlSignal {
     FLAGS_PRESERVE_CARRY(20),
     FLAGS_PRESERVE_OVERFLOW(21),
     ALU_CARRY_IN(22),
-    ALU_B_ONE(23);
+    ALU_B_ONE(23),
+    ADDRESS_FROM_SP(24),
+    SP_INCREMENT(25),
+    SP_DECREMENT(26);
 
     private final int bit;
 

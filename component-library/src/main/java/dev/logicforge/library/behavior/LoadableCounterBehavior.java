@@ -24,8 +24,15 @@ import java.util.OptionalLong;
  *
  * @param width the bus width of DATA/COUNT
  * @param risingEdge {@code true} to trigger on 0-&gt;1, {@code false} to trigger on 1-&gt;0
+ * @param resetValue the value COUNT takes while RESET is asserted; defaults to all-zero for a
+ *     plain program counter, but a stack pointer initializes to the top of its stack region
  */
-public record LoadableCounterBehavior(BitWidth width, boolean risingEdge) implements ComponentBehavior {
+public record LoadableCounterBehavior(BitWidth width, boolean risingEdge, LogicVector resetValue)
+        implements ComponentBehavior {
+
+    public LoadableCounterBehavior(BitWidth width, boolean risingEdge) {
+        this(width, risingEdge, LogicVector.repeat(ZERO, width));
+    }
 
     private static final int DATA = 0;
     private static final int CLK = 1;
@@ -51,8 +58,7 @@ public record LoadableCounterBehavior(BitWidth width, boolean risingEdge) implem
             normal = StatefulControlPolicy.choose(load, counted,
                     LogicOperations.asGateInput(context.readInput(DATA)));
         }
-        state.value = StatefulControlPolicy.choose(reset, normal,
-                LogicVector.repeat(ZERO, width));
+        state.value = StatefulControlPolicy.choose(reset, normal, resetValue);
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);

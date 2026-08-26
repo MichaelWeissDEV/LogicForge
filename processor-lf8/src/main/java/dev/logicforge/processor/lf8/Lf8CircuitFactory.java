@@ -40,7 +40,10 @@ public final class Lf8CircuitFactory {
             Lf8ControlSignal.FLAGS_PRESERVE_CARRY,
             Lf8ControlSignal.FLAGS_PRESERVE_OVERFLOW,
             Lf8ControlSignal.ALU_CARRY_IN,
-            Lf8ControlSignal.ALU_B_ONE);
+            Lf8ControlSignal.ALU_B_ONE,
+            Lf8ControlSignal.ADDRESS_FROM_SP,
+            Lf8ControlSignal.SP_INCREMENT,
+            Lf8ControlSignal.SP_DECREMENT);
 
     private Lf8CircuitFactory() {
     }
@@ -113,6 +116,14 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.LOW_WIDTH, 8)
                         .with(LibraryParameters.HIGH_WIDTH, 8), "MAR_ADDRESS");
         ComponentInstance addressSource = mux(document, registry, 690, 270, 16, "ADDRESS_SOURCE");
+        ComponentInstance sp = add(document, registry, "sequential.loadable_counter", 480, 340,
+                defaults(registry, "sequential.loadable_counter")
+                        .with(LibraryParameters.WIDTH, 16)
+                        .with(LibraryParameters.RESET_VALUE, "bfff"), "SP");
+        ComponentInstance spDecrementer = add(document, registry, "arithmetic.decrementer", 400, 340,
+                defaults(registry, "arithmetic.decrementer").with(LibraryParameters.WIDTH, 16),
+                "SP_DECREMENTER");
+        ComponentInstance addressWithSp = mux(document, registry, 800, 300, 16, "ADDRESS_WITH_SP");
         ComponentInstance writeDriver = add(document, registry, "routing.tristate_n", 850, 150,
                 defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
                 "DATA_WRITE_DRIVER");
@@ -125,11 +136,12 @@ public final class Lf8CircuitFactory {
         ComponentInstance carryInput = mux(document, registry, 730, 350, 1, "CARRY_INPUT");
         ComponentInstance overflowInput = mux(document, registry, 730, 400, 1, "OVERFLOW_INPUT");
 
-        for (ComponentInstance target : List.of(pc, ir, destination, source, marLow, marHigh, registers)) {
+        for (ComponentInstance target : List.of(pc, ir, destination, source, marLow, marHigh, registers, sp)) {
             wire(document, clk, "OUT", target, "CLK");
         }
         wire(document, clk, "OUT", flags, "CLK");
         wire(document, reset, "OUT", pc, "RESET");
+        wire(document, reset, "OUT", sp, "RESET");
 
         wire(document, data, "BUS", ir, "DATA");
         wire(document, data, "BUS", operandSlice, "IN");
@@ -159,7 +171,11 @@ public final class Lf8CircuitFactory {
         wire(document, addressConcat, "OUT", pc, "DATA");
         wire(document, pc, "COUNT", addressSource, "IN0");
         wire(document, addressConcat, "OUT", addressSource, "IN1");
-        wire(document, addressSource, "OUT", address, "IN");
+        wire(document, sp, "COUNT", spDecrementer, "A");
+        wire(document, spDecrementer, "OUT", sp, "DATA");
+        wire(document, addressSource, "OUT", addressWithSp, "IN0");
+        wire(document, sp, "COUNT", addressWithSp, "IN1");
+        wire(document, addressWithSp, "OUT", address, "IN");
         wire(document, registers, "RD_DATA_B", writeDriver, "A");
         wire(document, writeDriver, "Y", data, "BUS");
         wire(document, ir, "Q", opcode, "IN");
@@ -196,6 +212,9 @@ public final class Lf8CircuitFactory {
                 carryInput, "SEL");
         controlWire(document, controls, Lf8ControlSignal.FLAGS_PRESERVE_OVERFLOW,
                 overflowInput, "SEL");
+        controlWire(document, controls, Lf8ControlSignal.ADDRESS_FROM_SP, addressWithSp, "SEL");
+        controlWire(document, controls, Lf8ControlSignal.SP_INCREMENT, sp, "ENABLE");
+        controlWire(document, controls, Lf8ControlSignal.SP_DECREMENT, sp, "LOAD");
         return document;
     }
 
