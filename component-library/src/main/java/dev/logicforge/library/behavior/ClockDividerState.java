@@ -8,18 +8,20 @@ final class ClockDividerState implements ComponentRuntimeState {
 
     LogicState lastClock = LogicState.UNKNOWN;
     long edgeCount;
+    boolean edgeCountUnknown;
     LogicState output = LogicState.ZERO;
 
     @Override
     public void reset() {
         lastClock = LogicState.UNKNOWN;
         edgeCount = 0;
+        edgeCountUnknown = false;
         output = LogicState.ZERO;
     }
 
     @Override
     public Object snapshot() {
-        return new Snapshot(lastClock, edgeCount, output);
+        return new Snapshot(lastClock, edgeCount, edgeCountUnknown, output);
     }
 
     @Override
@@ -27,9 +29,11 @@ final class ClockDividerState implements ComponentRuntimeState {
         if (snap instanceof Snapshot s) {
             lastClock = s.lastClock();
             edgeCount = s.edgeCount();
+            edgeCountUnknown = s.edgeCountUnknown();
             output = s.output();
         }
     }
 
-    record Snapshot(LogicState lastClock, long edgeCount, LogicState output) {}
+    record Snapshot(LogicState lastClock, long edgeCount, boolean edgeCountUnknown,
+                    LogicState output) {}
 }

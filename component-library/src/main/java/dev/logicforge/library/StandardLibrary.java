@@ -491,8 +491,8 @@ final class StandardLibrary {
         registry.register(new ComponentType(
                 definition("sequential.clock_divider", "Clock Divider", SEQUENTIAL,
                         "Divides CLK down by counting its active edges in virtual simulation "
-                                + "time: CLK_OUT toggles every DIVISOR edges of CLK",
-                        List.of(LibraryParameters.DIVISOR, LibraryParameters.CLOCK_EDGE),
+                                + "time: DIVIDE_BY=N produces an average frequency of CLK/N",
+                        List.of(LibraryParameters.DIVIDE_BY, LibraryParameters.CLOCK_EDGE),
                         PortLayouts.dynamicBox(
                                 List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input to divide"),
                                         PortLayouts.DynamicPortDef.fixed("RESET",
@@ -500,10 +500,10 @@ final class StandardLibrary {
                                         PortLayouts.DynamicPortDef.fixed("ENABLE",
                                                 "While high, CLK edges are counted towards the next toggle")),
                                 List.of(PortLayouts.DynamicPortDef.fixed("CLK_OUT",
-                                        "Toggles every DIVISOR active edges of CLK")),
+                                        "Average frequency is CLK divided by DIVIDE_BY")),
                                 REGISTER_WIDTH),
                         List.of("clock", "divider", "prescaler", "frequency")),
-                values -> new ClockDividerBehavior(isRisingEdge(values), values.getInt(LibraryParameters.DIVISOR))));
+                values -> new ClockDividerBehavior(isRisingEdge(values), values.getInt(LibraryParameters.DIVIDE_BY))));
 
         registry.register(new ComponentType(
                 definition("sequential.universal_shift_register", "Universal Shift Register", SEQUENTIAL,

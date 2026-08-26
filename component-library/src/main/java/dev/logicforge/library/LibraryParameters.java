@@ -84,9 +84,9 @@ public final class LibraryParameters {
     public static final ParameterSpec.IntegerParameter MODULUS =
             new ParameterSpec.IntegerParameter("modulus", "Modulus", 10, 2, 1 << 24);
 
-    /** How many active input clock edges a clock divider counts per output half-period. */
-    public static final ParameterSpec.IntegerParameter DIVISOR =
-            new ParameterSpec.IntegerParameter("divisor", "Divisor", 2, 2, 1 << 24);
+    /** Output frequency divisor; an output period spans this many active input edges. */
+    public static final ParameterSpec.IntegerParameter DIVIDE_BY =
+            new ParameterSpec.IntegerParameter("divideBy", "Divide By", 2, 2, 1 << 24);
 
     private LibraryParameters() {
     }

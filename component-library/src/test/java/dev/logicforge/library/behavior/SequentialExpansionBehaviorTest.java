@@ -74,7 +74,7 @@ class SequentialExpansionBehaviorTest {
     }
 
     @Test
-    void clockDividerTogglesEveryDivisorEdges() {
+    void clockDividerDivideByThreeCompletesOnePeriodInThreeEdges() {
         CompiledCircuit.Builder builder = CompiledCircuit.builder();
         int clk = builder.addNet(BitWidth.ONE);
         int reset = builder.addNet(BitWidth.ONE);
@@ -88,15 +88,40 @@ class SequentialExpansionBehaviorTest {
         Simulation simulation = new Simulation(builder.build());
 
         simulation.setInput(enableSrc, LogicVector.ONE);
-        for (int i = 0; i < 2; i++) {
-            simulation.setInput(clkSrc, LogicVector.ZERO);
-            simulation.setInput(clkSrc, LogicVector.ONE);
-        }
-        assertEquals(LogicVector.ZERO, simulation.readNet(clkOut), "not yet at the divisor");
-
         simulation.setInput(clkSrc, LogicVector.ZERO);
         simulation.setInput(clkSrc, LogicVector.ONE);
-        assertEquals(LogicVector.ONE, simulation.readNet(clkOut), "3rd edge toggles CLK_OUT");
+        assertEquals(LogicVector.ZERO, simulation.readNet(clkOut), "odd divider's longer low half");
+        simulation.setInput(clkSrc, LogicVector.ZERO);
+        simulation.setInput(clkSrc, LogicVector.ONE);
+        assertEquals(LogicVector.ONE, simulation.readNet(clkOut), "second edge begins the high half");
+        simulation.setInput(clkSrc, LogicVector.ZERO);
+        simulation.setInput(clkSrc, LogicVector.ONE);
+        assertEquals(LogicVector.ZERO, simulation.readNet(clkOut),
+                "third edge completes a full period: f_out = f_in / 3");
+    }
+
+    @Test
+    void clockDividerEvenDivideByFourHasEqualTwoEdgeHalfPeriods() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int clk = builder.addNet(BitWidth.ONE);
+        int reset = builder.addNet(BitWidth.ONE);
+        int enable = builder.addNet(BitWidth.ONE);
+        int clkOut = builder.addNet(BitWidth.ONE);
+        int clkSrc = builder.addComponent("test.clk", "CLK", new BusSource(BitWidth.ONE), NONE, new int[]{clk});
+        int enableSrc = builder.addComponent("test.en", "EN", new BusSource(BitWidth.ONE), NONE, new int[]{enable});
+        builder.addComponent("test.reset", "RST", new BusSource(BitWidth.ONE), NONE, new int[]{reset});
+        builder.addComponent("sequential.clock_divider", "DIV", new ClockDividerBehavior(true, 4),
+                new int[]{clk, reset, enable}, new int[]{clkOut});
+        Simulation simulation = new Simulation(builder.build());
+
+        simulation.setInput(enableSrc, LogicVector.ONE);
+        LogicVector[] expected = {LogicVector.ZERO, LogicVector.ONE,
+                LogicVector.ONE, LogicVector.ZERO};
+        for (LogicVector level : expected) {
+            simulation.setInput(clkSrc, LogicVector.ZERO);
+            simulation.setInput(clkSrc, LogicVector.ONE);
+            assertEquals(level, simulation.readNet(clkOut));
+        }
     }
 
     @Test
