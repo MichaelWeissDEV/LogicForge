@@ -91,7 +91,9 @@ public final class StudyController {
             return false;
         }
         simulation.setInput(clock.getAsInt(), LogicState.ZERO);
+        simulation.runUntilStableAtCurrentTime();
         simulation.setInput(clock.getAsInt(), LogicState.ONE);
+        simulation.runUntilStableAtCurrentTime();
         editor.setRunning(false); // also publishes a view refresh
         return true;
     }

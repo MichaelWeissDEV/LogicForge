@@ -4,7 +4,7 @@ package dev.logicforge.processor.lf8;
 public enum Lf8ImplementationMode {
     /** Existing high-performance behavioral datapath blocks. */
     FAST,
-    /** Hierarchical CPU with the ALU decomposed through ripple/full/half adders to gates. */
+    /** Hierarchical CPU with structural ALU and register-file state decomposed to gates. */
     STRUCTURAL,
     /** Reserved for replacing the remaining datapath registers/counters with gate-level forms. */
     GATE_LEVEL

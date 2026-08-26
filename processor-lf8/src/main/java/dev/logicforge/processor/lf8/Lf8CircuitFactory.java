@@ -102,6 +102,10 @@ public final class Lf8CircuitFactory {
             structuralAlu.circuits().stream()
                     .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(circuit.metadata().name()))
                     .forEach(project::putCircuit);
+            var structuralRegisterFile = StructuralCircuitFactory.registerFile8x8Project();
+            structuralRegisterFile.circuits().stream()
+                    .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(circuit.metadata().name()))
+                    .forEach(project::putCircuit);
             project.putCircuit(createStructuralAluAdapter(registry));
         }
         return project;
@@ -146,10 +150,13 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.SLICE_LSB, 0), "OPERAND_SLICE");
         ComponentInstance marLow = register(document, registry, 260, 240, 8, "MAR_LO");
         ComponentInstance marHigh = register(document, registry, 260, 300, 8, "MAR_HI");
-        ComponentInstance registers = add(document, registry, "memory.register_file", 430, 110,
-                defaults(registry, "memory.register_file")
-                        .with(LibraryParameters.WIDTH, 8)
-                        .with(LibraryParameters.REGISTER_COUNT, 8), "REGISTER_FILE");
+        ComponentInstance registers = mode == Lf8ImplementationMode.FAST
+                ? add(document, registry, "memory.register_file", 430, 110,
+                        defaults(registry, "memory.register_file")
+                                .with(LibraryParameters.WIDTH, 8)
+                                .with(LibraryParameters.REGISTER_COUNT, 8), "REGISTER_FILE")
+                : subcircuit(document, StructuralCircuitFactory.REGISTER_FILE_8X8,
+                        430, 110, "REGISTER_FILE");
         ComponentInstance alu = mode == Lf8ImplementationMode.FAST
                 ? add(document, registry, "arithmetic.alu", 570, 110,
                         defaults(registry, "arithmetic.alu").with(LibraryParameters.WIDTH, 8), "ALU")

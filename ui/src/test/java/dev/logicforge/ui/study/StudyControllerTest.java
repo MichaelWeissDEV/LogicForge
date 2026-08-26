@@ -39,7 +39,7 @@ class StudyControllerTest {
     }
 
     @Test
-    void navigationPreservesTheConcreteDeepStructuralInstancePathAndSupportsForward() {
+    void navigationPreservesConcreteLogicAndStatePathsAndSupportsForward() {
         var project = Lf8ComputerFactory.create(Lf8ImplementationMode.STRUCTURAL,
                 Lf8Isa.HLT.opcode());
         var compiled = new CircuitCompiler(ComponentRegistry.standard()).compile(project, "main");
@@ -63,6 +63,19 @@ class StudyControllerTest {
         controller.forward();
         assertEquals("STRUCT_HALF_ADDER", controller.editor().activeCircuitName());
         assertFalse(controller.canForward());
+
+        while (controller.canBack()) {
+            controller.back();
+        }
+        descendLabel(controller, "CPU");
+        descendLabel(controller, "DATAPATH");
+        descendLabel(controller, "REGISTER_FILE");
+        descendLabel(controller, "REGISTER_0");
+        descendLabel(controller, "DFF_0");
+        descendLabel(controller, "MASTER_LATCH");
+        descendLabel(controller, "SR_LATCH");
+        assertEquals("STRUCT_SR_LATCH_NOR", controller.editor().activeCircuitName());
+        assertTrue(controller.editor().activeInstancePath().orElseThrow().split("/").length >= 8);
     }
 
     private static void descendLabel(StudyController controller, String label) {

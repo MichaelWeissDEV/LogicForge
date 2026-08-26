@@ -200,7 +200,7 @@ class Lf8AssembledProgramIntegrationTest {
     }
 
     @Test
-    void structuralLf8RunsTheSameProgramThroughTheDeepAdderHierarchy() {
+    void structuralLf8RunsTheSameProgramThroughDeepLogicAndStateHierarchies() {
         int[] program = Lf8Assembler.assemble("""
                     LDI R0, 5
                     LDI R1, 3
@@ -235,6 +235,11 @@ class Lf8AssembledProgramIntegrationTest {
                 assertTrue(project.circuit("RIPPLE_ADDER8").isPresent());
                 assertTrue(project.circuit("STRUCT_FULL_ADDER").isPresent());
                 assertTrue(project.circuit("STRUCT_HALF_ADDER").isPresent());
+                assertTrue(project.circuit("STRUCT_REGISTER_FILE_8X8").isPresent());
+                assertTrue(project.circuit("STRUCT_REGISTER8").isPresent());
+                assertTrue(project.circuit("STRUCT_DFF").isPresent());
+                assertTrue(project.circuit("STRUCT_D_LATCH").isPresent());
+                assertTrue(project.circuit("STRUCT_SR_LATCH_NOR").isPresent());
             }
         }
     }
