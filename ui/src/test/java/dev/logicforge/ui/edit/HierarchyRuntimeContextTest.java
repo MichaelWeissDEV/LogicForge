@@ -9,9 +9,12 @@ import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.CircuitMetadata;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.library.ComponentRegistry;
+import dev.logicforge.library.LibraryParameters;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.MemorySnapshot;
 import java.util.Optional;
@@ -247,6 +250,61 @@ class HierarchyRuntimeContextTest {
         assertEquals(0xAA, editor.memorySnapshot(sharedId).orElseThrow()
                 .wordAt(0).toUnsignedLong().orElseThrow(),
                 "the nested write under the same local UUID must not have leaked into the root component");
+    }
+
+    @Test
+    void nestedUnconnectedPortUsesGeneratedFlattenedUuidDespiteRootCollision() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        ComponentInstance rootSource = ComponentInstance.create("routing.bus_constant",
+                new CircuitPoint(0, 0),
+                registry.require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 8)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, "aa"));
+        java.util.UUID sharedId = rootSource.id();
+
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("Cpu", ""));
+        ComponentInstance childSource = ComponentInstance.create("routing.bus_constant",
+                new CircuitPoint(0, 0),
+                registry.require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 8)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, "3c"))
+                .withId(sharedId);
+        child.addComponent(childSource);
+
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        main.addComponent(rootSource);
+        ComponentInstance cpu = SubcircuitSupport.instantiate("Cpu", new CircuitPoint(200, 0));
+        main.addComponent(cpu);
+        CircuitProject project = CircuitProject.of("unconnected-port-collision", main);
+        project.putCircuit(child);
+        editor.setProject(project, false);
+
+        var compilation = editor.compilation().orElseThrow();
+        int rootRuntimeId = compilation.sourceMap().componentId(sharedId).orElseThrow();
+        int rootNet = editor.netOf(new PortReference(sharedId, "OUT")).orElseThrow();
+
+        editor.openSubcircuit(cpu);
+        HierarchyRuntimeContext context = new HierarchyRuntimeContext(
+                compilation, editor.activeInstancePath());
+        int childRuntimeId = context.resolveComponent(sharedId).orElseThrow();
+        assertNotEquals(rootRuntimeId, childRuntimeId,
+                "the local child UUID must resolve through the concrete instance path");
+        assertNotEquals(sharedId,
+                compilation.sourceMap().componentUuid(childRuntimeId).orElseThrow(),
+                "nested primitives use their deterministic flattened UUID");
+
+        PortReference localPort = new PortReference(sharedId, "OUT");
+        PortEndpoint whole = PortEndpoint.whole(localPort);
+        PortEndpoint bit = PortEndpoint.bit(localPort, 2);
+        PortEndpoint range = PortEndpoint.range(localPort, 5, 2);
+        int childNet = context.resolveNet(whole).orElseThrow();
+
+        assertNotEquals(rootNet, childNet, "the nested unconnected port must never bind root");
+        assertEquals(childNet, context.resolveNet(bit).orElseThrow());
+        assertEquals(childNet, context.resolveNet(range).orElseThrow());
+        assertEquals(LogicVector.fromUnsignedLong(0x3c, 8), editor.valueAt(whole).orElseThrow());
+        assertEquals(LogicVector.ONE, editor.valueAt(bit).orElseThrow());
+        assertEquals(LogicVector.fromUnsignedLong(0xf, 4), editor.valueAt(range).orElseThrow());
     }
 
     @Test

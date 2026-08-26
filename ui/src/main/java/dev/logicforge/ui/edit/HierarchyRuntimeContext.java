@@ -3,6 +3,7 @@ package dev.logicforge.ui.edit;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortSlice;
+import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.compiler.CircuitFlattener;
 import dev.logicforge.compiler.CompilationResult;
 import dev.logicforge.compiler.ResolvedSignal;
@@ -21,19 +22,12 @@ import java.util.UUID;
  * tree has no such path — it may back zero, one or many live instances — so every
  * resolution correctly comes back empty there rather than guessing which instance to show.
  *
- * <p>Every lookup goes through the hierarchical {@code HierarchySourceMap} first, keyed by
- * the full instance path — this is the one source that can never misresolve, because a
- * component or endpoint genuinely local to the currently-open instance always has an entry
- * there (see {@code CircuitFlattener}). Only if that misses does resolution fall back to the
- * flat, UUID-keyed {@code CircuitSourceMap}: that covers two cases the hierarchical map
- * cannot — a port with no connection (an unwired port still gets a net, but never gets a
- * hierarchical path entry — those exist only for endpoints that appear in a wire), and a
- * caller that already holds a root-scoped UUID while a nested instance happens to be open.
- * Trying the flat map <em>first</em> would be unsafe: a child circuit definition can
- * coincidentally (or adversarially) reuse a UUID that also exists at the root, and a direct
- * hit there before the hierarchical lookup runs would silently resolve to the wrong
- * component. Trying it only as a fallback avoids that — anything truly local to the open
- * instance is already found by the hierarchical lookup and never reaches the flat map.
+ * <p>Nested lookups never use a document-local child UUID as a key in the flat source map.
+ * Connected endpoints resolve by their full hierarchy path. For an unconnected port, the
+ * local component first resolves through that same path to a runtime component id, which is
+ * translated to the generated flattened UUID before its port net is looked up. Root
+ * {@code main} is the only context where document UUIDs are already flat UUIDs and may be
+ * looked up directly.
  */
 public final class HierarchyRuntimeContext {
 
@@ -64,35 +58,49 @@ public final class HierarchyRuntimeContext {
     /**
      * The runtime id of a component local to the open circuit. Definition mode
      * ({@code instancePath} empty) never resolves anything — there is no single live
-     * instance to point at. Otherwise the hierarchical path is tried first and the flat map
-     * only as a fallback; see the class documentation for why the order matters.
+     * instance to point at. Root component UUIDs are already flat; nested UUIDs must resolve
+     * exclusively through their full hierarchy path.
      */
     public OptionalInt resolveComponent(UUID localComponentId) {
         if (compilation == null || instancePath.isEmpty()) {
             return OptionalInt.empty();
         }
-        OptionalInt hierarchical = compilation.hierarchySourceMap()
-                .componentId(instancePath.get() + "/" + localComponentId);
-        if (hierarchical.isPresent()) {
-            return hierarchical;
+        if (isRoot()) {
+            return compilation.sourceMap().componentId(localComponentId);
         }
-        return compilation.sourceMap().componentId(localComponentId);
+        return compilation.hierarchySourceMap()
+                .componentId(instancePath.get() + "/" + localComponentId);
     }
 
     /**
      * The net carrying a local port endpoint (whole, bit or range). See the class
-     * documentation for why the hierarchical path is tried before the flat map, never after.
+     * documentation for the nested unconnected-port translation.
      */
     public OptionalInt resolveNet(PortEndpoint localEndpoint) {
         if (compilation == null || instancePath.isEmpty()) {
             return OptionalInt.empty();
+        }
+        if (isRoot()) {
+            return compilation.sourceMap().netOf(localEndpoint);
         }
         OptionalInt hierarchical = compilation.hierarchySourceMap().netId(
                 CircuitFlattener.endpointPath(instancePath.get(), localEndpoint));
         if (hierarchical.isPresent()) {
             return hierarchical;
         }
-        return compilation.sourceMap().netOf(localEndpoint);
+        return flattenedEndpoint(localEndpoint).stream()
+                .mapToInt(endpoint -> {
+                    OptionalInt exact = compilation.sourceMap().netOf(endpoint);
+                    if (exact.isPresent()) {
+                        return exact.getAsInt();
+                    }
+                    if (!compilation.sourceMap().isBitMode(endpoint.port())) {
+                        return compilation.sourceMap().netOf(endpoint.port()).orElse(-1);
+                    }
+                    return -1;
+                })
+                .filter(net -> net >= 0)
+                .findFirst();
     }
 
     /** The net a whole port is attached to. */
@@ -185,6 +193,20 @@ public final class HierarchyRuntimeContext {
                     return width.isPresent() ? Optional.of(width.getAsInt()) : Optional.empty();
                 })
                 .orElse(0);
+    }
+
+    private Optional<PortEndpoint> flattenedEndpoint(PortEndpoint localEndpoint) {
+        OptionalInt runtimeComponentId = resolveComponent(localEndpoint.componentId());
+        if (runtimeComponentId.isEmpty()) {
+            return Optional.empty();
+        }
+        return compilation.sourceMap().componentUuid(runtimeComponentId.getAsInt())
+                .map(flatId -> new PortEndpoint(
+                        new PortReference(flatId, localEndpoint.portName()), localEndpoint.slice()));
+    }
+
+    private boolean isRoot() {
+        return instancePath.filter(CircuitProject.MAIN_CIRCUIT::equals).isPresent();
     }
 
     private Optional<ResolvedSignal> resolveBitVector(PortReference port, int lsb, int width) {
