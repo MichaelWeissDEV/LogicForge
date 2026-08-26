@@ -264,12 +264,6 @@ public final class Lf8CircuitFactory {
                 defaults(registry, "routing.splitter")
                         .with(LibraryParameters.WIDTH, Lf8ControlSignal.wordWidth()),
                 "MICROCODE_BITS");
-        // IRQ_TAKEN_TIE is a placeholder 5th "flags" address bit, tied to constant 0 so
-        // ROM addressing at microstep 0 is unchanged (both flags16-31 rows already mirror
-        // flags0-15 exactly, since set()/setAlu()/branch() loop over the whole FLAG_SLOTS
-        // range). A later change wires this to a real IRQ_TAKEN latch instead.
-        ComponentInstance irqTakenTie = constant(document, registry, 260, 220, 1, 0,
-                "IRQ_TAKEN_TIE");
         ComponentInstance flagsWithIrq = add(document, registry, "routing.bus_concat", 300, 220,
                 defaults(registry, "routing.bus_concat")
                         .with(LibraryParameters.LOW_WIDTH, 4)
@@ -293,14 +287,74 @@ public final class Lf8CircuitFactory {
         ComponentInstance irqProbe = add(document, registry, "output.probe", 150, 80,
                 ParameterValues.empty(), "IRQ_PROBE");
 
+        // Interrupt-enable: a real circuit register, not Java state. Resets to 0 (disabled)
+        // at power-on; set/cleared by EI/DI now, and later also by the interrupt entry
+        // sequence (clears it) and IRET (unconditionally re-enables it).
+        ComponentInstance ieRegister = add(document, registry, "sequential.register_reset",
+                60, 260, defaults(registry, "sequential.register_reset")
+                        .with(LibraryParameters.WIDTH, 1), "IE_REGISTER");
+
+        // IRQ_TAKEN latches "IRQ is asserted and interrupts are enabled" once per
+        // instruction boundary (microstep 0) and holds that value for the whole
+        // instruction/entry sequence regardless of what IE or IRQ do mid-sequence -
+        // otherwise IE being cleared partway through the entry sequence would make this
+        // combinational AND flip mid-sequence and corrupt its own ROM addressing. It can
+        // only latch 0->1 at a fetch boundary (gated by IS_FETCH_STEP and not already
+        // latched) and is explicitly force-cleared by IRQ_ACK, asserted at the end of the
+        // entry sequence once the handler's own fetch is about to begin.
+        ComponentInstance microstepBits = add(document, registry, "routing.splitter", 250, 40,
+                defaults(registry, "routing.splitter").with(LibraryParameters.WIDTH, 3),
+                "MICROSTEP_BITS");
+        ComponentInstance isFetchStep = add(document, registry, "logic.nor", 320, 40,
+                defaults(registry, "logic.nor").with(LibraryParameters.INPUT_COUNT, 3),
+                "IS_FETCH_STEP");
+        ComponentInstance irqLiveSample = add(document, registry, "logic.and", 60, 320,
+                ParameterValues.empty(), "IRQ_LIVE_SAMPLE");
+        ComponentInstance irqTakenNot = add(document, registry, "logic.not", 60, 360,
+                ParameterValues.empty(), "IRQ_TAKEN_NOT");
+        ComponentInstance irqAutoLoad = add(document, registry, "logic.and", 130, 360,
+                ParameterValues.empty(), "IRQ_AUTO_LOAD");
+        ComponentInstance irqLatchLoad = add(document, registry, "logic.or", 190, 360,
+                ParameterValues.empty(), "IRQ_LATCH_LOAD");
+        ComponentInstance irqAckClearZero = constant(document, registry, 60, 400, 1, 0,
+                "IRQ_ACK_CLEAR_ZERO");
+        ComponentInstance irqLatchData = mux(document, registry, 130, 400, 1, "IRQ_LATCH_DATA");
+        ComponentInstance irqTakenLatch = add(document, registry, "sequential.register_reset",
+                190, 400, defaults(registry, "sequential.register_reset")
+                        .with(LibraryParameters.WIDTH, 1), "IRQ_TAKEN_LATCH");
+
         wire(document, clk, "OUT", microstep, "CLK");
         wire(document, clk, "OUT", haltLatch, "CLK");
+        wire(document, clk, "OUT", ieRegister, "CLK");
+        wire(document, clk, "OUT", irqTakenLatch, "CLK");
         wire(document, reset, "OUT", microstep, "RESET");
         wire(document, reset, "OUT", haltLatch, "RESET");
+        wire(document, reset, "OUT", ieRegister, "RESET");
+        wire(document, reset, "OUT", irqTakenLatch, "RESET");
         wire(document, irq, "OUT", irqProbe, "IN");
+
+        wire(document, microstep, "COUNT", microstepBits, "BUS");
+        wire(document, microstepBits, "BIT0", isFetchStep, "IN0");
+        wire(document, microstepBits, "BIT1", isFetchStep, "IN1");
+        wire(document, microstepBits, "BIT2", isFetchStep, "IN2");
+        wire(document, irq, "OUT", irqLiveSample, "IN0");
+        wire(document, ieRegister, "Q", irqLiveSample, "IN1");
+        wire(document, irqTakenLatch, "Q", irqTakenNot, "A");
+        wire(document, isFetchStep, "OUT", irqAutoLoad, "IN0");
+        wire(document, irqTakenNot, "Y", irqAutoLoad, "IN1");
+        wire(document, irqAutoLoad, "OUT", irqLatchLoad, "IN0");
+        control(document, microcodeBits, Lf8ControlSignal.IRQ_ACK, irqLatchLoad, "IN1");
+        wire(document, irqLiveSample, "OUT", irqLatchData, "IN0");
+        wire(document, irqAckClearZero, "OUT", irqLatchData, "IN1");
+        control(document, microcodeBits, Lf8ControlSignal.IRQ_ACK, irqLatchData, "SEL");
+        wire(document, irqLatchData, "OUT", irqTakenLatch, "DATA");
+        wire(document, irqLatchLoad, "OUT", irqTakenLatch, "LOAD");
+        control(document, microcodeBits, Lf8ControlSignal.IE_LOAD, ieRegister, "LOAD");
+        control(document, microcodeBits, Lf8ControlSignal.IE_DATA, ieRegister, "DATA");
+
         wire(document, microstep, "COUNT", stepAndFlags, "LOW");
         wire(document, flags, "OUT", flagsWithIrq, "LOW");
-        wire(document, irqTakenTie, "OUT", flagsWithIrq, "HIGH");
+        wire(document, irqTakenLatch, "Q", flagsWithIrq, "HIGH");
         wire(document, flagsWithIrq, "OUT", stepAndFlags, "HIGH");
         wire(document, stepAndFlags, "OUT", microcodeAddress, "LOW");
         wire(document, opcode, "OUT", microcodeAddress, "HIGH");

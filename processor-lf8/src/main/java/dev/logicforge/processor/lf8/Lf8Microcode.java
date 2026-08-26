@@ -122,6 +122,10 @@ public final class Lf8Microcode {
         set(code, Lf8Isa.RET, 3, SP_INCREMENT);
         set(code, Lf8Isa.RET, 4, MAR_HIGH_LOAD, MEMORY_READ, ADDRESS_FROM_SP);
         set(code, Lf8Isa.RET, 5, PC_LOAD);
+
+        set(code, Lf8Isa.EI, 1, IE_LOAD, IE_DATA);
+        set(code, Lf8Isa.DI, 1, IE_LOAD);
+
         branch(code, Lf8Isa.JZ, ZERO_FLAG, true);
         branch(code, Lf8Isa.JNZ, ZERO_FLAG, false);
         branch(code, Lf8Isa.JC, CARRY_FLAG, true);

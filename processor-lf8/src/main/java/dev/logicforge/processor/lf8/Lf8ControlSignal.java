@@ -27,7 +27,15 @@ public enum Lf8ControlSignal {
     SP_DECREMENT(26),
     PC_LOW_TO_DATA(27),
     PC_HIGH_TO_DATA(28),
-    SOURCE_TO_DATA(29);
+    SOURCE_TO_DATA(29),
+    /** Control-internal: loads the IE (interrupt-enable) register with IE_DATA. */
+    IE_LOAD(30),
+    /** Control-internal: the value IE_LOAD captures into the IE register. */
+    IE_DATA(31),
+    /** Control-internal: forces the IRQ_TAKEN latch back to 0 once an interrupt entry
+     *  sequence has staged the handler's address, so the handler's own fetch does not
+     *  immediately re-trigger a second entry. */
+    IRQ_ACK(32);
 
     private final int bit;
 

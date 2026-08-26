@@ -565,6 +565,59 @@ class Lf8CpuIntegrationTest {
                 "two balanced CALL/RET pairs must leave SP back at its reset value");
     }
 
+    @Test
+    void interruptEnableStartsDisabledAndEiDiToggleARealCircuitRegister() {
+        int ieId;
+        {
+            CircuitProject bootProject = Lf8ComputerFactory.create(opcode(Lf8Isa.HLT));
+            CompilationResult bootCompiled = compileAndRoundTrip(bootProject);
+            Simulation bootSimulation = new Simulation(bootCompiled.circuit());
+            CompiledProbe bootProbe = probeOf(bootProject.mainCircuit(), bootCompiled);
+            bootSimulation.setInput(bootProbe.resetId(), LogicState.ONE);
+            bootSimulation.setInput(bootProbe.resetId(), LogicState.ZERO);
+            ieId = bootCompiled.componentByLabel("IE_REGISTER").orElseThrow();
+            assertEquals(LogicVector.ZERO, bootSimulation.readOutput(ieId, 0),
+                    "interrupts must be disabled at power-on until EI runs");
+        }
+
+        int[] program = {
+                opcode(Lf8Isa.EI),
+                opcode(Lf8Isa.DI),
+                opcode(Lf8Isa.EI),
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+        ieId = compiled.componentByLabel("IE_REGISTER").orElseThrow();
+
+        simulation.setInput(probe.resetId(), LogicState.ONE);
+        simulation.setInput(probe.resetId(), LogicState.ZERO);
+        assertEquals(LogicVector.ZERO, simulation.readOutput(ieId, 0));
+
+        // Every instruction occupies a full MICROSTEPS-wide slot regardless of how many of
+        // its steps do real work (MICROSTEP free-runs through the idle remainder before
+        // wrapping back to step 0 for the next fetch), so each instruction boundary is
+        // exactly Lf8Microcode.MICROSTEPS clock edges away.
+        int microsteps = dev.logicforge.processor.lf8.Lf8Microcode.MICROSTEPS;
+        clockEdges(simulation, probe, microsteps); // EI
+        assertEquals(LogicVector.ONE, simulation.readOutput(ieId, 0), "EI must set IE");
+
+        clockEdges(simulation, probe, microsteps); // DI
+        assertEquals(LogicVector.ZERO, simulation.readOutput(ieId, 0), "DI must clear IE");
+
+        clockEdges(simulation, probe, microsteps); // EI
+        assertEquals(LogicVector.ONE, simulation.readOutput(ieId, 0), "EI must set IE again");
+    }
+
+    private void clockEdges(Simulation simulation, CompiledProbe probe, int edges) {
+        for (int i = 0; i < edges; i++) {
+            simulation.setInput(probe.clkId(), LogicState.ZERO);
+            simulation.setInput(probe.clkId(), LogicState.ONE);
+        }
+    }
+
     private void assertBranchPath(BranchCase branchCase) {
         int[] program = {
                 opcode(Lf8Isa.LDI), 0, branchCase.left(),
