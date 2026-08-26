@@ -198,8 +198,15 @@ class Lf8CpuIntegrationTest {
         }
     }
 
+    // These three tests used to be one long program covering AND/OR/XOR/INC/DEC/SHL/SHR/CMP.
+    // Split into short, quick-to-halt programs: a pre-existing simulation-core bug
+    // (SimulationOscillationException, tracked separately, unrelated to LF-8 circuit
+    // correctness) spuriously fires once a run is clocked for several hundred edges past
+    // halt, which the original single long-running test was tripping over. Splitting also
+    // keeps per-instruction failures easy to localize.
+
     @Test
-    void remainingBaseAluInstructionsExecuteAndCmpDoesNotWriteBack() {
+    void logicalInstructionsCombineOperandsBitwise() {
         int[] program = {
                 opcode(Lf8Isa.LDI), 0, 0xf0,
                 opcode(Lf8Isa.LDI), 1, 0x0f,
@@ -211,16 +218,6 @@ class Lf8CpuIntegrationTest {
                 opcode(Lf8Isa.LDI), 0, 0xf0,
                 opcode(Lf8Isa.XOR), 0, 1,
                 opcode(Lf8Isa.STORE), 0, 0x02, 0x80,
-                opcode(Lf8Isa.INC), 1,
-                opcode(Lf8Isa.STORE), 1, 0x03, 0x80,
-                opcode(Lf8Isa.DEC), 1,
-                opcode(Lf8Isa.STORE), 1, 0x04, 0x80,
-                opcode(Lf8Isa.SHL), 1,
-                opcode(Lf8Isa.STORE), 1, 0x05, 0x80,
-                opcode(Lf8Isa.SHR), 1,
-                opcode(Lf8Isa.STORE), 1, 0x06, 0x80,
-                opcode(Lf8Isa.CMP), 0, 1,
-                opcode(Lf8Isa.STORE), 0, 0x07, 0x80,
                 opcode(Lf8Isa.HLT),
         };
         CircuitProject project = Lf8ComputerFactory.create(program);
@@ -230,12 +227,62 @@ class Lf8CpuIntegrationTest {
 
         runToHalt(simulation, probe);
 
-        int[] expected = {0x00, 0xff, 0xff, 0x10, 0x0f, 0x1e, 0x0f, 0xff};
+        int[] expected = {0x00, 0xff, 0xff};
         for (int address = 0; address < expected.length; address++) {
             assertEquals(LogicVector.fromUnsignedLong(expected[address], 8),
                     simulation.memoryPage(probe.ramId(), address, 1).orElseThrow().wordAt(address),
                     "RAM result slot " + address);
         }
+    }
+
+    @Test
+    void incDecShlShrUpdateTheirOperandRegister() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 1, 0x0f,
+                opcode(Lf8Isa.INC), 1,
+                opcode(Lf8Isa.STORE), 1, 0x00, 0x80,
+                opcode(Lf8Isa.DEC), 1,
+                opcode(Lf8Isa.STORE), 1, 0x01, 0x80,
+                opcode(Lf8Isa.SHL), 1,
+                opcode(Lf8Isa.STORE), 1, 0x02, 0x80,
+                opcode(Lf8Isa.SHR), 1,
+                opcode(Lf8Isa.STORE), 1, 0x03, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int[] expected = {0x10, 0x0f, 0x1e, 0x0f};
+        for (int address = 0; address < expected.length; address++) {
+            assertEquals(LogicVector.fromUnsignedLong(expected[address], 8),
+                    simulation.memoryPage(probe.ramId(), address, 1).orElseThrow().wordAt(address),
+                    "RAM result slot " + address);
+        }
+    }
+
+    @Test
+    void cmpSetsFlagsWithoutWritingBackToTheDestinationRegister() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0xff,
+                opcode(Lf8Isa.LDI), 1, 0x0f,
+                opcode(Lf8Isa.CMP), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        assertEquals(LogicVector.fromUnsignedLong(0xff, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "CMP must not write its result back into R0");
         int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
         assertEquals(LogicVector.fromUnsignedLong(0b0110, 4), simulation.readOutput(flagsId, 0),
                 "CMP 0xff,0x0f sets C and N without changing R0");
@@ -424,6 +471,19 @@ class Lf8CpuIntegrationTest {
         int spId = compiled.componentByLabel("SP").orElseThrow();
         assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0),
                 "after RET the stack must be balanced back to its reset value");
+
+        // The 3-byte CALL at address 3 returns to address 6 (0x0006). RET does not erase the
+        // stack, only walks past it, so the pushed bytes are still readable after halt. This
+        // pins down the documented push order: PC_HIGH first (0x00, ends up deepest on the
+        // stack at 0xbfff / RAM-relative 0x3fff), then PC_LOW (0x06, on top at 0xbffe /
+        // RAM-relative 0x3ffe) — independent of the little-endian ADDRESS16 operand encoding
+        // used for JMP/CALL's own instruction bytes.
+        assertEquals(LogicVector.fromUnsignedLong(0x00, 8),
+                simulation.memoryPage(probe.ramId(), 0x3fff, 1).orElseThrow().wordAt(0x3fff),
+                "CALL must push the return address's high byte first (deepest on the stack)");
+        assertEquals(LogicVector.fromUnsignedLong(0x06, 8),
+                simulation.memoryPage(probe.ramId(), 0x3ffe, 1).orElseThrow().wordAt(0x3ffe),
+                "CALL must push the return address's low byte second (on top of the stack)");
     }
 
     @Test
