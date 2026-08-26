@@ -398,6 +398,68 @@ class Lf8CpuIntegrationTest {
                 "SP must reset to the top of the 0x8000-0xbfff RAM region");
     }
 
+    @Test
+    void callPushesTheReturnAddressAndRetRestoresIt() {
+        int[] program = {
+                // main:
+                opcode(Lf8Isa.LDI), 0, 1,
+                opcode(Lf8Isa.CALL), 0x0b, 0x00,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.HLT),
+                // function (address 0x0b): R0 += 41, then return
+                opcode(Lf8Isa.LDI), 1, 41,
+                opcode(Lf8Isa.ADD), 0, 1,
+                opcode(Lf8Isa.RET),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        assertEquals(LogicVector.fromUnsignedLong(42, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "CALL must reach the function and RET must resume main to store R0=1+41");
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0),
+                "after RET the stack must be balanced back to its reset value");
+    }
+
+    @Test
+    void nestedCallsReturnToTheCorrectCallerInOrder() {
+        int[] program = {
+                // main (0-10): call A, then store R0, then halt
+                opcode(Lf8Isa.LDI), 0, 0,
+                opcode(Lf8Isa.CALL), 0x0b, 0x00,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.HLT),
+                // A (11-22): R0 += 1, call B, R0 += 10, return
+                opcode(Lf8Isa.INC), 0,
+                opcode(Lf8Isa.CALL), 0x17, 0x00,
+                opcode(Lf8Isa.LDI), 1, 10,
+                opcode(Lf8Isa.ADD), 0, 1,
+                opcode(Lf8Isa.RET),
+                // B (23-29): R0 += 100, return
+                opcode(Lf8Isa.LDI), 1, 100,
+                opcode(Lf8Isa.ADD), 0, 1,
+                opcode(Lf8Isa.RET),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        assertEquals(LogicVector.fromUnsignedLong(111, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "main -> A -> B must unwind in order: (0+1)+100 in B, then +10 back in A");
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0),
+                "two balanced CALL/RET pairs must leave SP back at its reset value");
+    }
+
     private void assertBranchPath(BranchCase branchCase) {
         int[] program = {
                 opcode(Lf8Isa.LDI), 0, branchCase.left(),

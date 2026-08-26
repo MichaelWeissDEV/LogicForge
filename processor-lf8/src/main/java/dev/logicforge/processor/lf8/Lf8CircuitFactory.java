@@ -43,7 +43,10 @@ public final class Lf8CircuitFactory {
             Lf8ControlSignal.ALU_B_ONE,
             Lf8ControlSignal.ADDRESS_FROM_SP,
             Lf8ControlSignal.SP_INCREMENT,
-            Lf8ControlSignal.SP_DECREMENT);
+            Lf8ControlSignal.SP_DECREMENT,
+            Lf8ControlSignal.PC_LOW_TO_DATA,
+            Lf8ControlSignal.PC_HIGH_TO_DATA,
+            Lf8ControlSignal.SOURCE_TO_DATA);
 
     private Lf8CircuitFactory() {
     }
@@ -124,6 +127,18 @@ public final class Lf8CircuitFactory {
                 defaults(registry, "arithmetic.decrementer").with(LibraryParameters.WIDTH, 16),
                 "SP_DECREMENTER");
         ComponentInstance addressWithSp = mux(document, registry, 800, 300, 16, "ADDRESS_WITH_SP");
+        ComponentInstance pcLowSlice = slice(document, registry, 180, 340, 16, 8, "PC_LOW_SLICE");
+        ComponentInstance pcHighSlice = add(document, registry, "routing.bus_slice", 180, 380,
+                defaults(registry, "routing.bus_slice")
+                        .with(LibraryParameters.INPUT_WIDTH, 16)
+                        .with(LibraryParameters.OUTPUT_WIDTH, 8)
+                        .with(LibraryParameters.SLICE_LSB, 8), "PC_HIGH_SLICE");
+        ComponentInstance pcLowDriver = add(document, registry, "routing.tristate_n", 850, 200,
+                defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
+                "PC_LOW_DRIVER");
+        ComponentInstance pcHighDriver = add(document, registry, "routing.tristate_n", 850, 240,
+                defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
+                "PC_HIGH_DRIVER");
         ComponentInstance writeDriver = add(document, registry, "routing.tristate_n", 850, 150,
                 defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
                 "DATA_WRITE_DRIVER");
@@ -176,6 +191,12 @@ public final class Lf8CircuitFactory {
         wire(document, addressSource, "OUT", addressWithSp, "IN0");
         wire(document, sp, "COUNT", addressWithSp, "IN1");
         wire(document, addressWithSp, "OUT", address, "IN");
+        wire(document, pc, "COUNT", pcLowSlice, "IN");
+        wire(document, pc, "COUNT", pcHighSlice, "IN");
+        wire(document, pcLowSlice, "OUT", pcLowDriver, "A");
+        wire(document, pcHighSlice, "OUT", pcHighDriver, "A");
+        wire(document, pcLowDriver, "Y", data, "BUS");
+        wire(document, pcHighDriver, "Y", data, "BUS");
         wire(document, registers, "RD_DATA_B", writeDriver, "A");
         wire(document, writeDriver, "Y", data, "BUS");
         wire(document, ir, "Q", opcode, "IN");
@@ -204,7 +225,7 @@ public final class Lf8CircuitFactory {
         controlWire(document, controls, Lf8ControlSignal.ALTERNATE_SOURCE, writeSource, "SEL");
         controlWire(document, controls, Lf8ControlSignal.ALU_CARRY_IN, alu, "CIN");
         controlWire(document, controls, Lf8ControlSignal.ALU_B_ONE, aluB, "SEL");
-        controlWire(document, controls, Lf8ControlSignal.MEMORY_WRITE, writeDriver, "ENABLE");
+        controlWire(document, controls, Lf8ControlSignal.SOURCE_TO_DATA, writeDriver, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.PC_LOAD, pc, "LOAD");
         controlWire(document, controls, Lf8ControlSignal.ADDRESS_FROM_MAR, addressSource, "SEL");
         controlWire(document, controls, Lf8ControlSignal.FLAGS_LOAD, flags, "LOAD");
@@ -215,6 +236,8 @@ public final class Lf8CircuitFactory {
         controlWire(document, controls, Lf8ControlSignal.ADDRESS_FROM_SP, addressWithSp, "SEL");
         controlWire(document, controls, Lf8ControlSignal.SP_INCREMENT, sp, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.SP_DECREMENT, sp, "LOAD");
+        controlWire(document, controls, Lf8ControlSignal.PC_LOW_TO_DATA, pcLowDriver, "ENABLE");
+        controlWire(document, controls, Lf8ControlSignal.PC_HIGH_TO_DATA, pcHighDriver, "ENABLE");
         return document;
     }
 

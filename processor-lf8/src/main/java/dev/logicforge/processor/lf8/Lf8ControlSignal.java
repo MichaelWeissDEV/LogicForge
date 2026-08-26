@@ -24,7 +24,10 @@ public enum Lf8ControlSignal {
     ALU_B_ONE(23),
     ADDRESS_FROM_SP(24),
     SP_INCREMENT(25),
-    SP_DECREMENT(26);
+    SP_DECREMENT(26),
+    PC_LOW_TO_DATA(27),
+    PC_HIGH_TO_DATA(28),
+    SOURCE_TO_DATA(29);
 
     private final int bit;
 

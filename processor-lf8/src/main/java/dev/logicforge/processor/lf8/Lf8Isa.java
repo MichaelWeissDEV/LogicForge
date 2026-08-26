@@ -75,6 +75,10 @@ public final class Lf8Isa {
             List.of(REGISTER), Set.of());
     public static final Lf8Instruction POP = instruction("POP", 0x1b,
             List.of(REGISTER), Set.of());
+    public static final Lf8Instruction CALL = instruction("CALL", 0x1c,
+            List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction RET = instruction("RET", 0x1d,
+            List.of(), Set.of());
     public static final Lf8Instruction HLT = instruction("HLT", 0xff,
             List.of(), Set.of());
 
@@ -82,7 +86,7 @@ public final class Lf8Isa {
             NOP, LDI, MOV, ADD, SUB, LOAD, STORE, JMP,
             JZ, JNZ, JC, JNC, JN, JNN,
             AND, OR, XOR, CMP, INC, DEC, SHL, SHR,
-            NOT, ROL, ROR, NEG, PUSH, POP, HLT);
+            NOT, ROL, ROR, NEG, PUSH, POP, CALL, RET, HLT);
     private static final Map<Integer, Lf8Instruction> BY_OPCODE = byOpcode();
 
     private Lf8Isa() {

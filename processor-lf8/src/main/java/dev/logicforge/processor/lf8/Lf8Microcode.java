@@ -75,7 +75,7 @@ public final class Lf8Microcode {
                 REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_CARRY_IN);
 
         set(code, Lf8Isa.PUSH, 1, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
-        set(code, Lf8Isa.PUSH, 2, MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT);
+        set(code, Lf8Isa.PUSH, 2, MEMORY_WRITE, SOURCE_TO_DATA, ADDRESS_FROM_SP, SP_DECREMENT);
 
         set(code, Lf8Isa.POP, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
         set(code, Lf8Isa.POP, 2, SP_INCREMENT);
@@ -90,11 +90,29 @@ public final class Lf8Microcode {
         }
         set(code, Lf8Isa.LOAD, 4, REGISTER_FILE_WRITE, ALTERNATE_SOURCE,
                 MEMORY_READ, ADDRESS_FROM_MAR);
-        set(code, Lf8Isa.STORE, 4, MEMORY_WRITE, ADDRESS_FROM_MAR);
+        set(code, Lf8Isa.STORE, 4, MEMORY_WRITE, SOURCE_TO_DATA, ADDRESS_FROM_MAR);
 
         set(code, Lf8Isa.JMP, 1, PC_INCREMENT, MAR_LOW_LOAD, MEMORY_READ);
         set(code, Lf8Isa.JMP, 2, PC_INCREMENT, MAR_HIGH_LOAD, MEMORY_READ);
         set(code, Lf8Isa.JMP, 3, PC_LOAD);
+
+        // CALL: read the 2-byte target into MAR (exactly like JMP, and while PC still points
+        // past the operand bytes — i.e. at the correct return address), then push PC high
+        // before PC low so the low byte ends up on top of the stack, then jump via MAR.
+        set(code, Lf8Isa.CALL, 1, PC_INCREMENT, MAR_LOW_LOAD, MEMORY_READ);
+        set(code, Lf8Isa.CALL, 2, PC_INCREMENT, MAR_HIGH_LOAD, MEMORY_READ);
+        set(code, Lf8Isa.CALL, 3, MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, PC_HIGH_TO_DATA);
+        set(code, Lf8Isa.CALL, 4, MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, PC_LOW_TO_DATA);
+        set(code, Lf8Isa.CALL, 5, PC_LOAD);
+
+        // RET: pop PC low then PC high back into MAR (mirroring CALL's push order), then jump
+        // via MAR exactly like JMP/CALL. SP must be incremented before each read since the
+        // address bus reflects the live SP.COUNT combinationally.
+        set(code, Lf8Isa.RET, 1, SP_INCREMENT);
+        set(code, Lf8Isa.RET, 2, MAR_LOW_LOAD, MEMORY_READ, ADDRESS_FROM_SP);
+        set(code, Lf8Isa.RET, 3, SP_INCREMENT);
+        set(code, Lf8Isa.RET, 4, MAR_HIGH_LOAD, MEMORY_READ, ADDRESS_FROM_SP);
+        set(code, Lf8Isa.RET, 5, PC_LOAD);
         branch(code, Lf8Isa.JZ, ZERO_FLAG, true);
         branch(code, Lf8Isa.JNZ, ZERO_FLAG, false);
         branch(code, Lf8Isa.JC, CARRY_FLAG, true);
