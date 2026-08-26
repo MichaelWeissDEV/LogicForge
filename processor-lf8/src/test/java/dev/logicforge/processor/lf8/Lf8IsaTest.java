@@ -40,7 +40,7 @@ class Lf8IsaTest {
 
     @Test
     void microcodeUsesCanonicalInstructionOpcodes() {
-        int[] words = Lf8Microcode.words();
+        long[] words = Lf8Microcode.words();
         assertEquals(Lf8ControlSignal.REGISTER_FILE_WRITE.mask()
                         | Lf8ControlSignal.ALU_SOURCE.mask()
                         | Lf8ControlSignal.FLAGS_LOAD.mask()
@@ -52,7 +52,7 @@ class Lf8IsaTest {
 
     @Test
     void conditionalBranchPagesDependOnStoredFlags() {
-        int[] words = Lf8Microcode.words();
+        long[] words = Lf8Microcode.words();
         assertEquals(0, words[Lf8Microcode.address(Lf8Isa.JZ.opcode(), 0b0000, 3)]);
         assertEquals(Lf8ControlSignal.PC_LOAD.mask(),
                 words[Lf8Microcode.address(Lf8Isa.JZ.opcode(), 0b0001, 3)]);

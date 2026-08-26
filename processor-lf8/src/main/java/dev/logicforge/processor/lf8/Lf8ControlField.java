@@ -24,10 +24,10 @@ public enum Lf8ControlField {
         return lsb + width - 1;
     }
 
-    public int encode(int value) {
+    public long encode(int value) {
         if (value < 0 || value >= (1 << width)) {
             throw new IllegalArgumentException(name() + " value does not fit in " + width + " bits");
         }
-        return value << lsb;
+        return (long) value << lsb;
     }
 }

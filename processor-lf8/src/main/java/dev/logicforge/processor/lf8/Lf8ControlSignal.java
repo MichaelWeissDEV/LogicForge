@@ -39,8 +39,8 @@ public enum Lf8ControlSignal {
         return bit;
     }
 
-    public int mask() {
-        return 1 << bit;
+    public long mask() {
+        return 1L << bit;
     }
 
     public static int wordWidth() {

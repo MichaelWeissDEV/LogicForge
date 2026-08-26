@@ -15,9 +15,9 @@ public final class Lf8Microcode {
     private Lf8Microcode() {
     }
 
-    public static int[] words() {
-        int[] code = new int[WORDS];
-        int fetch = word(PC_INCREMENT, IR_LOAD, MEMORY_READ);
+    public static long[] words() {
+        long[] code = new long[WORDS];
+        long fetch = word(PC_INCREMENT, IR_LOAD, MEMORY_READ);
         for (int opcode = 0; opcode < 256; opcode++) {
             for (int flags = 0; flags < FLAG_SLOTS; flags++) {
                 code[address(opcode, flags, 0)] = fetch;
@@ -127,11 +127,11 @@ public final class Lf8Microcode {
 
     public static String contents() {
         StringBuilder csv = new StringBuilder();
-        for (int value : words()) {
+        for (long value : words()) {
             if (!csv.isEmpty()) {
                 csv.append(',');
             }
-            csv.append(Integer.toHexString(value));
+            csv.append(Long.toHexString(value));
         }
         return csv.toString();
     }
@@ -153,22 +153,22 @@ public final class Lf8Microcode {
         return ((opcode * FLAG_SLOTS) + flags) * MICROSTEPS + microstep;
     }
 
-    private static void set(int[] contents, Lf8Instruction instruction, int step,
+    private static void set(long[] contents, Lf8Instruction instruction, int step,
                             Lf8ControlSignal... signals) {
         for (int flags = 0; flags < FLAG_SLOTS; flags++) {
             contents[address(instruction.opcode(), flags, step)] = word(signals);
         }
     }
 
-    private static void setAlu(int[] contents, Lf8Instruction instruction, int step,
+    private static void setAlu(long[] contents, Lf8Instruction instruction, int step,
                                Lf8AluOperation operation, Lf8ControlSignal... signals) {
-        int value = word(signals) | Lf8ControlField.ALU_OP.encode(operation.code());
+        long value = word(signals) | Lf8ControlField.ALU_OP.encode(operation.code());
         for (int flags = 0; flags < FLAG_SLOTS; flags++) {
             contents[address(instruction.opcode(), flags, step)] = value;
         }
     }
 
-    private static void branch(int[] contents, Lf8Instruction instruction,
+    private static void branch(long[] contents, Lf8Instruction instruction,
                                int flagMask, boolean branchWhenSet) {
         set(contents, instruction, 1, PC_INCREMENT, MAR_LOW_LOAD, MEMORY_READ);
         set(contents, instruction, 2, PC_INCREMENT, MAR_HIGH_LOAD, MEMORY_READ);
@@ -179,8 +179,8 @@ public final class Lf8Microcode {
         }
     }
 
-    private static int word(Lf8ControlSignal... signals) {
-        int result = 0;
+    private static long word(Lf8ControlSignal... signals) {
+        long result = 0;
         for (Lf8ControlSignal signal : signals) {
             result |= signal.mask();
         }
