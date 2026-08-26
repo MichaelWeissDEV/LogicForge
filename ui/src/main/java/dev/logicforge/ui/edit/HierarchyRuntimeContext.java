@@ -109,9 +109,6 @@ public final class HierarchyRuntimeContext {
         return instancePath.map(path -> CircuitFlattener.endpointPath(path, localEndpoint));
     }
 
-    /** Ports are never mixed whole-port and bit-level; this is a generous, cheap cap. */
-    private static final int MAX_PROBE_WIDTH = 256;
-
     /**
      * Resolves a local port endpoint to the runtime net(s) that actually carry its value.
      *
@@ -164,18 +161,30 @@ public final class HierarchyRuntimeContext {
             case PortSlice.Bit bit -> resolveNet(PortEndpoint.bit(port, bit.index()))
                     .stream().mapToObj(net -> (ResolvedSignal) new ResolvedSignal.ScalarNet(net)).findFirst();
             case PortSlice.Range range -> resolveBitVector(port, range.lsb(), range.width());
-            case PortSlice.Whole ignored -> resolveBitVector(port, 0, probeWidth(port));
+            case PortSlice.Whole ignored -> resolveBitVector(port, 0, declaredWidth(port));
         };
     }
 
-    /** Bit-mode ports have every declared bit as its own atom regardless of wiring, so
-     *  probing sequential bit indices finds the true width exactly, not heuristically. */
-    private int probeWidth(PortReference port) {
-        int width = 0;
-        while (width < MAX_PROBE_WIDTH && resolveNet(PortEndpoint.bit(port, width)).isPresent()) {
-            width++;
+    /**
+     * The port's declared bit width, straight from the compiler's {@code CircuitSourceMap} —
+     * no probing. The map is keyed by the flattened document's own {@code PortReference}
+     * (root components keep their original UUID there; nested ones get a deterministic
+     * derived one — see {@code CircuitFlattener}), so a local port is first resolved to its
+     * runtime component id and then translated back to that flattened UUID before the width
+     * lookup.
+     */
+    private int declaredWidth(PortReference localPort) {
+        OptionalInt runtimeComponentId = resolveComponent(localPort.componentId());
+        if (runtimeComponentId.isEmpty()) {
+            return 0;
         }
-        return width;
+        return compilation.sourceMap().componentUuid(runtimeComponentId.getAsInt())
+                .flatMap(flatId -> {
+                    OptionalInt width = compilation.sourceMap()
+                            .widthOf(new PortReference(flatId, localPort.portName()));
+                    return width.isPresent() ? Optional.of(width.getAsInt()) : Optional.empty();
+                })
+                .orElse(0);
     }
 
     private Optional<ResolvedSignal> resolveBitVector(PortReference port, int lsb, int width) {

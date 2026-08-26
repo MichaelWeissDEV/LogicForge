@@ -22,7 +22,9 @@ public record CircuitSourceMap(
         List<List<PortReference>> portsByNet,
         Map<UUID, Integer> netByConnection,
         Map<PortEndpoint, Integer> netByEndpoint,
-        List<List<PortEndpoint>> endpointsByNet) {
+        List<List<PortEndpoint>> endpointsByNet,
+        Map<PortReference, Integer> portWidth,
+        Map<PortReference, Boolean> portBitMode) {
 
     public CircuitSourceMap {
         componentIdByUuid = Map.copyOf(componentIdByUuid);
@@ -32,6 +34,8 @@ public record CircuitSourceMap(
         netByConnection = Map.copyOf(netByConnection);
         netByEndpoint = Map.copyOf(netByEndpoint);
         endpointsByNet = endpointsByNet.stream().map(List::copyOf).toList();
+        portWidth = Map.copyOf(portWidth);
+        portBitMode = Map.copyOf(portBitMode);
     }
 
     /** The runtime id of a placed component, if it made it into the compiled circuit. */
@@ -79,5 +83,20 @@ public record CircuitSourceMap(
 
     public int netCount() {
         return portsByNet.size();
+    }
+
+    /** The declared bit width of a port, straight from its {@code PortSpec} — no probing. */
+    public OptionalInt widthOf(PortReference port) {
+        Integer width = portWidth.get(port);
+        return width == null ? OptionalInt.empty() : OptionalInt.of(width);
+    }
+
+    /**
+     * {@code true} once any connection has forced this port into bit mode (every bit its
+     * own independent net) rather than one net for the whole port. {@code false} (including
+     * for an unknown port) means whole-port mode.
+     */
+    public boolean isBitMode(PortReference port) {
+        return portBitMode.getOrDefault(port, false);
     }
 }

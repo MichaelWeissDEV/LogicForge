@@ -402,8 +402,17 @@ public final class CircuitCompiler {
                 netByEndpoint.put(connection.to(), netByAtom[atomFor(connection.to(), 0)]);
             }
 
+            Map<PortReference, Integer> portWidth = new LinkedHashMap<>();
+            Map<PortReference, Boolean> portBitMode = new LinkedHashMap<>();
+            for (int port = 0; port < portsByIndex.size(); port++) {
+                PortReference reference = portsByIndex.get(port);
+                portWidth.put(reference, portSpecs.get(port).width().bits());
+                portBitMode.put(reference, bitMode.getOrDefault(reference, false));
+            }
+
             CircuitSourceMap sourceMap = new CircuitSourceMap(componentIdByUuid, uuidByComponentId,
-                    netByPort, portsByNet, netByConnection, netByEndpoint, endpointsByNet);
+                    netByPort, portsByNet, netByConnection, netByEndpoint, endpointsByNet,
+                    portWidth, portBitMode);
             return new CompilationResult(builder.build(), sourceMap, issues);
         }
 

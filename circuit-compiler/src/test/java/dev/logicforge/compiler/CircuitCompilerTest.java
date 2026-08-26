@@ -61,6 +61,34 @@ class CircuitCompilerTest {
                 "a bit-bound bus has no single whole-port net");
     }
 
+    /**
+     * {@code CircuitSourceMap} exposes a port's declared width and whole/bit mode directly,
+     * straight from its {@code PortSpec} — this is what {@code HierarchyRuntimeContext} now
+     * reads instead of probing sequential bit indices to discover a bit-mode port's width.
+     */
+    @Test
+    void sourceMapExposesDeclaredPortWidthAndBitMode() {
+        ComponentRegistry registry = createWidthTestRegistry();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = ComponentInstance.create(
+                "test.output8", new CircuitPoint(0, 0), ParameterValues.empty());
+        ComponentInstance sink = ComponentInstance.create(
+                "test.input8", new CircuitPoint(100, 0), ParameterValues.empty());
+        document.addComponent(source);
+        document.addComponent(sink);
+        document.addConnection(Connection.create(
+                PortEndpoint.bit(new PortReference(source.id(), "OUT"), 0),
+                PortEndpoint.bit(new PortReference(sink.id(), "IN"), 0)));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        PortReference sourceOut = new PortReference(source.id(), "OUT");
+
+        assertEquals(8, result.sourceMap().widthOf(sourceOut).orElseThrow(),
+                "declared width is 8 regardless of how many bits are actually wired");
+        assertTrue(result.sourceMap().isBitMode(sourceOut),
+                "wiring a single bit forces the whole port into bit mode");
+    }
+
     @Test
     void multipleBitEndpointsAssembleOneLogicalVector() {
         ComponentRegistry registry = createWidthTestRegistry();
