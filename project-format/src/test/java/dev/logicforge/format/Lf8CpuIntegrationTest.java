@@ -25,10 +25,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * LF-8 v0: the first real, executing slice of the planned LF-8 CPU, built entirely from
+ * The LF-8 CPU: an 8-bit microcoded processor with 16-bit addressing, built entirely from
  * ordinary LogicForge components wired together in code — no {@code LF8Behavior}, no
- * instruction execution in Java. It is deliberately minimal, not the full architecture
- * described in the project roadmap:
+ * instruction execution in Java. It is deliberately minimal relative to the full
+ * architecture described in the project roadmap, and not yet organized as the roadmap's own
+ * {@code examples/lf8/lf8-computer.logic} — this class builds and verifies the same circuit
+ * headlessly, but nothing yet writes it out to that path (a lf8-tools module and an
+ * assembler are still future work; see the project roadmap):
  *
  * <ul>
  *   <li>Two architectural registers (R0, R1), selected by dedicating a whole opcode to each
@@ -67,8 +70,19 @@ import org.junit.jupiter.api.io.TempDir;
  * write-back mux, and PC gained a real LOAD path fed by the same MAR_LO/MAR_HI registers
  * STORE and LOAD already use for their address — confirming the fetch/decode/execute loop
  * itself did not need to change to add instructions.
+ *
+ * <p><b>Compiler sharp edge found while wiring this up:</b> a genuinely multi-bit
+ * {@link PortEndpoint#whole} endpoint cannot pair with a {@link PortEndpoint#range} (or
+ * {@link PortEndpoint#bit}) endpoint on the other side of the same {@link Connection} — the
+ * compiler's per-offset atom correspondence only lines up when <em>both</em> sides are
+ * bit/range-sliced, even if one side's slice covers its entire width. Assembling a wide bus
+ * from narrower registers (as MAR_LO/MAR_HI feed RAM.ADDRESS and PC.DATA here) therefore
+ * needs a self-full-range endpoint (e.g. {@code PortEndpoint.range(marLo.Q, 7, 0)}) on the
+ * source side, never {@code PortEndpoint.whole(...)}, or compilation fails with "N bit wide
+ * but shares a net with an M bit wide endpoint" errors that don't obviously point at the
+ * real cause. See {@link #buildCircuit} for every place this applies.
  */
-class Lf8CpuV0Test {
+class Lf8CpuIntegrationTest {
 
     @TempDir
     Path directory;
