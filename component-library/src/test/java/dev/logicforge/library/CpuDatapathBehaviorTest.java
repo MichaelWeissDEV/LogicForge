@@ -80,6 +80,23 @@ class CpuDatapathBehaviorTest {
         assertEquals(unknown, h.outputVector(1));
     }
 
+    @Test
+    void registerFileUnknownWriteEnableMergesWriteAndHold() {
+        RegisterFileBehavior behavior = new RegisterFileBehavior(WIDTH8, 8);
+        BehaviorHarness h = registerFile(behavior);
+        write(h, behavior, 2, 0xA5);
+
+        h.setInput(0, LogicVector.fromUnsignedLong(2, 3));
+        h.setInput(2, LogicVector.fromUnsignedLong(2, 3));
+        h.setInput(3, byteValue(0xA7));
+        h.setInput(4, LogicVector.UNKNOWN);
+        h.setInput(5, LogicVector.ONE);
+        behavior.evaluate(h);
+
+        assertEquals(LogicVector.of("101001X1"), h.outputVector(0),
+                "only the bit changed by the possible write becomes unknown");
+    }
+
     private static BehaviorHarness alu(long a, long b, long op, long cin) {
         AluBehavior behavior = new AluBehavior(WIDTH8);
         BehaviorHarness h = BehaviorHarness.ofVectors(behavior, 5, byteValue(a), byteValue(b),

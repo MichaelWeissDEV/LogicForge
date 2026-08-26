@@ -51,16 +51,14 @@ public record CounterBehavior(BitWidth width, boolean risingEdge, Direction dire
                 ? LogicOperations.asGateInput(context.readInput(UP_DOWN).singleBit())
                 : (direction == Direction.UP ? ONE : ZERO);
 
-        if (reset == ONE) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState enable = LogicOperations.asGateInput(context.readInput(ENABLE).singleBit());
-            if (enable == ONE) {
-                state.value = counted(state.value, countingUp);
-            } else if (enable != ZERO) {
-                state.value = LogicVector.repeat(UNKNOWN, width);
-            }
+            normal = StatefulControlPolicy.choose(enable, state.value,
+                    counted(state.value, countingUp));
         }
+        state.value = StatefulControlPolicy.choose(reset, normal,
+                LogicVector.repeat(ZERO, width));
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);
@@ -69,24 +67,28 @@ public record CounterBehavior(BitWidth width, boolean risingEdge, Direction dire
 
     private LogicVector counted(LogicVector current, LogicState countingUp) {
         OptionalLong defined = current.toUnsignedLong();
-        if (defined.isEmpty() || countingUp == UNKNOWN) {
+        if (defined.isEmpty()) {
             return LogicVector.repeat(UNKNOWN, width);
         }
         long mask = width.bits() == 64 ? -1L : (1L << width.bits()) - 1;
-        long next = countingUp == ONE ? (defined.getAsLong() + 1) & mask
-                : (defined.getAsLong() - 1) & mask;
-        return LogicVector.fromUnsignedLong(next, width.bits());
+        LogicVector down = LogicVector.fromUnsignedLong((defined.getAsLong() - 1) & mask,
+                width.bits());
+        LogicVector up = LogicVector.fromUnsignedLong((defined.getAsLong() + 1) & mask,
+                width.bits());
+        return StatefulControlPolicy.choose(countingUp, down, up);
     }
 
     private LogicState terminalCount(LogicVector count, LogicState countingUp) {
         OptionalLong defined = count.toUnsignedLong();
-        if (defined.isEmpty() || countingUp == UNKNOWN) {
+        if (defined.isEmpty()) {
             return UNKNOWN;
         }
         long mask = width.bits() == 64 ? -1L : (1L << width.bits()) - 1;
         boolean atMax = defined.getAsLong() == mask;
         boolean atZero = defined.getAsLong() == 0;
-        return LogicState.of(countingUp == ONE ? atMax : atZero);
+        return StatefulControlPolicy.choose(countingUp,
+                LogicVector.single(LogicState.of(atZero)),
+                LogicVector.single(LogicState.of(atMax))).singleBit();
     }
 
     @Override

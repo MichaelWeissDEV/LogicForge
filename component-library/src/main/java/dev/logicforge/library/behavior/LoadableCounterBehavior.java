@@ -42,21 +42,17 @@ public record LoadableCounterBehavior(BitWidth width, boolean risingEdge) implem
                 : state.lastClock == ONE && clock == ZERO;
         LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
 
-        if (reset == ONE) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState load = LogicOperations.asGateInput(context.readInput(LOAD).singleBit());
             LogicState enable = LogicOperations.asGateInput(context.readInput(ENABLE).singleBit());
-            if (load == ONE) {
-                state.value = LogicOperations.asGateInput(context.readInput(DATA));
-            } else if (load == ZERO && enable == ONE) {
-                state.value = incremented(state.value);
-            } else if (load != ZERO || enable != ZERO) {
-                // load == ZERO && enable == ZERO is the only defined "hold" case; anything
-                // else involves an undefined LOAD or ENABLE, so the next state is undefined.
-                state.value = LogicVector.repeat(UNKNOWN, width);
-            }
+            LogicVector counted = StatefulControlPolicy.choose(enable, state.value,
+                    incremented(state.value));
+            normal = StatefulControlPolicy.choose(load, counted,
+                    LogicOperations.asGateInput(context.readInput(DATA)));
         }
+        state.value = StatefulControlPolicy.choose(reset, normal,
+                LogicVector.repeat(ZERO, width));
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);

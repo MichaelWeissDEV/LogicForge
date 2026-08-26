@@ -11,7 +11,6 @@ import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.ComponentBehavior;
 import dev.logicforge.simulation.ComponentContext;
 import dev.logicforge.simulation.ComponentRuntimeState;
-import java.util.OptionalLong;
 
 /**
  * A shift register that can hold, parallel-load, or shift either direction, selected by a
@@ -53,23 +52,19 @@ public record UniversalShiftRegisterBehavior(BitWidth width, boolean risingEdge)
                 : state.lastClock == ONE && clock == ZERO;
         LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
 
-        if (reset == ONE) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
-            OptionalLong mode = LogicOperations.asGateInput(context.readInput(MODE)).toUnsignedLong();
-            if (mode.isEmpty()) {
-                state.value = LogicVector.repeat(UNKNOWN, width);
-            } else if (mode.getAsLong() == MODE_LOAD) {
-                state.value = LogicOperations.asGateInput(context.readInput(PARALLEL_DATA));
-            } else if (mode.getAsLong() == MODE_SHIFT_LEFT) {
-                LogicState in = LogicOperations.asGateInput(context.readInput(SERIAL_LEFT).singleBit());
-                state.value = shiftLeft(state.value, in);
-            } else if (mode.getAsLong() == MODE_SHIFT_RIGHT) {
-                LogicState in = LogicOperations.asGateInput(context.readInput(SERIAL_RIGHT).singleBit());
-                state.value = shiftRight(state.value, in);
-            }
-            // MODE_HOLD: no change.
+        LogicVector normal = state.value;
+        if (edge) {
+            LogicVector mode = LogicOperations.asGateInput(context.readInput(MODE));
+            LogicVector loaded = LogicOperations.asGateInput(context.readInput(PARALLEL_DATA));
+            LogicVector shiftedLeft = shiftLeft(state.value,
+                    LogicOperations.asGateInput(context.readInput(SERIAL_LEFT).singleBit()));
+            LogicVector shiftedRight = shiftRight(state.value,
+                    LogicOperations.asGateInput(context.readInput(SERIAL_RIGHT).singleBit()));
+            normal = StatefulControlPolicy.select(mode,
+                    state.value, loaded, shiftedLeft, shiftedRight);
         }
+        state.value = StatefulControlPolicy.choose(reset, normal,
+                LogicVector.repeat(ZERO, width));
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);

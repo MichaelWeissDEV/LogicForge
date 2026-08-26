@@ -64,19 +64,15 @@ public record RegisterFileBehavior(BitWidth width, int registerCount) implements
         boolean risingEdge = state.lastClock == ZERO && clock == ONE;
         if (risingEdge) {
             LogicState we = LogicOperations.asGateInput(context.readInput(IN_WRITE_ENABLE).singleBit());
-            if (we == ONE) {
-                LogicVector writeAddrVec = LogicOperations.asGateInput(context.readInput(IN_WRITE_ADDR));
-                OptionalLong writeAddrOpt = writeAddrVec.toUnsignedLong();
-                if (writeAddrOpt.isPresent()) {
-                    long addr = writeAddrOpt.getAsLong();
-                    if (addr >= 0 && addr < registerCount) {
-                        LogicVector data = LogicOperations.asGateInput(context.readInput(IN_WRITE_DATA));
-                        state.registers[(int) addr] = data;
-                    }
-                    // Unknown address or out-of-range: don't write (avoid corrupting any register)
+            if (we != ZERO) {
+                LogicVector address = LogicOperations.asGateInput(context.readInput(IN_WRITE_ADDR));
+                LogicVector data = LogicOperations.asGateInput(context.readInput(IN_WRITE_DATA));
+                LogicVector[] written = possibleWrite(state.registers, address, data);
+                for (int register = 0; register < registerCount; register++) {
+                    state.registers[register] = StatefulControlPolicy.choose(
+                            we, state.registers[register], written[register]);
                 }
             }
-            // Unknown WRITE_ENABLE: don't write
         }
         state.lastClock = clock;
 
@@ -97,6 +93,26 @@ public record RegisterFileBehavior(BitWidth width, int registerCount) implements
             return LogicVector.repeat(LogicState.UNKNOWN, width);
         }
         return state.registers[(int) addr];
+    }
+
+    private LogicVector[] possibleWrite(LogicVector[] current, LogicVector address,
+                                        LogicVector data) {
+        LogicVector[] result = current.clone();
+        int encodedAddresses = 1 << address.width();
+        int possibleCount = 0;
+        for (int candidate = 0; candidate < encodedAddresses; candidate++) {
+            if (StatefulControlPolicy.isPossible(address, candidate)) {
+                possibleCount++;
+            }
+        }
+        for (int register = 0; register < registerCount; register++) {
+            if (!StatefulControlPolicy.isPossible(address, register)) {
+                continue;
+            }
+            result[register] = possibleCount == 1
+                    ? data : StatefulControlPolicy.merge(current[register], data);
+        }
+        return result;
     }
 
     @Override

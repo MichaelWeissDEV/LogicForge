@@ -45,22 +45,21 @@ public record PisoBehavior(BitWidth width, boolean risingEdge) implements Compon
                 : state.lastClock == ONE && clock == ZERO;
         LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
 
-        if (reset == ONE) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState load = LogicOperations.asGateInput(context.readInput(LOAD).singleBit());
             LogicState shift = LogicOperations.asGateInput(context.readInput(SHIFT).singleBit());
-            if (load == ONE) {
-                state.value = LogicOperations.asGateInput(context.readInput(DATA));
-            } else if (load == ZERO && shift == ONE) {
-                LogicState in = LogicOperations.asGateInput(context.readInput(SERIAL_IN).singleBit());
-                state.value = width.bits() == 1
-                        ? LogicVector.single(in)
-                        : LogicVector.single(in).concat(state.value.slice(1, width.bits() - 1));
-            } else if (load != ZERO || shift != ZERO) {
-                state.value = LogicVector.repeat(UNKNOWN, width);
-            }
+            LogicState in = LogicOperations.asGateInput(context.readInput(SERIAL_IN).singleBit());
+            LogicVector shifted = width.bits() == 1
+                    ? LogicVector.single(in)
+                    : LogicVector.single(in).concat(state.value.slice(1, width.bits() - 1));
+            LogicVector shiftedOrHeld = StatefulControlPolicy.choose(
+                    shift, state.value, shifted);
+            normal = StatefulControlPolicy.choose(load, shiftedOrHeld,
+                    LogicOperations.asGateInput(context.readInput(DATA)));
         }
+        state.value = StatefulControlPolicy.choose(reset, normal,
+                LogicVector.repeat(ZERO, width));
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);

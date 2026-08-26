@@ -44,15 +44,12 @@ public record FlagsRegisterBehavior(boolean risingEdge) implements ComponentBeha
 
         if (edge) {
             LogicState load = LogicOperations.asGateInput(context.readInput(IN_LOAD).singleBit());
-            if (load == ONE) {
-                LogicState z = LogicOperations.asGateInput(context.readInput(IN_Z).singleBit());
-                LogicState c = LogicOperations.asGateInput(context.readInput(IN_C).singleBit());
-                LogicState n = LogicOperations.asGateInput(context.readInput(IN_N).singleBit());
-                LogicState v = LogicOperations.asGateInput(context.readInput(IN_V).singleBit());
-                state.value = LogicVector.ofLsbFirst(z, c, n, v);
-            } else if (load != ZERO) {
-                state.value = LogicVector.repeat(LogicState.UNKNOWN, WIDTH);
-            }
+            LogicState z = LogicOperations.asGateInput(context.readInput(IN_Z).singleBit());
+            LogicState c = LogicOperations.asGateInput(context.readInput(IN_C).singleBit());
+            LogicState n = LogicOperations.asGateInput(context.readInput(IN_N).singleBit());
+            LogicState v = LogicOperations.asGateInput(context.readInput(IN_V).singleBit());
+            state.value = StatefulControlPolicy.choose(load, state.value,
+                    LogicVector.ofLsbFirst(z, c, n, v));
         }
         state.lastClock = clock;
         context.driveOutput(0, state.value);

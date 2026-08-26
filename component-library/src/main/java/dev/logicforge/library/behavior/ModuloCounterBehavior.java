@@ -50,16 +50,13 @@ public record ModuloCounterBehavior(BitWidth width, boolean risingEdge, int modu
                 : state.lastClock == ONE && clock == ZERO;
         LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
 
-        if (reset == ONE) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState enable = LogicOperations.asGateInput(context.readInput(ENABLE).singleBit());
-            if (enable == ONE) {
-                state.value = incremented(state.value);
-            } else if (enable != ZERO) {
-                state.value = LogicVector.repeat(UNKNOWN, width);
-            }
+            normal = StatefulControlPolicy.choose(enable, state.value, incremented(state.value));
         }
+        state.value = StatefulControlPolicy.choose(reset, normal,
+                LogicVector.repeat(ZERO, width));
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);

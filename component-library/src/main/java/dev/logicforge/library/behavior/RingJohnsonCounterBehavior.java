@@ -46,17 +46,18 @@ public record RingJohnsonCounterBehavior(BitWidth width, boolean risingEdge, Kin
                 : state.lastClock == ONE && clock == ZERO;
         LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
 
-        if (reset == ONE) {
-            state.value = kind == Kind.RING
-                    ? LogicVector.fromUnsignedLong(1, width.bits())
-                    : LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState msb = LogicOperations.asGateInput(state.value.getBit(width.bits() - 1));
             LogicState feedback = kind == Kind.RING ? msb : LogicOperations.not(msb);
-            state.value = feedback == UNKNOWN
+            normal = feedback == UNKNOWN
                     ? LogicVector.repeat(UNKNOWN, width)
                     : shiftInAtLsb(state.value, feedback);
         }
+        LogicVector resetValue = kind == Kind.RING
+                ? LogicVector.fromUnsignedLong(1, width.bits())
+                : LogicVector.repeat(ZERO, width);
+        state.value = StatefulControlPolicy.choose(reset, normal, resetValue);
         state.lastClock = clock;
 
         context.driveOutput(0, state.value);

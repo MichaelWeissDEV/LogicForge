@@ -36,26 +36,20 @@ public record DFlipFlopBehavior(boolean risingEdge, boolean hasAsyncControls) im
                 ? state.lastClock == LogicState.ZERO && clock == ONE
                 : state.lastClock == ONE && clock == LogicState.ZERO;
 
-        LogicState q;
-        if (hasAsyncControls && asserted(context, SET) && asserted(context, RESET)) {
-            q = UNKNOWN;
-        } else if (hasAsyncControls && asserted(context, SET)) {
-            q = ONE;
-        } else if (hasAsyncControls && asserted(context, RESET)) {
-            q = LogicState.ZERO;
-        } else if (edge) {
-            q = LogicOperations.asGateInput(context.readInput(D).singleBit());
-        } else {
-            q = state.q;
+        LogicState normal = edge
+                ? LogicOperations.asGateInput(context.readInput(D).singleBit()) : state.q;
+        LogicState q = normal;
+        if (hasAsyncControls) {
+            LogicState set = LogicOperations.asGateInput(context.readInput(SET).singleBit());
+            LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
+            q = StatefulControlPolicy.select(LogicVector.ofLsbFirst(set, reset),
+                    LogicVector.single(normal), LogicVector.ONE, LogicVector.ZERO,
+                    LogicVector.UNKNOWN).singleBit();
         }
         state.q = q;
         state.lastClock = clock;
         context.driveOutput(0, LogicVector.single(q));
         context.driveOutput(1, LogicVector.single(LogicOperations.not(q)));
-    }
-
-    private boolean asserted(ComponentContext context, int inputIndex) {
-        return LogicOperations.asGateInput(context.readInput(inputIndex).singleBit()) == ONE;
     }
 
     @Override

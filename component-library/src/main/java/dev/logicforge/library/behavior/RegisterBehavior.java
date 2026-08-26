@@ -38,22 +38,18 @@ public record RegisterBehavior(BitWidth width, boolean risingEdge, boolean hasRe
                 ? state.lastClock == ZERO && clock == ONE
                 : state.lastClock == ONE && clock == ZERO;
 
-        if (hasReset && asserted(context, RESET)) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState load = LogicOperations.asGateInput(context.readInput(LOAD).singleBit());
-            if (load == ONE) {
-                state.value = LogicOperations.asGateInput(context.readInput(DATA));
-            } else if (load != ZERO) {
-                state.value = LogicVector.repeat(LogicState.UNKNOWN, width);
-            }
+            normal = StatefulControlPolicy.choose(load, state.value,
+                    LogicOperations.asGateInput(context.readInput(DATA)));
         }
+        state.value = hasReset
+                ? StatefulControlPolicy.choose(context.readInput(RESET).singleBit(), normal,
+                        LogicVector.repeat(ZERO, width))
+                : normal;
         state.lastClock = clock;
         context.driveOutput(0, state.value);
-    }
-
-    private boolean asserted(ComponentContext context, int inputIndex) {
-        return LogicOperations.asGateInput(context.readInput(inputIndex).singleBit()) == ONE;
     }
 
     @Override

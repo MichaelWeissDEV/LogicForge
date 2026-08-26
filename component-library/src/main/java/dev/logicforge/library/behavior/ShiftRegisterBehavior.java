@@ -38,12 +38,13 @@ public record ShiftRegisterBehavior(BitWidth width, boolean risingEdge) implemen
                 : state.lastClock == ONE && clock == ZERO;
         LogicState reset = LogicOperations.asGateInput(context.readInput(RESET).singleBit());
 
-        if (reset == ONE) {
-            state.value = LogicVector.repeat(ZERO, width);
-        } else if (edge) {
+        LogicVector normal = state.value;
+        if (edge) {
             LogicState sin = LogicOperations.asGateInput(context.readInput(SIN).singleBit());
-            state.value = shiftIn(state.value, sin);
+            normal = shiftIn(state.value, sin);
         }
+        state.value = StatefulControlPolicy.choose(reset, normal,
+                LogicVector.repeat(ZERO, width));
         state.lastClock = clock;
 
         LogicState soutBit = state.value.getBit(width.bits() - 1);
