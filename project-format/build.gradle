@@ -6,6 +6,7 @@ dependencies {
     api project(':circuit-model')
     testImplementation project(':component-library')
     testImplementation project(':circuit-compiler')
+    testImplementation project(':processor-lf8')
 }
 
 tasks.named('test') {
