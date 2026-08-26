@@ -30,7 +30,9 @@ class Lf8IsaTest {
     void microcodeUsesCanonicalInstructionOpcodes() {
         int[] words = Lf8Microcode.words();
         assertEquals(Lf8ControlSignal.REGISTER_FILE_WRITE.mask()
-                        | Lf8ControlSignal.ALU_SOURCE.mask(),
+                        | Lf8ControlSignal.ALU_SOURCE.mask()
+                        | Lf8ControlSignal.FLAGS_LOAD.mask()
+                        | Lf8ControlField.ALU_OP.encode(Lf8AluOperation.ADD.code()),
                 words[Lf8Microcode.address(Lf8Isa.ADD.opcode(), 3)]);
         assertEquals(Lf8ControlSignal.HALT.mask(),
                 words[Lf8Microcode.address(Lf8Isa.HLT.opcode(), 1)]);

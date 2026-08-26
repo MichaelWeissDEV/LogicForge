@@ -15,9 +15,12 @@ public enum Lf8ControlSignal {
     MEMORY_WRITE(10),
     MEMORY_READ(11),
     HALT(12),
-    ALU_SUBTRACT(13),
-    PC_LOAD(14),
-    ADDRESS_FROM_MAR(15);
+    PC_LOAD(17),
+    ADDRESS_FROM_MAR(18),
+    FLAGS_LOAD(19),
+    FLAGS_PRESERVE_CARRY(20),
+    FLAGS_PRESERVE_OVERFLOW(21),
+    ALU_CARRY_IN(22);
 
     private final int bit;
 
@@ -34,6 +37,10 @@ public enum Lf8ControlSignal {
     }
 
     public static int wordWidth() {
-        return values().length;
+        int highestSignal = java.util.Arrays.stream(values())
+                .mapToInt(Lf8ControlSignal::bit).max().orElse(-1);
+        int highestField = java.util.Arrays.stream(Lf8ControlField.values())
+                .mapToInt(Lf8ControlField::msb).max().orElse(-1);
+        return Math.max(highestSignal, highestField) + 1;
     }
 }

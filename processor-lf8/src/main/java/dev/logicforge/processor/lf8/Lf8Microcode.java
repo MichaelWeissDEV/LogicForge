@@ -28,8 +28,10 @@ public final class Lf8Microcode {
             set(code, instruction, 2, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
         }
         set(code, Lf8Isa.MOV, 3, REGISTER_FILE_WRITE, ALTERNATE_SOURCE, MOV_SOURCE);
-        set(code, Lf8Isa.ADD, 3, REGISTER_FILE_WRITE, ALU_SOURCE);
-        set(code, Lf8Isa.SUB, 3, REGISTER_FILE_WRITE, ALU_SOURCE, ALU_SUBTRACT);
+        setAlu(code, Lf8Isa.ADD, 3, Lf8AluOperation.ADD,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD);
+        setAlu(code, Lf8Isa.SUB, 3, Lf8AluOperation.SUB,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_CARRY_IN);
 
         set(code, Lf8Isa.LOAD, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
         set(code, Lf8Isa.STORE, 1, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
@@ -82,6 +84,14 @@ public final class Lf8Microcode {
                             Lf8ControlSignal... signals) {
         for (int flags = 0; flags < FLAG_SLOTS; flags++) {
             contents[address(instruction.opcode(), flags, step)] = word(signals);
+        }
+    }
+
+    private static void setAlu(int[] contents, Lf8Instruction instruction, int step,
+                               Lf8AluOperation operation, Lf8ControlSignal... signals) {
+        int value = word(signals) | Lf8ControlField.ALU_OP.encode(operation.code());
+        for (int flags = 0; flags < FLAG_SLOTS; flags++) {
+            contents[address(instruction.opcode(), flags, step)] = value;
         }
     }
 

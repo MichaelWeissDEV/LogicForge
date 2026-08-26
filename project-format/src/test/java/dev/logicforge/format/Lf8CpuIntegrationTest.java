@@ -157,6 +157,26 @@ class Lf8CpuIntegrationTest {
         assertTrue(sawUnmappedRead, "the LOAD must issue a read at 0xc000");
     }
 
+    @Test
+    void arithmeticAluLatchesRealZncvFlags() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x7f,
+                opcode(Lf8Isa.LDI), 1, 0x01,
+                opcode(Lf8Isa.ADD), 0, 1,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0b1100, 4), simulation.readOutput(flagsId, 0),
+                "0x7f + 1 must set N and V while clearing Z and C");
+    }
+
     private CompilationResult compileAndRoundTrip(CircuitProject project) {
         Path file = directory.resolve(java.util.UUID.randomUUID() + "." + ProjectFormat.EXTENSION);
         ProjectFormat.save(project, file);

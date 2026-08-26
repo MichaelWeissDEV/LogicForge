@@ -6,7 +6,6 @@ import dev.logicforge.circuit.document.CircuitMetadata;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
-import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.geometry.CircuitPoint;
@@ -35,9 +34,12 @@ public final class Lf8CircuitFactory {
             Lf8ControlSignal.MOV_SOURCE,
             Lf8ControlSignal.ALTERNATE_SOURCE,
             Lf8ControlSignal.MEMORY_WRITE,
-            Lf8ControlSignal.ALU_SUBTRACT,
             Lf8ControlSignal.PC_LOAD,
-            Lf8ControlSignal.ADDRESS_FROM_MAR);
+            Lf8ControlSignal.ADDRESS_FROM_MAR,
+            Lf8ControlSignal.FLAGS_LOAD,
+            Lf8ControlSignal.FLAGS_PRESERVE_CARRY,
+            Lf8ControlSignal.FLAGS_PRESERVE_OVERFLOW,
+            Lf8ControlSignal.ALU_CARRY_IN);
 
     private Lf8CircuitFactory() {
     }
@@ -69,6 +71,7 @@ public final class Lf8CircuitFactory {
         ComponentInstance address = output(document, registry, 1000, 180, "ADDRESS", 16);
         ComponentInstance opcode = output(document, registry, 1000, 240, "OPCODE", 8);
         ComponentInstance flagsOut = output(document, registry, 1000, 300, "FLAGS", 4);
+        ComponentInstance aluOp = input(document, registry, 0, 600, "ALU_OP", 4);
 
         Map<Lf8ControlSignal, ComponentInstance> controls = new EnumMap<>(Lf8ControlSignal.class);
         int controlY = 80;
@@ -94,8 +97,8 @@ public final class Lf8CircuitFactory {
                 defaults(registry, "memory.register_file")
                         .with(LibraryParameters.WIDTH, 8)
                         .with(LibraryParameters.REGISTER_COUNT, 8), "REGISTER_FILE");
-        ComponentInstance alu = add(document, registry, "arithmetic.add_sub", 570, 110,
-                defaults(registry, "arithmetic.add_sub").with(LibraryParameters.WIDTH, 8), "ALU");
+        ComponentInstance alu = add(document, registry, "arithmetic.alu", 570, 110,
+                defaults(registry, "arithmetic.alu").with(LibraryParameters.WIDTH, 8), "ALU");
 
         ComponentInstance immediateOrAlu = mux(document, registry, 680, 60, 8,
                 "WRITE_IMMEDIATE_ALU");
@@ -110,11 +113,19 @@ public final class Lf8CircuitFactory {
         ComponentInstance writeDriver = add(document, registry, "routing.tristate_n", 850, 150,
                 defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
                 "DATA_WRITE_DRIVER");
-        ComponentInstance flags = constant(document, registry, 850, 300, 4, 0, "FLAGS_TIE");
+        ComponentInstance flags = add(document, registry, "sequential.flags_register", 820, 330,
+                defaults(registry, "sequential.flags_register"), "FLAGS_REGISTER");
+        ComponentInstance storedCarry = bitSlice(document, registry, 650, 350, 4, 1,
+                "STORED_CARRY");
+        ComponentInstance storedOverflow = bitSlice(document, registry, 650, 400, 4, 3,
+                "STORED_OVERFLOW");
+        ComponentInstance carryInput = mux(document, registry, 730, 350, 1, "CARRY_INPUT");
+        ComponentInstance overflowInput = mux(document, registry, 730, 400, 1, "OVERFLOW_INPUT");
 
         for (ComponentInstance target : List.of(pc, ir, destination, source, marLow, marHigh, registers)) {
             wire(document, clk, "OUT", target, "CLK");
         }
+        wire(document, clk, "OUT", flags, "CLK");
         wire(document, reset, "OUT", pc, "RESET");
 
         wire(document, data, "BUS", ir, "DATA");
@@ -131,6 +142,7 @@ public final class Lf8CircuitFactory {
         wire(document, source, "Q", registers, "RD_ADDR_B");
         wire(document, registers, "RD_DATA_A", alu, "A");
         wire(document, registers, "RD_DATA_B", alu, "B");
+        wire(document, aluOp, "OUT", alu, "OP");
         wire(document, alu, "RESULT", immediateOrAlu, "IN1");
         wire(document, registers, "RD_DATA_B", memoryOrMove, "IN1");
         wire(document, immediateOrAlu, "OUT", writeSource, "IN0");
@@ -146,7 +158,17 @@ public final class Lf8CircuitFactory {
         wire(document, registers, "RD_DATA_B", writeDriver, "A");
         wire(document, writeDriver, "Y", data, "BUS");
         wire(document, ir, "Q", opcode, "IN");
-        wire(document, flags, "OUT", flagsOut, "IN");
+        wire(document, alu, "ZERO", flags, "Z");
+        wire(document, alu, "NEGATIVE", flags, "N");
+        wire(document, alu, "CARRY", carryInput, "IN0");
+        wire(document, alu, "OVERFLOW", overflowInput, "IN0");
+        wire(document, flags, "FLAGS", storedCarry, "IN");
+        wire(document, flags, "FLAGS", storedOverflow, "IN");
+        wire(document, storedCarry, "OUT", carryInput, "IN1");
+        wire(document, storedOverflow, "OUT", overflowInput, "IN1");
+        wire(document, carryInput, "OUT", flags, "C");
+        wire(document, overflowInput, "OUT", flags, "V");
+        wire(document, flags, "FLAGS", flagsOut, "IN");
 
         controlWire(document, controls, Lf8ControlSignal.PC_INCREMENT, pc, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.IR_LOAD, ir, "LOAD");
@@ -159,10 +181,15 @@ public final class Lf8CircuitFactory {
         controlWire(document, controls, Lf8ControlSignal.ALU_SOURCE, immediateOrAlu, "SEL");
         controlWire(document, controls, Lf8ControlSignal.MOV_SOURCE, memoryOrMove, "SEL");
         controlWire(document, controls, Lf8ControlSignal.ALTERNATE_SOURCE, writeSource, "SEL");
-        controlWire(document, controls, Lf8ControlSignal.ALU_SUBTRACT, alu, "SUB");
+        controlWire(document, controls, Lf8ControlSignal.ALU_CARRY_IN, alu, "CIN");
         controlWire(document, controls, Lf8ControlSignal.MEMORY_WRITE, writeDriver, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.PC_LOAD, pc, "LOAD");
         controlWire(document, controls, Lf8ControlSignal.ADDRESS_FROM_MAR, addressSource, "SEL");
+        controlWire(document, controls, Lf8ControlSignal.FLAGS_LOAD, flags, "LOAD");
+        controlWire(document, controls, Lf8ControlSignal.FLAGS_PRESERVE_CARRY,
+                carryInput, "SEL");
+        controlWire(document, controls, Lf8ControlSignal.FLAGS_PRESERVE_OVERFLOW,
+                overflowInput, "SEL");
         return document;
     }
 
@@ -185,6 +212,18 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.ROM_CONTENTS, Lf8Microcode.contents()), "MICROCODE_ROM");
         ComponentInstance microcodeEnable = constant(document, registry, 480, 160, 1, 1,
                 "MICROCODE_ROM_EN");
+        ComponentInstance microcodeBits = add(document, registry, "routing.splitter", 590, 140,
+                defaults(registry, "routing.splitter")
+                        .with(LibraryParameters.WIDTH, Lf8ControlSignal.wordWidth()),
+                "MICROCODE_BITS");
+        ComponentInstance stepAndFlags = add(document, registry, "routing.bus_concat", 350, 190,
+                defaults(registry, "routing.bus_concat")
+                        .with(LibraryParameters.LOW_WIDTH, 3)
+                        .with(LibraryParameters.HIGH_WIDTH, 4), "STEP_AND_FLAGS");
+        ComponentInstance microcodeAddress = add(document, registry, "routing.bus_concat", 400, 240,
+                defaults(registry, "routing.bus_concat")
+                        .with(LibraryParameters.LOW_WIDTH, 7)
+                        .with(LibraryParameters.HIGH_WIDTH, 8), "MICROCODE_ADDRESS");
         ComponentInstance haltLatch = add(document, registry, "sequential.register_reset", 690, 20,
                 defaults(registry, "sequential.register_reset").with(LibraryParameters.WIDTH, 1),
                 "HALT_LATCH");
@@ -201,11 +240,14 @@ public final class Lf8CircuitFactory {
         wire(document, reset, "OUT", microstep, "RESET");
         wire(document, reset, "OUT", haltLatch, "RESET");
         wire(document, irq, "OUT", irqProbe, "IN");
-        rangeWire(document, opcode, "OUT", microcode, "ADDRESS", 14, 7);
-        rangeWire(document, flags, "OUT", microcode, "ADDRESS", 6, 3);
-        rangeWire(document, microstep, "COUNT", microcode, "ADDRESS", 2, 0);
+        wire(document, microstep, "COUNT", stepAndFlags, "LOW");
+        wire(document, flags, "OUT", stepAndFlags, "HIGH");
+        wire(document, stepAndFlags, "OUT", microcodeAddress, "LOW");
+        wire(document, opcode, "OUT", microcodeAddress, "HIGH");
+        wire(document, microcodeAddress, "OUT", microcode, "ADDRESS");
         wire(document, microcodeEnable, "OUT", microcode, "ENABLE");
-        control(document, microcode, Lf8ControlSignal.HALT, haltOr, "IN0");
+        wire(document, microcode, "DATA", microcodeBits, "BUS");
+        control(document, microcodeBits, Lf8ControlSignal.HALT, haltOr, "IN0");
         wire(document, haltLatch, "Q", haltOr, "IN1");
         wire(document, haltOr, "OUT", haltLatch, "DATA");
         wire(document, haltLoad, "OUT", haltLatch, "LOAD");
@@ -218,10 +260,20 @@ public final class Lf8CircuitFactory {
             if (signal == Lf8ControlSignal.HALT) {
                 wire(document, haltLatch, "Q", signalOut, "IN");
             } else {
-                control(document, microcode, signal, signalOut, "IN");
+                control(document, microcodeBits, signal, signalOut, "IN");
             }
             outputY += 35;
         }
+        ComponentInstance aluOpOut = output(document, registry, 900, outputY, "ALU_OP", 4);
+        ComponentInstance aluOpJoiner = add(document, registry, "routing.joiner", 760, outputY,
+                defaults(registry, "routing.joiner")
+                        .with(LibraryParameters.WIDTH, Lf8ControlField.ALU_OP.width()),
+                "ALU_OP_JOINER");
+        for (int bit = 0; bit < Lf8ControlField.ALU_OP.width(); bit++) {
+            wire(document, microcodeBits,
+                    "BIT" + (Lf8ControlField.ALU_OP.lsb() + bit), aluOpJoiner, "BIT" + bit);
+        }
+        wire(document, aluOpJoiner, "BUS", aluOpOut, "IN");
         return document;
     }
 
@@ -250,6 +302,7 @@ public final class Lf8CircuitFactory {
         for (Lf8ControlSignal signal : DATAPATH_CONTROLS) {
             wire(document, control, signal.name(), datapath, signal.name());
         }
+        wire(document, control, "ALU_OP", datapath, "ALU_OP");
         wire(document, control, Lf8ControlSignal.MEMORY_READ.name(), memoryRead, "IN");
         wire(document, control, Lf8ControlSignal.MEMORY_WRITE.name(), memoryWrite, "IN");
         wire(document, control, Lf8ControlSignal.HALT.name(), halt, "IN");
@@ -332,6 +385,16 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.SLICE_LSB, 0), label);
     }
 
+    private static ComponentInstance bitSlice(CircuitDocument document, ComponentRegistry registry,
+                                              double x, double y, int inputWidth, int lsb,
+                                              String label) {
+        return add(document, registry, "routing.bus_slice", x, y,
+                defaults(registry, "routing.bus_slice")
+                        .with(LibraryParameters.INPUT_WIDTH, inputWidth)
+                        .with(LibraryParameters.OUTPUT_WIDTH, 1)
+                        .with(LibraryParameters.SLICE_LSB, lsb), label);
+    }
+
     private static ComponentInstance decoder(CircuitDocument document, ComponentRegistry registry,
                                              double x, double y, String base, String mask,
                                              String label) {
@@ -407,18 +470,9 @@ public final class Lf8CircuitFactory {
                 new PortReference(to.id(), toPort)));
     }
 
-    private static void rangeWire(CircuitDocument document, ComponentInstance from, String fromPort,
-                                  ComponentInstance to, String toPort, int msb, int lsb) {
-        document.addConnection(Connection.create(
-                PortEndpoint.whole(new PortReference(from.id(), fromPort)),
-                PortEndpoint.range(new PortReference(to.id(), toPort), msb, lsb)));
-    }
-
-    private static void control(CircuitDocument document, ComponentInstance rom,
+    private static void control(CircuitDocument document, ComponentInstance splitter,
                                 Lf8ControlSignal signal, ComponentInstance target, String targetPort) {
-        document.addConnection(Connection.create(
-                PortEndpoint.bit(new PortReference(rom.id(), "DATA"), signal.bit()),
-                PortEndpoint.whole(new PortReference(target.id(), targetPort))));
+        wire(document, splitter, "BIT" + signal.bit(), target, targetPort);
     }
 
     private static void controlWire(CircuitDocument document,
