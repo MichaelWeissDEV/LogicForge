@@ -10,6 +10,7 @@ dependencies {
     api project(':simulation-core')
     api project(':logic-analyzer')
     api project(':project-format')
+    implementation project(':processor-lf8')
 }
 
 javafx {

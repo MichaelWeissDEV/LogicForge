@@ -16,6 +16,7 @@ public enum ComponentCategory {
     ARITHMETIC("Arithmetic"),
     SEQUENTIAL("Sequential"),
     MEMORY("Memory"),
+    SYSTEM("System"),
     HIERARCHY("Hierarchy");
 
     private final String displayName;

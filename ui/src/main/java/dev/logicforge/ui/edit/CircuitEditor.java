@@ -110,6 +110,27 @@ public final class CircuitEditor {
         notifyChanged();
     }
 
+    /**
+     * Attaches a second, read-only-oriented view model to an already compiled live runtime.
+     * The project is installed normally so definitions and hierarchy navigation remain
+     * available, then the freshly compiled private runtime is replaced by the caller's
+     * exact compilation/simulation pair. Study windows use this to display the same concrete
+     * instance state as the main workbench rather than a look-alike reference simulation.
+     */
+    public void attachRuntime(CircuitProject liveProject, CompilationResult liveCompilation,
+                              Simulation liveSimulation) {
+        if (liveProject == null || liveCompilation == null || liveSimulation == null) {
+            throw new IllegalArgumentException("Live project, compilation and simulation are required");
+        }
+        setProject(liveProject, false);
+        this.compilation = liveCompilation;
+        this.simulation = liveSimulation;
+        this.compileError = null;
+        this.lastValidationIssues = List.of();
+        this.desiredRunning = liveSimulation.isRunning();
+        notifyChanged();
+    }
+
     public CircuitProject project() {
         return project;
     }

@@ -63,6 +63,7 @@ public final class CircuitCanvasView extends Region {
     }
 
     private final CircuitEditor editor;
+    private final boolean readOnly;
     private final Canvas canvas = new Canvas();
     private final ViewportTransform viewport = new ViewportTransform();
     private final WireRouter router = new OrthogonalWireRouter();
@@ -94,7 +95,13 @@ public final class CircuitCanvasView extends Region {
     private Map<UUID, CircuitPoint> originalPositions = Map.of();
 
     public CircuitCanvasView(CircuitEditor editor) {
+        this(editor, false);
+    }
+
+    /** Creates a canvas that can retain navigation/selection while suppressing edits. */
+    public CircuitCanvasView(CircuitEditor editor, boolean readOnly) {
         this.editor = editor;
+        this.readOnly = readOnly;
         this.renderer = new CircuitRenderer(editor, RendererRegistry.standard(), router);
         this.hitTester = new HitTester(editor::document, editor::definition, router);
         this.dropTarget = new ComponentDropTarget(editor, viewport);
@@ -106,8 +113,10 @@ public final class CircuitCanvasView extends Region {
         portTooltip.setShowDelay(javafx.util.Duration.millis(350));
         javafx.scene.control.Tooltip.install(this, portTooltip);
         installMouseHandlers();
-        installKeyHandlers();
-        installDragAndDrop();
+        if (!readOnly) {
+            installKeyHandlers();
+            installDragAndDrop();
+        }
         viewport.panBy(120, 80);
     }
 
@@ -224,7 +233,9 @@ public final class CircuitCanvasView extends Region {
         dragExceededThreshold = false;
 
         if (event.getButton() == MouseButton.SECONDARY) {
-            showContextMenu(event);
+            if (!readOnly) {
+                showContextMenu(event);
+            }
             return;
         }
         if (event.getButton() == MouseButton.MIDDLE || event.isAltDown()) {
@@ -235,7 +246,7 @@ public final class CircuitCanvasView extends Region {
         if (event.getButton() != MouseButton.PRIMARY) {
             return;
         }
-        if (pendingPlacement != null) {
+        if (!readOnly && pendingPlacement != null) {
             place(dropTarget.instanceAt(pendingPlacement, Grid.snap(dragStartWorld)));
             setPendingPlacement(null);
             return;
@@ -243,6 +254,9 @@ public final class CircuitCanvasView extends Region {
 
         Optional<PlacedPort> port = hitTester.portAt(dragStartWorld, worldTolerance(PORT_TOLERANCE_PIXELS));
         if (port.isPresent() && port.get().connectable()) {
+            if (readOnly) {
+                return;
+            }
             mode = Mode.WIRING;
             overlay = overlay.withPreviewWire(port.get(),
                     router.routeToPoint(port.get(), Grid.snap(dragStartWorld)));
@@ -257,6 +271,16 @@ public final class CircuitCanvasView extends Region {
                     .isInstanceDefinition(component.get().definitionId())) {
                 hierarchyOpenListener.accept(component.get());
                 mode = Mode.IDLE;
+                return;
+            }
+            if (readOnly) {
+                if (isMultiSelect(event)) {
+                    editor.selection().toggleComponent(component.get().id());
+                } else {
+                    editor.selection().selectComponent(component.get().id());
+                }
+                mode = Mode.IDLE;
+                redraw();
                 return;
             }
             // Check if this is a momentary button - start tracking press
@@ -489,6 +513,9 @@ public final class CircuitCanvasView extends Region {
     }
 
     private Cursor cursorFor(boolean overPort, Optional<ComponentInstance> component) {
+        if (readOnly) {
+            return component.isPresent() ? Cursor.HAND : Cursor.DEFAULT;
+        }
         if (pendingPlacement != null) {
             return Cursor.CROSSHAIR;
         }

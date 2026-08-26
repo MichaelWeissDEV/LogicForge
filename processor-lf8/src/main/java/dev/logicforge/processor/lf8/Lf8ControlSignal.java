@@ -28,23 +28,26 @@ public enum Lf8ControlSignal {
     PC_LOW_TO_DATA(27),
     PC_HIGH_TO_DATA(28),
     SOURCE_TO_DATA(29),
-    /** Control-internal: loads the IE (interrupt-enable) register with IE_DATA. */
+    /** Loads the architectural interrupt-enable bit with IE_DATA or popped STATUS data. */
     IE_LOAD(30),
-    /** Control-internal: the value IE_LOAD captures into the IE register. */
+    /** Value captured by IE_LOAD for EI/DI when STATUS_FROM_DATA is inactive. */
     IE_DATA(31),
     /** Control-internal: forces the IRQ_TAKEN latch back to 0 once an interrupt entry
      *  sequence has staged the handler's address, so the handler's own fetch does not
      *  immediately re-trigger a second entry. */
     IRQ_ACK(32),
-    /** Drives the live FLAGS_REGISTER nibble (zero-extended to a byte) onto DATA. */
-    FLAGS_TO_DATA(33),
-    /** Selects a popped DATA-bus byte's low nibble, instead of the live ALU-derived
-     *  flags, as FLAGS_REGISTER's next value; used by IRET. */
-    FLAGS_FROM_DATA(34),
-    /** Drives the low byte of the fixed interrupt handler entry point onto DATA. */
-    VECTOR_LOW_TO_DATA(35),
-    /** Drives the high byte of the fixed interrupt handler entry point onto DATA. */
-    VECTOR_HIGH_TO_DATA(36);
+    /** Drives STATUS (Z/C/N/V/IE, zero-extended to a byte) onto DATA. */
+    STATUS_TO_DATA(33),
+    /** Selects a popped DATA byte as the source for both FLAGS and IE during IRET. */
+    STATUS_FROM_DATA(34),
+    /** Selects a vector address rather than PC/MAR/SP for the external address bus. */
+    ADDRESS_FROM_VECTOR(35),
+    /** Selects the high byte address of the chosen little-endian vector. */
+    VECTOR_HIGH_ADDRESS(36),
+    /** Selects RESET_VECTOR rather than IRQ_VECTOR. */
+    RESET_VECTOR_SELECT(37),
+    /** Marks the hardware reset-vector microsequence complete. */
+    RESET_ACK(38);
 
     private final int bit;
 

@@ -6,6 +6,8 @@ import static dev.logicforge.processor.lf8.Lf8ControlSignal.*;
 public final class Lf8Microcode {
 
     public static final int MICROSTEPS = 8;
+    /** Internal opcode selected only while the reset-vector microsequence is pending. */
+    public static final int RESET_PSEUDO_OPCODE = 0xfe;
     /**
      * ROM address bits contributed by the flags field: bits 0-3 are the stored Z/C/N/V flags
      * (as before); bit 4 is IRQ_TAKEN, a synthetic "flag" latched once per instruction
@@ -126,20 +128,16 @@ public final class Lf8Microcode {
         set(code, Lf8Isa.EI, 1, IE_LOAD, IE_DATA);
         set(code, Lf8Isa.DI, 1, IE_LOAD);
 
-        // IRET: the mirror image of the interrupt entry sequence below. Entry pushes
-        // PC_HIGH, PC_LOW, FLAGS (FLAGS topmost/most recent); IRET pops in the reverse
-        // order - FLAGS, then PC_LOW, then PC_HIGH - restoring FLAGS from the popped byte's
-        // low nibble and unconditionally re-enabling interrupts as it jumps back (a
-        // deliberately simple convention: interrupts are always disabled for the whole
-        // handler and always re-enabled on return, rather than round-tripping the enable
-        // bit through the stack frame).
+        // IRET mirrors interrupt entry. STATUS is restored explicitly, including IE, so
+        // returning from an interrupt never relies on an unconditional re-enable rule.
         set(code, Lf8Isa.IRET, 1, SP_INCREMENT);
-        set(code, Lf8Isa.IRET, 2, ADDRESS_FROM_SP, MEMORY_READ, FLAGS_FROM_DATA, FLAGS_LOAD);
+        set(code, Lf8Isa.IRET, 2, ADDRESS_FROM_SP, MEMORY_READ,
+                STATUS_FROM_DATA, FLAGS_LOAD, IE_LOAD);
         set(code, Lf8Isa.IRET, 3, SP_INCREMENT);
         set(code, Lf8Isa.IRET, 4, ADDRESS_FROM_SP, MEMORY_READ, MAR_LOW_LOAD);
         set(code, Lf8Isa.IRET, 5, SP_INCREMENT);
         set(code, Lf8Isa.IRET, 6, ADDRESS_FROM_SP, MEMORY_READ, MAR_HIGH_LOAD);
-        set(code, Lf8Isa.IRET, 7, PC_LOAD, IE_LOAD, IE_DATA);
+        set(code, Lf8Isa.IRET, 7, PC_LOAD);
 
         branch(code, Lf8Isa.JZ, ZERO_FLAG, true);
         branch(code, Lf8Isa.JNZ, ZERO_FLAG, false);
@@ -150,6 +148,16 @@ public final class Lf8Microcode {
         for (int step = 1; step < MICROSTEPS; step++) {
             set(code, Lf8Isa.HLT, step, HALT);
         }
+
+        // Hardware startup reads the documented little-endian RESET vector through the
+        // ordinary external memory bus. RESET_PSEUDO_OPCODE is selected structurally while
+        // RESET_COMPLETE is clear; Java never looks up or loads the target PC directly.
+        set(code, RESET_PSEUDO_OPCODE, 0, ADDRESS_FROM_VECTOR, RESET_VECTOR_SELECT,
+                MEMORY_READ, MAR_LOW_LOAD);
+        set(code, RESET_PSEUDO_OPCODE, 1, ADDRESS_FROM_VECTOR, RESET_VECTOR_SELECT,
+                VECTOR_HIGH_ADDRESS, MEMORY_READ, MAR_HIGH_LOAD);
+        set(code, RESET_PSEUDO_OPCODE, 2, PC_LOAD);
+        set(code, RESET_PSEUDO_OPCODE, 7, RESET_ACK);
 
         // Interrupt entry sequence. Occupies the IRQ_TAKEN half of the flags address space
         // (flags 16..31) uniformly across every possible (stale) opcode value, for every
@@ -162,7 +170,7 @@ public final class Lf8Microcode {
         // whole address range so nothing above it can leak through by opcode coincidence.
         //
         // Stack frame pushed (SP grows down): high address -> low address is
-        // PC_HIGH, PC_LOW, FLAGS (FLAGS on top / most recently pushed) - see IRET above for
+        // PC_HIGH, PC_LOW, STATUS (STATUS on top / most recently pushed) - see IRET above for
         // the matching pop order. PC is left untouched (no PC_INCREMENT): nothing was
         // fetched or consumed this cycle, so PC already holds the correct return address.
         // The entry sequence spans the CPU's entire MICROSTEPS budget (0..7) with no idle
@@ -172,10 +180,11 @@ public final class Lf8Microcode {
         // the sequence for the handler's own first fetch.
         setIrqEntry(code, 0, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, PC_HIGH_TO_DATA));
         setIrqEntry(code, 1, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, PC_LOW_TO_DATA));
-        setIrqEntry(code, 2, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, FLAGS_TO_DATA));
+        setIrqEntry(code, 2, word(MEMORY_WRITE, ADDRESS_FROM_SP, SP_DECREMENT, STATUS_TO_DATA));
         setIrqEntry(code, 3, word(IE_LOAD));
-        setIrqEntry(code, 4, word(VECTOR_LOW_TO_DATA, MAR_LOW_LOAD));
-        setIrqEntry(code, 5, word(VECTOR_HIGH_TO_DATA, MAR_HIGH_LOAD));
+        setIrqEntry(code, 4, word(ADDRESS_FROM_VECTOR, MEMORY_READ, MAR_LOW_LOAD));
+        setIrqEntry(code, 5, word(ADDRESS_FROM_VECTOR, VECTOR_HIGH_ADDRESS,
+                MEMORY_READ, MAR_HIGH_LOAD));
         setIrqEntry(code, 6, word(PC_LOAD));
         setIrqEntry(code, 7, word(IRQ_ACK));
         return code;
@@ -211,8 +220,13 @@ public final class Lf8Microcode {
 
     private static void set(long[] contents, Lf8Instruction instruction, int step,
                             Lf8ControlSignal... signals) {
+        set(contents, instruction.opcode(), step, signals);
+    }
+
+    private static void set(long[] contents, int opcode, int step,
+                            Lf8ControlSignal... signals) {
         for (int flags = 0; flags < FLAG_SLOTS; flags++) {
-            contents[address(instruction.opcode(), flags, step)] = word(signals);
+            contents[address(opcode, flags, step)] = word(signals);
         }
     }
 

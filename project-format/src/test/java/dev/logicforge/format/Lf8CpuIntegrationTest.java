@@ -18,6 +18,7 @@ import dev.logicforge.processor.lf8.Lf8ComputerFactory;
 import dev.logicforge.processor.lf8.Lf8CircuitFactory;
 import dev.logicforge.processor.lf8.Lf8Instruction;
 import dev.logicforge.processor.lf8.Lf8Isa;
+import dev.logicforge.processor.lf8.Lf8MemoryMap;
 import dev.logicforge.simulation.Simulation;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -601,6 +602,8 @@ class Lf8CpuIntegrationTest {
         // wrapping back to step 0 for the next fetch), so each instruction boundary is
         // exactly Lf8Microcode.MICROSTEPS clock edges away.
         int microsteps = dev.logicforge.processor.lf8.Lf8Microcode.MICROSTEPS;
+        clockEdges(simulation, probe, microsteps); // RESET vector fetch
+        assertEquals(LogicVector.ZERO, simulation.readOutput(ieId, 0));
         clockEdges(simulation, probe, microsteps); // EI
         assertEquals(LogicVector.ONE, simulation.readOutput(ieId, 0), "EI must set IE");
 
@@ -637,7 +640,7 @@ class Lf8CpuIntegrationTest {
                 opcode(Lf8Isa.STORE), 3, 0x01, 0x80,                 // 38..41  RAM[1] = 0x77
                 opcode(Lf8Isa.HLT),                                  // 42
         };
-        CircuitProject project = Lf8ComputerFactory.create(program);
+        CircuitProject project = Lf8ComputerFactory.createWithVectors(program, 0x0008, 0, 0);
         CompilationResult compiled = compileAndRoundTrip(project);
         Simulation simulation = new Simulation(compiled.circuit());
         CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
@@ -652,6 +655,8 @@ class Lf8CpuIntegrationTest {
         simulation.setInput(irqId, LogicState.ZERO);
 
         int microsteps = dev.logicforge.processor.lf8.Lf8Microcode.MICROSTEPS;
+        clockEdges(simulation, probe, microsteps); // RESET vector fetch
+
         // EI, JMP, LDI R4, LDI R5, ADD, LDI R2 - six full instruction slots land exactly on
         // the fetch boundary for the loop's first DEC R2 (address 0x1d), with the caller's
         // flags already pinned to a known non-zero value (Z, C) by the ADD above.
@@ -691,7 +696,109 @@ class Lf8CpuIntegrationTest {
                 "IRET must restore the caller's flags (Z, C), not the handler's clobbered value "
                         + "left by INC R1");
         assertEquals(LogicVector.ONE, simulation.readOutput(ieId, 0),
-                "IRET must unconditionally re-enable IE; nothing after it touches IE again");
+                "IRET must restore the saved STATUS byte's IE bit");
+    }
+
+    @Test
+    void resetFetchesItsLittleEndianVectorFromExternalRomBeforeExecuting() {
+        int[] program = {
+                opcode(Lf8Isa.HLT), opcode(Lf8Isa.HLT), opcode(Lf8Isa.HLT),
+                opcode(Lf8Isa.HLT),
+                opcode(Lf8Isa.LDI), 0, 0x5a,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.createWithVectors(program, 0, 0, 0x0004);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        assertEquals(LogicVector.fromUnsignedLong(0x5a, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "execution must begin at the PC loaded from RESET_VECTOR, not implicit PC=0");
+        int vectorRomId = compiled.componentByLabel("VECTOR_ROM").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0x04, 8),
+                simulation.memoryPage(vectorRomId, 4, 2).orElseThrow().wordAt(4));
+        assertEquals(LogicVector.fromUnsignedLong(0x00, 8),
+                simulation.memoryPage(vectorRomId, 4, 2).orElseThrow().wordAt(5));
+    }
+
+    @Test
+    void nmiIgnoresIeUsesItsOwnVectorAndIretRestoresDisabledState() {
+        int[] program = {
+                opcode(Lf8Isa.JMP), 0x10, 0x00,
+                opcode(Lf8Isa.NOP), opcode(Lf8Isa.NOP), opcode(Lf8Isa.NOP),
+                opcode(Lf8Isa.NOP), opcode(Lf8Isa.NOP),
+                opcode(Lf8Isa.LDI), 1, 0x33,
+                opcode(Lf8Isa.STORE), 1, 0x00, 0x80,
+                opcode(Lf8Isa.IRET),
+                opcode(Lf8Isa.LDI), 0, 0x55,
+                opcode(Lf8Isa.STORE), 0, 0x01, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.createWithVectors(program, 0, 0x0008, 0);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+        int nmiId = compiled.componentByLabel("NMI").orElseThrow();
+        int ieId = compiled.componentByLabel("IE_REGISTER").orElseThrow();
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+
+        simulation.setInput(probe.resetId(), LogicState.ONE);
+        simulation.setInput(probe.resetId(), LogicState.ZERO);
+        simulation.setInput(nmiId, LogicState.ZERO);
+        int microsteps = dev.logicforge.processor.lf8.Lf8Microcode.MICROSTEPS;
+        clockEdges(simulation, probe, microsteps * 2); // reset sequence, then JMP main
+        assertEquals(LogicVector.ZERO, simulation.readOutput(ieId, 0));
+
+        simulation.setInput(nmiId, LogicState.ONE);
+        clockEdges(simulation, probe, microsteps); // finish LDI, latch NMI at its boundary
+        simulation.setInput(nmiId, LogicState.ZERO);
+
+        int edges = 0;
+        while (simulation.readNet(probe.haltedNet()).singleBit() != LogicState.ONE && edges < 300) {
+            simulation.setInput(probe.clkId(), LogicState.ZERO);
+            simulation.setInput(probe.clkId(), LogicState.ONE);
+            edges++;
+        }
+        assertTrue(edges < 300, "NMI handler did not return to the interrupted program");
+        assertEquals(LogicVector.fromUnsignedLong(0x33, 8),
+                simulation.memoryPage(probe.ramId(), 0, 2).orElseThrow().wordAt(0));
+        assertEquals(LogicVector.fromUnsignedLong(0x55, 8),
+                simulation.memoryPage(probe.ramId(), 0, 2).orElseThrow().wordAt(1));
+        assertEquals(LogicVector.ZERO, simulation.readOutput(ieId, 0),
+                "IRET must restore IE=0 from the NMI's saved STATUS byte");
+        assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0));
+    }
+
+    @Test
+    void loadAndStoreReachGenericMemoryMappedInputAndOutputPorts() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x42,
+                opcode(Lf8Isa.STORE), 0,
+                Lf8MemoryMap.OUTPUT_PORT & 0xff, Lf8MemoryMap.OUTPUT_PORT >>> 8,
+                opcode(Lf8Isa.LOAD), 1,
+                Lf8MemoryMap.INPUT_PORT & 0xff, Lf8MemoryMap.INPUT_PORT >>> 8,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+        int inputPortId = compiled.componentByLabel("INPUT_PORT").orElseThrow();
+        int outputPortId = compiled.componentByLabel("OUTPUT_PORT").orElseThrow();
+        int registerFileId = compiled.componentByLabel("REGISTER_FILE").orElseThrow();
+
+        simulation.setInput(inputPortId, LogicVector.fromUnsignedLong(0xa5, 8));
+        runToHalt(simulation, probe);
+
+        assertEquals(LogicVector.fromUnsignedLong(0x42, 8),
+                simulation.readOutput(outputPortId, 0));
+        assertEquals(LogicVector.fromUnsignedLong(0xa5, 8),
+                simulation.debugSnapshot(registerFileId).registers().get(1),
+                "LOAD through C001 must place the injected input-port value in R1");
     }
 
     private void clockEdges(Simulation simulation, CompiledProbe probe, int edges) {

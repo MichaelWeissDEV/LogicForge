@@ -13,6 +13,8 @@ import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.processor.lf8.Lf8ComputerFactory;
+import dev.logicforge.processor.lf8.Lf8MemoryMap;
+import dev.logicforge.processor.lf8.Lf8ImplementationMode;
 import dev.logicforge.simulation.Simulation;
 import dev.logicforge.tools.lf8.Lf8Assembler;
 import java.nio.file.Path;
@@ -137,6 +139,104 @@ class Lf8AssembledProgramIntegrationTest {
         int spId = compiled.componentByLabel("SP").orElseThrow();
         assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0),
                 "600 balanced CALL/PUSH/POP/RET cycles must leave SP back at its reset value");
+    }
+
+    @Test
+    void timerRaisesThreeRealInterruptsThroughMmioAndLeavesTheStackBalanced() {
+        int[] program = Lf8Assembler.assemble("""
+                    LDI R0, 0
+                    STORE R0, 0x8000
+                    LDI R0, 120
+                    STORE R0, %d
+                    LDI R0, 0
+                    STORE R0, %d
+                    LDI R0, 7
+                    STORE R0, %d
+                    EI
+
+                wait:
+                    LOAD R1, 0x8000
+                    LDI R2, 3
+                    CMP R1, R2
+                    JNZ wait
+                    DI
+                    LDI R0, 0
+                    STORE R0, %d
+                    HLT
+
+                .org 0x0100
+                handler:
+                    LOAD R1, 0x8000
+                    INC R1
+                    STORE R1, 0x8000
+                    LDI R0, 1
+                    STORE R0, %d
+                    IRET
+                """.formatted(
+                Lf8MemoryMap.TIMER_RELOAD_LOW,
+                Lf8MemoryMap.TIMER_RELOAD_HIGH,
+                Lf8MemoryMap.TIMER_CONTROL,
+                Lf8MemoryMap.TIMER_CONTROL,
+                Lf8MemoryMap.TIMER_STATUS));
+
+        CircuitProject project = Lf8ComputerFactory.createWithVectors(program, 0x0100, 0, 0);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe, 5_000);
+
+        assertEquals(LogicVector.fromUnsignedLong(3, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "the real timer IRQ handler must run exactly three times");
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+        int ieId = compiled.componentByLabel("IE_REGISTER").orElseThrow();
+        int timerId = compiled.componentByLabel("TIMER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0));
+        assertEquals(LogicVector.ZERO, simulation.readOutput(ieId, 0),
+                "the final DI must leave interrupts disabled");
+        assertEquals(LogicVector.ZERO, simulation.readOutput(timerId, 1),
+                "disabling the timer must deassert its IRQ output");
+    }
+
+    @Test
+    void structuralLf8RunsTheSameProgramThroughTheDeepAdderHierarchy() {
+        int[] program = Lf8Assembler.assemble("""
+                    LDI R0, 5
+                    LDI R1, 3
+                    ADD R0, R1
+                    PUSH R0
+                    CALL addTwo
+                    POP R3
+                    CMP R0, R3
+                    JNZ correct
+                    LDI R0, 0xff
+                correct:
+                    STORE R0, 0x8002
+                    HLT
+                addTwo:
+                    LDI R2, 2
+                    ADD R0, R2
+                    RET
+                """);
+
+        for (Lf8ImplementationMode mode : new Lf8ImplementationMode[]{
+                Lf8ImplementationMode.FAST, Lf8ImplementationMode.STRUCTURAL}) {
+            CircuitProject project = Lf8ComputerFactory.create(mode, program);
+            CompilationResult compiled = compileAndRoundTrip(project);
+            Simulation simulation = new Simulation(compiled.circuit());
+            CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+            runToHalt(simulation, probe, 1_000);
+            assertEquals(LogicVector.fromUnsignedLong(10, 8),
+                    simulation.memoryPage(probe.ramId(), 2, 1).orElseThrow().wordAt(2),
+                    mode + " must execute identical ISA/microcode behavior");
+            if (mode == Lf8ImplementationMode.STRUCTURAL) {
+                assertTrue(project.circuit("STRUCT_ALU8").isPresent());
+                assertTrue(project.circuit("RIPPLE_ADDER8").isPresent());
+                assertTrue(project.circuit("STRUCT_FULL_ADDER").isPresent());
+                assertTrue(project.circuit("STRUCT_HALF_ADDER").isPresent());
+            }
+        }
     }
 
     private CompilationResult compileAndRoundTrip(CircuitProject project) {

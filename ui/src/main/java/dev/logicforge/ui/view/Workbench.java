@@ -6,6 +6,8 @@ import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.edit.LogicAnalyzerController;
+import dev.logicforge.ui.study.StudyTarget;
+import dev.logicforge.ui.study.StudyWindow;
 import javafx.geometry.Orientation;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -134,6 +136,8 @@ public final class Workbench extends BorderPane {
         stepTimeButton.setOnAction(event -> editor.stepTime());
         Button resetButton = toolButton("Reset");
         resetButton.setOnAction(event -> editor.resetSimulation());
+        Button studyButton = toolButton("Study");
+        studyButton.setOnAction(event -> new StudyWindow(StudyTarget.live(editor)).show());
 
         speedBox.setValue(SimulationPlaybackController.Speed.REALTIME);
         speedBox.getStyleClass().add("tool-button");
@@ -155,7 +159,7 @@ public final class Workbench extends BorderPane {
         HBox toolbar = new HBox(title,
                 newButton, openButton, saveButton, separator(),
                 undoButton, redoButton, separator(),
-                runButton, stepButton, stepTimeButton, resetButton, speedBox, separator(),
+                runButton, stepButton, stepTimeButton, resetButton, speedBox, studyButton, separator(),
                 analyzerToggle,
                 spacer,
                 zoomOut, zoomIn, zoomFit);

@@ -8,6 +8,7 @@ import static dev.logicforge.circuit.component.ComponentCategory.ROUTING;
 import static dev.logicforge.circuit.component.ComponentCategory.SEQUENTIAL;
 import static dev.logicforge.circuit.component.ComponentCategory.SOURCES;
 import static dev.logicforge.circuit.component.ComponentCategory.HIERARCHY;
+import static dev.logicforge.circuit.component.ComponentCategory.SYSTEM;
 import static dev.logicforge.circuit.component.InputInteraction.MOMENTARY;
 import static dev.logicforge.circuit.component.InputInteraction.TOGGLE;
 
@@ -37,6 +38,7 @@ import dev.logicforge.library.behavior.FlagsRegisterBehavior;
 import dev.logicforge.library.behavior.FullAdderBehavior;
 import dev.logicforge.library.behavior.HalfAdderBehavior;
 import dev.logicforge.library.behavior.IncrementDecrementBehavior;
+import dev.logicforge.library.behavior.InputPortBehavior;
 import dev.logicforge.library.behavior.JkFlipFlopBehavior;
 import dev.logicforge.library.behavior.JoinerBehavior;
 import dev.logicforge.library.behavior.LoadableCounterBehavior;
@@ -44,6 +46,7 @@ import dev.logicforge.library.behavior.ModuloCounterBehavior;
 import dev.logicforge.library.behavior.MuxBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
 import dev.logicforge.library.behavior.OverflowDetectorBehavior;
+import dev.logicforge.library.behavior.OutputPortBehavior;
 import dev.logicforge.library.behavior.ParityBehavior;
 import dev.logicforge.library.behavior.PisoBehavior;
 import dev.logicforge.library.behavior.PriorityEncoderBehavior;
@@ -60,6 +63,7 @@ import dev.logicforge.library.behavior.SplitterBehavior;
 import dev.logicforge.library.behavior.SrLatchBehavior;
 import dev.logicforge.library.behavior.SubtractorBehavior;
 import dev.logicforge.library.behavior.TFlipFlopBehavior;
+import dev.logicforge.library.behavior.TimerBehavior;
 import dev.logicforge.library.behavior.TriStateBehavior;
 import dev.logicforge.library.behavior.UnaryGateBehavior;
 import dev.logicforge.library.behavior.UniversalShiftRegisterBehavior;
@@ -98,6 +102,7 @@ final class StandardLibrary {
         registerRouting(registry);
         registerArithmetic(registry);
         registerMemory(registry);
+        registerSystem(registry);
         registerHierarchy(registry);
         registerOutputs(registry);
         return registry;
@@ -1170,6 +1175,58 @@ final class StandardLibrary {
                         List.of("ram", "memory", "read-write", "storage")),
                 values -> new RamBehavior(
                         BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
+    }
+
+    private static void registerSystem(ComponentRegistry registry) {
+        registry.register(new ComponentType(
+                definition("system.output_port", "Output Port", SYSTEM,
+                        "Captures DATA on a rising clock edge while SELECT and WRITE are high",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                                "Value captured by a selected write"),
+                                        PortLayouts.DynamicPortDef.fixed("SELECT", "Device select"),
+                                        PortLayouts.DynamicPortDef.fixed("WRITE", "Write strobe"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Rising-edge clock"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET", "Asynchronous clear")),
+                                List.of(PortLayouts.DynamicPortDef.bus("VALUE", LibraryParameters.WIDTH,
+                                        "Stored output value")), REGISTER_WIDTH),
+                        List.of("mmio", "port", "output", "register")),
+                values -> new OutputPortBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("system.input_port", "Input Port", SYSTEM,
+                        "Drives VALUE onto DATA while SELECT and READ are high; otherwise floats",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.fixed("SELECT", "Device select"),
+                                        PortLayouts.DynamicPortDef.fixed("READ", "Read strobe")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                        "Tri-stated data-bus driver")), REGISTER_WIDTH),
+                        List.of("mmio", "port", "input", "tristate")),
+                values -> new InputPortBehavior(busWidth(values))));
+
+        registry.register(ComponentType.of(
+                definition("system.timer", "Timer", SYSTEM,
+                        "16-bit reload timer with enable, periodic/one-shot mode, IRQ enable, "
+                                + "pending status and write-one-to-clear acknowledgement",
+                        List.of(),
+                        PortLayouts.dynamicBoxWithInout(
+                                List.of(new PortLayouts.DynamicPortDef("REGISTER_SELECT",
+                                                values -> BitWidth.of(2), "0=reload low, 1=reload high, "
+                                                        + "2=control, 3=status"),
+                                        PortLayouts.DynamicPortDef.fixed("SELECT", "Device select"),
+                                        PortLayouts.DynamicPortDef.fixed("READ", "Read strobe"),
+                                        PortLayouts.DynamicPortDef.fixed("WRITE", "Write strobe"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Rising-edge timer clock"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET", "Asynchronous reset")),
+                                List.of(new PortLayouts.DynamicPortDef("DATA", values -> BitWidth.of(8),
+                                        "Bidirectional register data bus")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("IRQ",
+                                        "High while IRQ_PENDING and IRQ_ENABLE are set")),
+                                REGISTER_WIDTH),
+                        List.of("timer", "counter", "mmio", "interrupt", "periodic")),
+                new TimerBehavior()));
     }
 
     private static void registerHierarchy(ComponentRegistry registry) {
