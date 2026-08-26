@@ -26,7 +26,9 @@ public final class Lf8Microcode {
         set(code, Lf8Isa.LDI, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
         set(code, Lf8Isa.LDI, 2, PC_INCREMENT, REGISTER_FILE_WRITE, MEMORY_READ);
 
-        for (Lf8Instruction instruction : new Lf8Instruction[]{Lf8Isa.MOV, Lf8Isa.ADD, Lf8Isa.SUB}) {
+        for (Lf8Instruction instruction : new Lf8Instruction[]{
+                Lf8Isa.MOV, Lf8Isa.ADD, Lf8Isa.SUB, Lf8Isa.AND, Lf8Isa.OR,
+                Lf8Isa.XOR, Lf8Isa.CMP}) {
             set(code, instruction, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
             set(code, instruction, 2, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
         }
@@ -35,6 +37,28 @@ public final class Lf8Microcode {
                 REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD);
         setAlu(code, Lf8Isa.SUB, 3, Lf8AluOperation.SUB,
                 REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_CARRY_IN);
+        for (MapEntry logical : new MapEntry[]{
+                new MapEntry(Lf8Isa.AND, Lf8AluOperation.AND),
+                new MapEntry(Lf8Isa.OR, Lf8AluOperation.OR),
+                new MapEntry(Lf8Isa.XOR, Lf8AluOperation.XOR)}) {
+            setAlu(code, logical.instruction(), 3, logical.operation(),
+                    REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD,
+                    FLAGS_PRESERVE_CARRY, FLAGS_PRESERVE_OVERFLOW);
+        }
+        setAlu(code, Lf8Isa.CMP, 3, Lf8AluOperation.SUB, FLAGS_LOAD, ALU_CARRY_IN);
+
+        for (Lf8Instruction instruction : new Lf8Instruction[]{
+                Lf8Isa.INC, Lf8Isa.DEC, Lf8Isa.SHL, Lf8Isa.SHR}) {
+            set(code, instruction, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
+        }
+        setAlu(code, Lf8Isa.INC, 2, Lf8AluOperation.ADD,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_B_ONE);
+        setAlu(code, Lf8Isa.DEC, 2, Lf8AluOperation.SUB,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, ALU_CARRY_IN, ALU_B_ONE);
+        setAlu(code, Lf8Isa.SHL, 2, Lf8AluOperation.SHL,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, FLAGS_PRESERVE_OVERFLOW);
+        setAlu(code, Lf8Isa.SHR, 2, Lf8AluOperation.SHR,
+                REGISTER_FILE_WRITE, ALU_SOURCE, FLAGS_LOAD, FLAGS_PRESERVE_OVERFLOW);
 
         set(code, Lf8Isa.LOAD, 1, PC_INCREMENT, DESTINATION_REGISTER_LOAD, MEMORY_READ);
         set(code, Lf8Isa.STORE, 1, PC_INCREMENT, SOURCE_REGISTER_LOAD, MEMORY_READ);
@@ -121,5 +145,8 @@ public final class Lf8Microcode {
             result |= signal.mask();
         }
         return result;
+    }
+
+    private record MapEntry(Lf8Instruction instruction, Lf8AluOperation operation) {
     }
 }

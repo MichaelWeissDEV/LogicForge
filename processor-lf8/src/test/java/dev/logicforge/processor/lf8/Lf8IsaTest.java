@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.util.HashSet;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class Lf8IsaTest {
@@ -24,6 +25,17 @@ class Lf8IsaTest {
         assertEquals(3, Lf8Isa.ADD.length());
         assertEquals(4, Lf8Isa.STORE.length());
         assertEquals(3, Lf8Isa.JMP.length());
+        assertEquals(2, Lf8Isa.INC.length());
+    }
+
+    @Test
+    void canonicalMetadataDefinesSelectiveFlagEffects() {
+        assertEquals(Set.of(Lf8Instruction.Flag.ZERO, Lf8Instruction.Flag.NEGATIVE),
+                Lf8Isa.XOR.flagEffects());
+        assertEquals(Set.of(Lf8Instruction.Flag.ZERO, Lf8Instruction.Flag.CARRY,
+                        Lf8Instruction.Flag.NEGATIVE), Lf8Isa.SHL.flagEffects());
+        assertEquals(Set.of(), Lf8Isa.LOAD.flagEffects(),
+                "loads and moves deliberately preserve every condition code");
     }
 
     @Test

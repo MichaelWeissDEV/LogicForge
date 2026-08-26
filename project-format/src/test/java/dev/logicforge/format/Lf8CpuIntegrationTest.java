@@ -198,6 +198,70 @@ class Lf8CpuIntegrationTest {
         }
     }
 
+    @Test
+    void remainingBaseAluInstructionsExecuteAndCmpDoesNotWriteBack() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0xf0,
+                opcode(Lf8Isa.LDI), 1, 0x0f,
+                opcode(Lf8Isa.AND), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.LDI), 0, 0xf0,
+                opcode(Lf8Isa.OR), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x01, 0x80,
+                opcode(Lf8Isa.LDI), 0, 0xf0,
+                opcode(Lf8Isa.XOR), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x02, 0x80,
+                opcode(Lf8Isa.INC), 1,
+                opcode(Lf8Isa.STORE), 1, 0x03, 0x80,
+                opcode(Lf8Isa.DEC), 1,
+                opcode(Lf8Isa.STORE), 1, 0x04, 0x80,
+                opcode(Lf8Isa.SHL), 1,
+                opcode(Lf8Isa.STORE), 1, 0x05, 0x80,
+                opcode(Lf8Isa.SHR), 1,
+                opcode(Lf8Isa.STORE), 1, 0x06, 0x80,
+                opcode(Lf8Isa.CMP), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x07, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int[] expected = {0x00, 0xff, 0xff, 0x10, 0x0f, 0x1e, 0x0f, 0xff};
+        for (int address = 0; address < expected.length; address++) {
+            assertEquals(LogicVector.fromUnsignedLong(expected[address], 8),
+                    simulation.memoryPage(probe.ramId(), address, 1).orElseThrow().wordAt(address),
+                    "RAM result slot " + address);
+        }
+        int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0b0110, 4), simulation.readOutput(flagsId, 0),
+                "CMP 0xff,0x0f sets C and N without changing R0");
+    }
+
+    @Test
+    void shiftUpdatesCarryWhilePreservingOverflow() {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0x7f,
+                opcode(Lf8Isa.LDI), 1, 0x01,
+                opcode(Lf8Isa.ADD), 0, 1,
+                opcode(Lf8Isa.SHL), 0,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0b1011, 4), simulation.readOutput(flagsId, 0),
+                "SHL 0x80 must set Z/C, clear N, and preserve the prior V flag");
+    }
+
     private void assertBranchPath(BranchCase branchCase) {
         int[] program = {
                 opcode(Lf8Isa.LDI), 0, branchCase.left(),
@@ -269,7 +333,12 @@ class Lf8CpuIntegrationTest {
                     "MEMORY_READ and MEMORY_WRITE must never overlap");
             assertFalse(simulation.hasDriverConflict(probe.dataNet()),
                     "the shared DATA bus must have at most one active driver");
-            simulation.setInput(probe.clkId(), LogicState.ONE);
+            try {
+                simulation.setInput(probe.clkId(), LogicState.ONE);
+            } catch (dev.logicforge.simulation.SimulationOscillationException failure) {
+                System.err.println("LF8 oscillation at edge " + edges);
+                throw failure;
+            }
             edges++;
         }
         assertTrue(edges < 400, "CPU did not halt within 400 clock edges");

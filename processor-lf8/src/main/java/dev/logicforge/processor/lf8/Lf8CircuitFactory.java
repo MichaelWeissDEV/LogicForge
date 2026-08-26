@@ -39,7 +39,8 @@ public final class Lf8CircuitFactory {
             Lf8ControlSignal.FLAGS_LOAD,
             Lf8ControlSignal.FLAGS_PRESERVE_CARRY,
             Lf8ControlSignal.FLAGS_PRESERVE_OVERFLOW,
-            Lf8ControlSignal.ALU_CARRY_IN);
+            Lf8ControlSignal.ALU_CARRY_IN,
+            Lf8ControlSignal.ALU_B_ONE);
 
     private Lf8CircuitFactory() {
     }
@@ -99,6 +100,8 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.REGISTER_COUNT, 8), "REGISTER_FILE");
         ComponentInstance alu = add(document, registry, "arithmetic.alu", 570, 110,
                 defaults(registry, "arithmetic.alu").with(LibraryParameters.WIDTH, 8), "ALU");
+        ComponentInstance aluB = mux(document, registry, 520, 170, 8, "ALU_B_SOURCE");
+        ComponentInstance one = constant(document, registry, 430, 210, 8, 1, "ALU_ONE");
 
         ComponentInstance immediateOrAlu = mux(document, registry, 680, 60, 8,
                 "WRITE_IMMEDIATE_ALU");
@@ -141,7 +144,9 @@ public final class Lf8CircuitFactory {
         wire(document, destination, "Q", registers, "WR_ADDR");
         wire(document, source, "Q", registers, "RD_ADDR_B");
         wire(document, registers, "RD_DATA_A", alu, "A");
-        wire(document, registers, "RD_DATA_B", alu, "B");
+        wire(document, registers, "RD_DATA_B", aluB, "IN0");
+        wire(document, one, "OUT", aluB, "IN1");
+        wire(document, aluB, "OUT", alu, "B");
         wire(document, aluOp, "OUT", alu, "OP");
         wire(document, alu, "RESULT", immediateOrAlu, "IN1");
         wire(document, registers, "RD_DATA_B", memoryOrMove, "IN1");
@@ -182,6 +187,7 @@ public final class Lf8CircuitFactory {
         controlWire(document, controls, Lf8ControlSignal.MOV_SOURCE, memoryOrMove, "SEL");
         controlWire(document, controls, Lf8ControlSignal.ALTERNATE_SOURCE, writeSource, "SEL");
         controlWire(document, controls, Lf8ControlSignal.ALU_CARRY_IN, alu, "CIN");
+        controlWire(document, controls, Lf8ControlSignal.ALU_B_ONE, aluB, "SEL");
         controlWire(document, controls, Lf8ControlSignal.MEMORY_WRITE, writeDriver, "ENABLE");
         controlWire(document, controls, Lf8ControlSignal.PC_LOAD, pc, "LOAD");
         controlWire(document, controls, Lf8ControlSignal.ADDRESS_FROM_MAR, addressSource, "SEL");

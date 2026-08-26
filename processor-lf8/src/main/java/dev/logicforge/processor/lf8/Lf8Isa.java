@@ -47,12 +47,29 @@ public final class Lf8Isa {
             List.of(ADDRESS16), Set.of());
     public static final Lf8Instruction JNN = instruction("JNN", 0x0d,
             List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction AND = instruction("AND", 0x0e,
+            List.of(REGISTER, REGISTER), Set.of(ZERO, NEGATIVE));
+    public static final Lf8Instruction OR = instruction("OR", 0x0f,
+            List.of(REGISTER, REGISTER), Set.of(ZERO, NEGATIVE));
+    public static final Lf8Instruction XOR = instruction("XOR", 0x10,
+            List.of(REGISTER, REGISTER), Set.of(ZERO, NEGATIVE));
+    public static final Lf8Instruction CMP = instruction("CMP", 0x11,
+            List.of(REGISTER, REGISTER), ARITHMETIC_FLAGS);
+    public static final Lf8Instruction INC = instruction("INC", 0x12,
+            List.of(REGISTER), ARITHMETIC_FLAGS);
+    public static final Lf8Instruction DEC = instruction("DEC", 0x13,
+            List.of(REGISTER), ARITHMETIC_FLAGS);
+    public static final Lf8Instruction SHL = instruction("SHL", 0x14,
+            List.of(REGISTER), Set.of(ZERO, CARRY, NEGATIVE));
+    public static final Lf8Instruction SHR = instruction("SHR", 0x15,
+            List.of(REGISTER), Set.of(ZERO, CARRY, NEGATIVE));
     public static final Lf8Instruction HLT = instruction("HLT", 0xff,
             List.of(), Set.of());
 
     private static final List<Lf8Instruction> INSTRUCTIONS = List.of(
             NOP, LDI, MOV, ADD, SUB, LOAD, STORE, JMP,
-            JZ, JNZ, JC, JNC, JN, JNN, HLT);
+            JZ, JNZ, JC, JNC, JN, JNN,
+            AND, OR, XOR, CMP, INC, DEC, SHL, SHR, HLT);
     private static final Map<Integer, Lf8Instruction> BY_OPCODE = byOpcode();
 
     private Lf8Isa() {
