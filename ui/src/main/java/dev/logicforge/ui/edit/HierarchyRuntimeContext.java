@@ -21,11 +21,19 @@ import java.util.UUID;
  * tree has no such path — it may back zero, one or many live instances — so every
  * resolution correctly comes back empty there rather than guessing which instance to show.
  *
- * <p>Root-level lookups go straight through the flat {@code CircuitSourceMap} first, since
- * that also covers ports with no connection (an unwired port still gets a net, but never
- * gets a hierarchical path entry — those exist only for endpoints that appear in a wire).
- * The hierarchical path is the fallback, used for anything nested inside a subcircuit
- * instance.
+ * <p>Every lookup goes through the hierarchical {@code HierarchySourceMap} first, keyed by
+ * the full instance path — this is the one source that can never misresolve, because a
+ * component or endpoint genuinely local to the currently-open instance always has an entry
+ * there (see {@code CircuitFlattener}). Only if that misses does resolution fall back to the
+ * flat, UUID-keyed {@code CircuitSourceMap}: that covers two cases the hierarchical map
+ * cannot — a port with no connection (an unwired port still gets a net, but never gets a
+ * hierarchical path entry — those exist only for endpoints that appear in a wire), and a
+ * caller that already holds a root-scoped UUID while a nested instance happens to be open.
+ * Trying the flat map <em>first</em> would be unsafe: a child circuit definition can
+ * coincidentally (or adversarially) reuse a UUID that also exists at the root, and a direct
+ * hit there before the hierarchical lookup runs would silently resolve to the wrong
+ * component. Trying it only as a fallback avoids that — anything truly local to the open
+ * instance is already found by the hierarchical lookup and never reaches the flat map.
  */
 public final class HierarchyRuntimeContext {
 
@@ -53,41 +61,43 @@ public final class HierarchyRuntimeContext {
         return instancePath;
     }
 
-    /** The runtime id of a component local to the open circuit. */
+    /**
+     * The runtime id of a component local to the open circuit. Definition mode
+     * ({@code instancePath} empty) never resolves anything — there is no single live
+     * instance to point at. Otherwise the hierarchical path is tried first and the flat map
+     * only as a fallback; see the class documentation for why the order matters.
+     */
     public OptionalInt resolveComponent(UUID localComponentId) {
-        if (compilation == null) {
+        if (compilation == null || instancePath.isEmpty()) {
             return OptionalInt.empty();
         }
-        OptionalInt direct = compilation.sourceMap().componentId(localComponentId);
-        if (direct.isPresent()) {
-            return direct;
+        OptionalInt hierarchical = compilation.hierarchySourceMap()
+                .componentId(instancePath.get() + "/" + localComponentId);
+        if (hierarchical.isPresent()) {
+            return hierarchical;
         }
-        return instancePath.isEmpty() ? OptionalInt.empty()
-                : compilation.hierarchySourceMap().componentId(
-                        instancePath.get() + "/" + localComponentId);
+        return compilation.sourceMap().componentId(localComponentId);
     }
 
-    /** The net carrying a local port endpoint (whole, bit or range). */
+    /**
+     * The net carrying a local port endpoint (whole, bit or range). See the class
+     * documentation for why the hierarchical path is tried before the flat map, never after.
+     */
     public OptionalInt resolveNet(PortEndpoint localEndpoint) {
-        if (compilation == null) {
+        if (compilation == null || instancePath.isEmpty()) {
             return OptionalInt.empty();
         }
-        OptionalInt direct = compilation.sourceMap().netOf(localEndpoint);
-        if (direct.isPresent()) {
-            return direct;
+        OptionalInt hierarchical = compilation.hierarchySourceMap().netId(
+                CircuitFlattener.endpointPath(instancePath.get(), localEndpoint));
+        if (hierarchical.isPresent()) {
+            return hierarchical;
         }
-        return instancePath.isEmpty() ? OptionalInt.empty()
-                : compilation.hierarchySourceMap().netId(
-                        CircuitFlattener.endpointPath(instancePath.get(), localEndpoint));
+        return compilation.sourceMap().netOf(localEndpoint);
     }
 
     /** The net a whole port is attached to. */
     public OptionalInt resolveNet(PortReference localPort) {
-        if (compilation == null) {
-            return OptionalInt.empty();
-        }
-        OptionalInt direct = compilation.sourceMap().netOf(localPort);
-        return direct.isPresent() ? direct : resolveNet(PortEndpoint.whole(localPort));
+        return resolveNet(PortEndpoint.whole(localPort));
     }
 
     /**

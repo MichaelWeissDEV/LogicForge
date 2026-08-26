@@ -133,6 +133,22 @@ class SignalBindingTest {
                 editor.valueOfConnection(connectionId).orElseThrow());
     }
 
+    /**
+     * {@link ResolvedSignal.BitVector} clones its array on the way in; it must also clone
+     * on the way out, or a caller mutating the array returned by {@code nets()} would
+     * corrupt the record's internal state for every subsequent read.
+     */
+    @Test
+    void bitVectorNetsAccessorIsDefensivelyCopied() {
+        ResolvedSignal.BitVector signal = new ResolvedSignal.BitVector(new int[] {1, 2, 3});
+
+        int[] exposed = signal.nets();
+        exposed[0] = 999;
+
+        assertEquals(1, signal.nets()[0], "mutating the returned array must not affect the record");
+        assertEquals(java.util.List.of(1, 2, 3), signal.netIds());
+    }
+
     // ------------------------------------------------------------------
 
     private ComponentInstance busConstant(String hexValue, int width) {

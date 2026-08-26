@@ -121,6 +121,12 @@ public sealed interface ResolvedSignal {
             nets = nets.clone();
         }
 
+        /** Defensive copy — the canonical constructor clones on the way in, so accessors must clone on the way out too. */
+        @Override
+        public int[] nets() {
+            return nets.clone();
+        }
+
         @Override
         public int width() {
             return nets.length;

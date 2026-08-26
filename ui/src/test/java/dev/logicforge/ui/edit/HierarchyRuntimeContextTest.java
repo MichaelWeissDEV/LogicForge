@@ -186,6 +186,69 @@ class HierarchyRuntimeContextTest {
                 .wordAt(1).toUnsignedLong().orElseThrow());
     }
 
+    /** Root main is always a live, directly-resolvable instance — never definition mode. */
+    @Test
+    void rootMainInstanceIsAlwaysALiveRuntimeContext() {
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance ram = ComponentInstance.create("memory.ram", new CircuitPoint(0, 0),
+                ComponentRegistry.standard().require("memory.ram").definition().defaultParameters());
+        main.addComponent(ram);
+
+        CircuitProject project = CircuitProject.of("root-live", main);
+        editor.setProject(project, false);
+
+        assertFalse(editor.isDefinitionMode());
+        assertEquals(Optional.of(CircuitProject.MAIN_CIRCUIT), editor.activeInstancePath());
+        editor.writeMemoryWord(ram.id(), 2, LogicVector.fromUnsignedLong(0x11, 8));
+        assertEquals(0x11, editor.memorySnapshot(ram.id()).orElseThrow()
+                .wordAt(2).toUnsignedLong().orElseThrow());
+    }
+
+    /**
+     * A root-level component and a component buried inside a completely different circuit
+     * definition can, in principle, carry the same document-local UUID (nothing prevents it —
+     * UUIDs are only unique within one document by construction, not across documents). The
+     * resolver must never let a nested instance's local UUID accidentally match an entry in
+     * the root's flat, UUID-keyed source map; it must resolve nested lookups only through the
+     * full hierarchical path.
+     */
+    @Test
+    void duplicateUuidBetweenRootAndNestedInstanceDoesNotMisresolve() {
+        ComponentInstance rootRam = ComponentInstance.create("memory.ram", new CircuitPoint(0, 0),
+                ComponentRegistry.standard().require("memory.ram").definition().defaultParameters());
+        java.util.UUID sharedId = rootRam.id();
+
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("Cpu", ""));
+        ComponentInstance childRam = ComponentInstance.create("memory.ram", new CircuitPoint(0, 0),
+                ComponentRegistry.standard().require("memory.ram").definition().defaultParameters())
+                .withId(sharedId);
+        child.addComponent(childRam);
+
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        main.addComponent(rootRam);
+        ComponentInstance cpuA = SubcircuitSupport.instantiate("Cpu", new CircuitPoint(200, 0)).withLabel("cpuA");
+        main.addComponent(cpuA);
+
+        CircuitProject project = CircuitProject.of("duplicate-uuid", main);
+        project.putCircuit(child);
+        editor.setProject(project, false);
+
+        // At root, sharedId resolves to the root-level RAM: write a distinguishing value.
+        editor.writeMemoryWord(sharedId, 0, LogicVector.fromUnsignedLong(0xAA, 8));
+
+        // Inside cpuA, the very same local UUID must resolve to cpuA's own RAM instead.
+        editor.openSubcircuit(cpuA);
+        editor.writeMemoryWord(sharedId, 0, LogicVector.fromUnsignedLong(0x55, 8));
+        assertEquals(0x55, editor.memorySnapshot(sharedId).orElseThrow()
+                .wordAt(0).toUnsignedLong().orElseThrow(), "must resolve to cpuA's nested instance");
+
+        // Back at root, the root-level component must be untouched by the nested write.
+        editor.navigateBack();
+        assertEquals(0xAA, editor.memorySnapshot(sharedId).orElseThrow()
+                .wordAt(0).toUnsignedLong().orElseThrow(),
+                "the nested write under the same local UUID must not have leaked into the root component");
+    }
+
     @Test
     void watchOnOneInstanceStaysUnresolvedOnceThatInstanceIsGoneRatherThanRebindingToTheOtherOne() {
         CircuitDocument child = new CircuitDocument(new CircuitMetadata("Cpu", ""));
