@@ -37,4 +37,15 @@ class Lf8IsaTest {
         assertEquals(Lf8ControlSignal.HALT.mask(),
                 words[Lf8Microcode.address(Lf8Isa.HLT.opcode(), 1)]);
     }
+
+    @Test
+    void conditionalBranchPagesDependOnStoredFlags() {
+        int[] words = Lf8Microcode.words();
+        assertEquals(0, words[Lf8Microcode.address(Lf8Isa.JZ.opcode(), 0b0000, 3)]);
+        assertEquals(Lf8ControlSignal.PC_LOAD.mask(),
+                words[Lf8Microcode.address(Lf8Isa.JZ.opcode(), 0b0001, 3)]);
+        assertEquals(Lf8ControlSignal.PC_LOAD.mask(),
+                words[Lf8Microcode.address(Lf8Isa.JNC.opcode(), 0b0000, 3)]);
+        assertEquals(0, words[Lf8Microcode.address(Lf8Isa.JNC.opcode(), 0b0010, 3)]);
+    }
 }

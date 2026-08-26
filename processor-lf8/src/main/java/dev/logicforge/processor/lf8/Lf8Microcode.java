@@ -8,6 +8,9 @@ public final class Lf8Microcode {
     public static final int MICROSTEPS = 8;
     public static final int FLAG_SLOTS = 16;
     public static final int WORDS = 256 * FLAG_SLOTS * MICROSTEPS;
+    private static final int ZERO_FLAG = 1;
+    private static final int CARRY_FLAG = 1 << 1;
+    private static final int NEGATIVE_FLAG = 1 << 2;
 
     private Lf8Microcode() {
     }
@@ -46,6 +49,12 @@ public final class Lf8Microcode {
         set(code, Lf8Isa.JMP, 1, PC_INCREMENT, MAR_LOW_LOAD, MEMORY_READ);
         set(code, Lf8Isa.JMP, 2, PC_INCREMENT, MAR_HIGH_LOAD, MEMORY_READ);
         set(code, Lf8Isa.JMP, 3, PC_LOAD);
+        branch(code, Lf8Isa.JZ, ZERO_FLAG, true);
+        branch(code, Lf8Isa.JNZ, ZERO_FLAG, false);
+        branch(code, Lf8Isa.JC, CARRY_FLAG, true);
+        branch(code, Lf8Isa.JNC, CARRY_FLAG, false);
+        branch(code, Lf8Isa.JN, NEGATIVE_FLAG, true);
+        branch(code, Lf8Isa.JNN, NEGATIVE_FLAG, false);
         for (int step = 1; step < MICROSTEPS; step++) {
             set(code, Lf8Isa.HLT, step, HALT);
         }
@@ -92,6 +101,17 @@ public final class Lf8Microcode {
         int value = word(signals) | Lf8ControlField.ALU_OP.encode(operation.code());
         for (int flags = 0; flags < FLAG_SLOTS; flags++) {
             contents[address(instruction.opcode(), flags, step)] = value;
+        }
+    }
+
+    private static void branch(int[] contents, Lf8Instruction instruction,
+                               int flagMask, boolean branchWhenSet) {
+        set(contents, instruction, 1, PC_INCREMENT, MAR_LOW_LOAD, MEMORY_READ);
+        set(contents, instruction, 2, PC_INCREMENT, MAR_HIGH_LOAD, MEMORY_READ);
+        for (int flags = 0; flags < FLAG_SLOTS; flags++) {
+            boolean isSet = (flags & flagMask) != 0;
+            contents[address(instruction.opcode(), flags, 3)] =
+                    isSet == branchWhenSet ? word(PC_LOAD) : 0;
         }
     }
 

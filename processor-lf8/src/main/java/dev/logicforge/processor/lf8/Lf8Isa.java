@@ -35,11 +35,24 @@ public final class Lf8Isa {
             List.of(REGISTER, ADDRESS16), Set.of());
     public static final Lf8Instruction JMP = instruction("JMP", 0x07,
             List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction JZ = instruction("JZ", 0x08,
+            List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction JNZ = instruction("JNZ", 0x09,
+            List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction JC = instruction("JC", 0x0a,
+            List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction JNC = instruction("JNC", 0x0b,
+            List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction JN = instruction("JN", 0x0c,
+            List.of(ADDRESS16), Set.of());
+    public static final Lf8Instruction JNN = instruction("JNN", 0x0d,
+            List.of(ADDRESS16), Set.of());
     public static final Lf8Instruction HLT = instruction("HLT", 0xff,
             List.of(), Set.of());
 
     private static final List<Lf8Instruction> INSTRUCTIONS = List.of(
-            NOP, LDI, MOV, ADD, SUB, LOAD, STORE, JMP, HLT);
+            NOP, LDI, MOV, ADD, SUB, LOAD, STORE, JMP,
+            JZ, JNZ, JC, JNC, JN, JNN, HLT);
     private static final Map<Integer, Lf8Instruction> BY_OPCODE = byOpcode();
 
     private Lf8Isa() {

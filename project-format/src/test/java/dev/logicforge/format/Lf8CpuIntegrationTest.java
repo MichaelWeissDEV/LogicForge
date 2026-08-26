@@ -177,6 +177,52 @@ class Lf8CpuIntegrationTest {
                 "0x7f + 1 must set N and V while clearing Z and C");
     }
 
+    @Test
+    void everyConditionalBranchHandlesTakenAndNotTakenPaths() {
+        java.util.List<BranchCase> cases = java.util.List.of(
+                new BranchCase("JZ taken", Lf8Isa.JZ, Lf8Isa.SUB, 5, 5, true),
+                new BranchCase("JZ not taken", Lf8Isa.JZ, Lf8Isa.ADD, 1, 1, false),
+                new BranchCase("JNZ taken", Lf8Isa.JNZ, Lf8Isa.ADD, 1, 1, true),
+                new BranchCase("JNZ not taken", Lf8Isa.JNZ, Lf8Isa.SUB, 5, 5, false),
+                new BranchCase("JC taken", Lf8Isa.JC, Lf8Isa.SUB, 5, 5, true),
+                new BranchCase("JC not taken", Lf8Isa.JC, Lf8Isa.SUB, 0, 1, false),
+                new BranchCase("JNC taken", Lf8Isa.JNC, Lf8Isa.SUB, 0, 1, true),
+                new BranchCase("JNC not taken", Lf8Isa.JNC, Lf8Isa.SUB, 5, 5, false),
+                new BranchCase("JN taken", Lf8Isa.JN, Lf8Isa.SUB, 0, 1, true),
+                new BranchCase("JN not taken", Lf8Isa.JN, Lf8Isa.ADD, 1, 1, false),
+                new BranchCase("JNN taken", Lf8Isa.JNN, Lf8Isa.ADD, 1, 1, true),
+                new BranchCase("JNN not taken", Lf8Isa.JNN, Lf8Isa.SUB, 0, 1, false));
+
+        for (BranchCase branchCase : cases) {
+            assertBranchPath(branchCase);
+        }
+    }
+
+    private void assertBranchPath(BranchCase branchCase) {
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, branchCase.left(),
+                opcode(Lf8Isa.LDI), 1, branchCase.right(),
+                opcode(branchCase.flagInstruction()), 0, 1,
+                opcode(branchCase.branch()), 0x12, 0x00,
+                opcode(Lf8Isa.LDI), 2, 0x55,
+                opcode(Lf8Isa.JMP), 0x15, 0x00,
+                opcode(Lf8Isa.LDI), 2, 0xaa,
+                opcode(Lf8Isa.STORE), 2, 0x03, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int expected = branchCase.taken() ? 0xaa : 0x55;
+        assertEquals(LogicVector.fromUnsignedLong(expected, 8),
+                simulation.memoryPage(probe.ramId(), 3, 1).orElseThrow().wordAt(3),
+                branchCase.description());
+    }
+
     private CompilationResult compileAndRoundTrip(CircuitProject project) {
         Path file = directory.resolve(java.util.UUID.randomUUID() + "." + ProjectFormat.EXTENSION);
         ProjectFormat.save(project, file);
@@ -242,5 +288,14 @@ class Lf8CpuIntegrationTest {
             int addressNet,
             int memoryReadNet,
             int memoryWriteNet) {
+    }
+
+    private record BranchCase(
+            String description,
+            Lf8Instruction branch,
+            Lf8Instruction flagInstruction,
+            int left,
+            int right,
+            boolean taken) {
     }
 }
