@@ -31,21 +31,6 @@ public final class SignalTrace {
         return binding;
     }
 
-    /**
-     * The single net this trace watches, for the common case of a {@link
-     * AnalyzerSignalBinding.Vector} or {@link AnalyzerSignalBinding.Scalar} binding. Throws
-     * for a {@link AnalyzerSignalBinding.Bits} binding, which has no single net — use {@link
-     * #binding()} instead for signals that may span several.
-     */
-    public int netId() {
-        List<Integer> nets = binding.netIds();
-        if (nets.size() != 1) {
-            throw new IllegalStateException(
-                    "This trace's binding spans " + nets.size() + " nets, not one: " + binding);
-        }
-        return nets.get(0);
-    }
-
     public String label() {
         return label;
     }

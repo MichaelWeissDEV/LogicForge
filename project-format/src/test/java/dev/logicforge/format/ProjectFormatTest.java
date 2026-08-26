@@ -273,6 +273,87 @@ class ProjectFormatTest {
                 loaded.mainCircuit().requireComponent(childInstance.id()).definitionId());
     }
 
+    /**
+     * The real blind spot in this test file: every other hierarchy/bit-mode/memory-contents
+     * test here builds documents in memory and compiles them directly, never touching
+     * save/load. This combines all three in one project — a bit-mode connection crossing
+     * into a nested subcircuit's interface port, driving a ROM with non-trivial contents
+     * inside it — round-trips it through the actual file format, then recompiles and
+     * simulates the *loaded* project to prove the whole pipeline survives serialization,
+     * not just the document shape.
+     */
+    @Test
+    void nestedBitModeAndRomContentsSurviveARoundTripAndStillSimulateCorrectly() {
+        CircuitDocument child = new CircuitDocument(new CircuitMetadata("Mem", ""));
+        ComponentInstance addrIn = ComponentInstance.create(SubcircuitSupport.INPUT_DEFINITION_ID,
+                new CircuitPoint(0, 0), ParameterValues.defaultsOf(java.util.List.of(
+                                SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                        .with(SubcircuitSupport.INTERFACE_NAME, "ADDR")
+                        .with(SubcircuitSupport.INTERFACE_WIDTH, 1));
+        ComponentInstance enIn = ComponentInstance.create(SubcircuitSupport.INPUT_DEFINITION_ID,
+                new CircuitPoint(0, 60), ParameterValues.defaultsOf(java.util.List.of(
+                                SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                        .with(SubcircuitSupport.INTERFACE_NAME, "EN")
+                        .with(SubcircuitSupport.INTERFACE_WIDTH, 1));
+        ComponentInstance dataOut = ComponentInstance.create(SubcircuitSupport.OUTPUT_DEFINITION_ID,
+                new CircuitPoint(300, 0), ParameterValues.defaultsOf(java.util.List.of(
+                                SubcircuitSupport.INTERFACE_NAME, SubcircuitSupport.INTERFACE_WIDTH))
+                        .with(SubcircuitSupport.INTERFACE_NAME, "DATA")
+                        .with(SubcircuitSupport.INTERFACE_WIDTH, 8));
+        ComponentInstance rom = ComponentInstance.create("memory.rom", new CircuitPoint(150, 0),
+                ComponentRegistry.standard().require("memory.rom").definition().defaultParameters()
+                        .with(LibraryParameters.ADDRESS_WIDTH, 1)
+                        .with(LibraryParameters.WIDTH, 8)
+                        .with(LibraryParameters.ROM_CONTENTS, "AB,CD"));
+        child.addComponent(addrIn);
+        child.addComponent(enIn);
+        child.addComponent(dataOut);
+        child.addComponent(rom);
+        child.addConnection(Connection.create(new PortReference(addrIn.id(), "OUT"), new PortReference(rom.id(), "ADDRESS")));
+        child.addConnection(Connection.create(new PortReference(enIn.id(), "OUT"), new PortReference(rom.id(), "ENABLE")));
+        child.addConnection(Connection.create(new PortReference(rom.id(), "DATA"), new PortReference(dataOut.id(), "IN")));
+
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", ""));
+        ComponentInstance addrSource = ComponentInstance.create("routing.bus_constant", new CircuitPoint(0, 0),
+                ComponentRegistry.standard().require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 8)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, "01"));
+        ComponentInstance enable = ComponentInstance.create("source.toggle",
+                new CircuitPoint(0, 100), ParameterValues.empty()).withLabel("EN_SWITCH");
+        ComponentInstance memInstance = SubcircuitSupport.instantiate("Mem", new CircuitPoint(150, 50));
+        ComponentInstance probe = ComponentInstance.create("routing.bus_probe", new CircuitPoint(400, 0),
+                ComponentRegistry.standard().require("routing.bus_probe").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 8));
+        main.addComponent(addrSource);
+        main.addComponent(enable);
+        main.addComponent(memInstance);
+        main.addComponent(probe);
+        // A bit endpoint on addrSource forces it into bit mode, crossing straight into the
+        // nested subcircuit's 1-bit ADDR interface port.
+        main.addConnection(Connection.create(PortEndpoint.bit(new PortReference(addrSource.id(), "OUT"), 0),
+                PortEndpoint.whole(new PortReference(memInstance.id(), "ADDR"))));
+        main.addConnection(Connection.create(new PortReference(enable.id(), "OUT"),
+                new PortReference(memInstance.id(), "EN")));
+        main.addConnection(Connection.create(new PortReference(memInstance.id(), "DATA"),
+                new PortReference(probe.id(), "IN")));
+
+        CircuitProject project = CircuitProject.of("nested-rom", main);
+        project.putCircuit(child);
+
+        CircuitProject loaded = roundTrip(project);
+
+        dev.logicforge.compiler.CompilationResult compiled = new dev.logicforge.compiler.CircuitCompiler(
+                ComponentRegistry.standard()).compile(loaded, "main");
+        dev.logicforge.simulation.Simulation simulation = new dev.logicforge.simulation.Simulation(compiled.circuit());
+        int enableId = compiled.componentByLabel("EN_SWITCH").orElseThrow();
+
+        simulation.setInput(enableId, dev.logicforge.logic.LogicState.ONE);
+        int dataNet = compiled.sourceMap().netOf(new PortReference(probe.id(), "IN")).orElseThrow();
+
+        assertEquals(dev.logicforge.logic.LogicVector.fromUnsignedLong(0xCD, 8), simulation.readNet(dataNet),
+                "ADDR bit 0 of constant 0x01 selects contents[1] = 0xCD, even after a save/load cycle");
+    }
+
     @Test
     void everyComponentOfTheLibrarySurvivesARoundTrip() {
         CircuitDocument circuit = new CircuitDocument(new CircuitMetadata("main", "one of everything"));
