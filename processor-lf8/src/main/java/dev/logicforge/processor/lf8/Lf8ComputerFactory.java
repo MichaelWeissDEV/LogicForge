@@ -9,6 +9,6 @@ public final class Lf8ComputerFactory {
     }
 
     public static CircuitProject create(int... program) {
-        return CircuitProject.of("lf8", Lf8CircuitFactory.createComputerCircuit(program));
+        return Lf8CircuitFactory.createProject(program);
     }
 }

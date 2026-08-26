@@ -16,7 +16,8 @@ public enum Lf8ControlSignal {
     MEMORY_READ(11),
     HALT(12),
     ALU_SUBTRACT(13),
-    PC_LOAD(14);
+    PC_LOAD(14),
+    ADDRESS_FROM_MAR(15);
 
     private final int bit;
 
