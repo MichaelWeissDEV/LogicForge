@@ -86,6 +86,59 @@ class Lf8AssembledProgramIntegrationTest {
                 "R0 starts at 1, addTen makes it 11, then + the pushed/popped 1 = 12");
     }
 
+    @Test
+    void thousandsOfInstructionsWithCallsAndMemoryWritesDoNotFalselyOscillate() {
+        // Regression test for a simulation-core bug where setInput() advancing `time`
+        // directly (without resetting the per-timestamp delta-cycle counter the way step()
+        // does) let SimulationOscillationException fire on a perfectly healthy circuit once
+        // enough clock edges had accumulated, regardless of whether anything was actually
+        // oscillating. This program runs a nested loop (15 outer x 40 inner = 600
+        // iterations), each inner iteration doing a CALL into a subroutine that itself
+        // PUSHes/POPs and does a RAM read-modify-write, for several thousand executed
+        // instructions and tens of thousands of clock edges - an order of magnitude past
+        // the ~400-edge point where the bug used to fire.
+        int[] program = Lf8Assembler.assemble("""
+                    LDI R0, 0
+                    STORE R0, 0x8000    ; running total
+
+                    LDI R1, 15          ; outer count
+                outer:
+                    STORE R1, 0x8001
+                    LDI R2, 40          ; inner count
+                inner:
+                    CALL bump
+                    DEC R2
+                    JNZ inner
+
+                    LOAD R1, 0x8001
+                    DEC R1
+                    JNZ outer
+                    HLT
+
+                bump:
+                    PUSH R0
+                    LOAD R0, 0x8000
+                    INC R0
+                    STORE R0, 0x8000
+                    POP R0
+                    RET
+                """);
+
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe, 100_000);
+
+        assertEquals(LogicVector.fromUnsignedLong(15 * 40, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0),
+                "the subroutine must have run exactly outer*inner times");
+        int spId = compiled.componentByLabel("SP").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0xbfff, 16), simulation.readOutput(spId, 0),
+                "600 balanced CALL/PUSH/POP/RET cycles must leave SP back at its reset value");
+    }
+
     private CompilationResult compileAndRoundTrip(CircuitProject project) {
         Path file = directory.resolve(java.util.UUID.randomUUID() + "." + ProjectFormat.EXTENSION);
         ProjectFormat.save(project, file);
@@ -120,10 +173,14 @@ class Lf8AssembledProgramIntegrationTest {
     }
 
     private void runToHalt(Simulation simulation, CompiledProbe probe) {
+        runToHalt(simulation, probe, 400);
+    }
+
+    private void runToHalt(Simulation simulation, CompiledProbe probe, int maxEdges) {
         simulation.setInput(probe.resetId(), LogicState.ONE);
         simulation.setInput(probe.resetId(), LogicState.ZERO);
         int edges = 0;
-        while (simulation.readNet(probe.haltedNet()).singleBit() != LogicState.ONE && edges < 400) {
+        while (simulation.readNet(probe.haltedNet()).singleBit() != LogicState.ONE && edges < maxEdges) {
             simulation.setInput(probe.clkId(), LogicState.ZERO);
             assertFalse(simulation.readNet(probe.memoryReadNet()).singleBit() == LogicState.ONE
                             && simulation.readNet(probe.memoryWriteNet()).singleBit() == LogicState.ONE,
@@ -133,7 +190,7 @@ class Lf8AssembledProgramIntegrationTest {
             simulation.setInput(probe.clkId(), LogicState.ONE);
             edges++;
         }
-        assertTrue(edges < 400, "CPU did not halt within 400 clock edges");
+        assertTrue(edges < maxEdges, "CPU did not halt within " + maxEdges + " clock edges");
     }
 
     private record CompiledProbe(

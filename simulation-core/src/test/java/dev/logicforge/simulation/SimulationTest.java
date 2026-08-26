@@ -322,6 +322,41 @@ class SimulationTest {
     }
 
     @Test
+    void manySuccessiveInputStimuliNeverAccumulateDeltaCyclesAcrossTimestamps() {
+        // Regression test: setInput() advances `time` directly (time++) before ever calling
+        // step(), so step()'s "newTime != time -> reset deltaCyclesAtCurrentTime" check never
+        // saw a transition and the per-timestamp delta cycle counter was never reset between
+        // setInput calls. It grew across the whole simulation's lifetime instead of per
+        // timestamp, eventually exceeding maxDeltaCycles and throwing a false-positive
+        // SimulationOscillationException on a circuit that was never actually oscillating -
+        // it just ran long enough. A handful of inverters settle in a few delta cycles each,
+        // so a few thousand toggles comfortably exceeds the old (wrongly shared) 1000-cycle
+        // budget many times over while never approaching it per timestamp.
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int netA = builder.addNet(BitWidth.ONE);
+        int switchA = builder.addComponent("source.toggle", "A", TestBehaviors.SWITCH, NONE, new int[]{netA});
+        int prev = netA;
+        for (int i = 0; i < 5; i++) {
+            int net = builder.addNet(BitWidth.ONE);
+            builder.addComponent("logic.not", "N" + i, TestBehaviors.NOT, new int[]{prev}, new int[]{net});
+            prev = net;
+        }
+        int netOut = prev;
+
+        Simulation simulation = new Simulation(builder.build());
+
+        LogicState expected = LogicState.ONE;
+        for (int toggle = 0; toggle < 6000; toggle++) {
+            LogicState next = toggle % 2 == 0 ? LogicState.ONE : LogicState.ZERO;
+            simulation.setInput(switchA, next);
+            expected = next == LogicState.ONE ? LogicState.ZERO : LogicState.ONE; // 5 (odd) inverters
+            assertEquals(SimulationStatus.STABLE, simulation.status(),
+                    "toggle " + toggle + " must settle, not accumulate delta cycles from earlier toggles");
+        }
+        assertEquals(LogicVector.single(expected), simulation.readNet(netOut));
+    }
+
+    @Test
     void zeroDelayLoopIsDetectedAsOscillation() {
         // Test that a true zero-delay loop is detected as oscillation
         // Use ALWAYS_FLIPPING which treats UNKNOWN as 0 and always inverts,

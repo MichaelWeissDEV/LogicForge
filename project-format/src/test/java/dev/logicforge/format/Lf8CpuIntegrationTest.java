@@ -198,12 +198,57 @@ class Lf8CpuIntegrationTest {
         }
     }
 
-    // These three tests used to be one long program covering AND/OR/XOR/INC/DEC/SHL/SHR/CMP.
-    // Split into short, quick-to-halt programs: a pre-existing simulation-core bug
-    // (SimulationOscillationException, tracked separately, unrelated to LF-8 circuit
-    // correctness) spuriously fires once a run is clocked for several hundred edges past
-    // halt, which the original single long-running test was tripping over. Splitting also
-    // keeps per-instruction failures easy to localize.
+    @Test
+    void remainingBaseAluInstructionsExecuteAndCmpDoesNotWriteBack() {
+        // This one program used to trip a simulation-core bug: SimulationOscillationException
+        // fired once a run was clocked several hundred edges past halt, regardless of whether
+        // anything was actually oscillating (root cause: deltaCyclesAtCurrentTime was never
+        // reset across setInput calls). That is now fixed in Simulation.setInput; this test
+        // (previously split into three shorter ones to route around it) is restored to its
+        // original single long-running form as direct proof.
+        int[] program = {
+                opcode(Lf8Isa.LDI), 0, 0xf0,
+                opcode(Lf8Isa.LDI), 1, 0x0f,
+                opcode(Lf8Isa.AND), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x00, 0x80,
+                opcode(Lf8Isa.LDI), 0, 0xf0,
+                opcode(Lf8Isa.OR), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x01, 0x80,
+                opcode(Lf8Isa.LDI), 0, 0xf0,
+                opcode(Lf8Isa.XOR), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x02, 0x80,
+                opcode(Lf8Isa.INC), 1,
+                opcode(Lf8Isa.STORE), 1, 0x03, 0x80,
+                opcode(Lf8Isa.DEC), 1,
+                opcode(Lf8Isa.STORE), 1, 0x04, 0x80,
+                opcode(Lf8Isa.SHL), 1,
+                opcode(Lf8Isa.STORE), 1, 0x05, 0x80,
+                opcode(Lf8Isa.SHR), 1,
+                opcode(Lf8Isa.STORE), 1, 0x06, 0x80,
+                opcode(Lf8Isa.CMP), 0, 1,
+                opcode(Lf8Isa.STORE), 0, 0x07, 0x80,
+                opcode(Lf8Isa.HLT),
+        };
+        CircuitProject project = Lf8ComputerFactory.create(program);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+
+        runToHalt(simulation, probe);
+
+        int[] expected = {0x00, 0xff, 0xff, 0x10, 0x0f, 0x1e, 0x0f, 0xff};
+        for (int address = 0; address < expected.length; address++) {
+            assertEquals(LogicVector.fromUnsignedLong(expected[address], 8),
+                    simulation.memoryPage(probe.ramId(), address, 1).orElseThrow().wordAt(address),
+                    "RAM result slot " + address);
+        }
+        int flagsId = compiled.componentByLabel("FLAGS_REGISTER").orElseThrow();
+        assertEquals(LogicVector.fromUnsignedLong(0b0110, 4), simulation.readOutput(flagsId, 0),
+                "CMP 0xff,0x0f sets C and N without changing R0");
+    }
+
+    // The three tests below cover the same instructions individually; kept alongside the
+    // restored long-form test above for fast per-instruction failure localization.
 
     @Test
     void logicalInstructionsCombineOperandsBitwise() {
@@ -581,10 +626,14 @@ class Lf8CpuIntegrationTest {
     }
 
     private void runToHalt(Simulation simulation, CompiledProbe probe) {
+        runToHalt(simulation, probe, 400);
+    }
+
+    private void runToHalt(Simulation simulation, CompiledProbe probe, int maxEdges) {
         simulation.setInput(probe.resetId(), LogicState.ONE);
         simulation.setInput(probe.resetId(), LogicState.ZERO);
         int edges = 0;
-        while (simulation.readNet(probe.haltedNet()).singleBit() != LogicState.ONE && edges < 400) {
+        while (simulation.readNet(probe.haltedNet()).singleBit() != LogicState.ONE && edges < maxEdges) {
             simulation.setInput(probe.clkId(), LogicState.ZERO);
             assertFalse(simulation.readNet(probe.memoryReadNet()).singleBit() == LogicState.ONE
                             && simulation.readNet(probe.memoryWriteNet()).singleBit() == LogicState.ONE,
@@ -599,7 +648,7 @@ class Lf8CpuIntegrationTest {
             }
             edges++;
         }
-        assertTrue(edges < 400, "CPU did not halt within 400 clock edges");
+        assertTrue(edges < maxEdges, "CPU did not halt within " + maxEdges + " clock edges");
     }
 
     private static int opcode(Lf8Instruction instruction) {

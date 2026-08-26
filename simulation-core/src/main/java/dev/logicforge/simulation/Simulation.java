@@ -378,6 +378,7 @@ public final class Simulation {
         source.setValue(value);
         time++;
         deltaCycle = 0;
+        deltaCyclesAtCurrentTime = 0;
         evaluate(componentId, 0);
         status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
         if (running) {
@@ -403,7 +404,13 @@ public final class Simulation {
                     + circuit.component(componentId).definitionId() + ") is not a user driven input");
         }
         source.setValue(value);
-        // Do NOT advance time - this is state restoration, not an external stimulus
+        // Do NOT advance time - this is state restoration, not an external stimulus. It is
+        // still a discrete settle operation in its own right (recompile restores every
+        // switch this way, one call per input), so it gets a fresh delta-cycle budget the
+        // same way setInput does - otherwise a circuit with many inputs could trip the
+        // oscillation detector purely from the number of restoreInputState calls, none of
+        // which individually does anything close to oscillating.
+        deltaCyclesAtCurrentTime = 0;
         evaluate(componentId, 0);
         status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
         if (running) {
@@ -423,6 +430,7 @@ public final class Simulation {
 
     /** Re-evaluates one component without advancing physical time. */
     public void reevaluateComponent(int componentId) {
+        deltaCyclesAtCurrentTime = 0;
         evaluate(componentId, deltaCycle + 1);
         status = queue.isEmpty() ? SimulationStatus.STABLE : SimulationStatus.PENDING;
         if (running) {
@@ -432,6 +440,7 @@ public final class Simulation {
 
     /** Re-evaluates all behavior outputs from their current restored state. */
     public void reevaluateAllAtCurrentTime() {
+        deltaCyclesAtCurrentTime = 0;
         for (int componentId = 0; componentId < circuit.componentCount(); componentId++) {
             evaluate(componentId, deltaCycle + 1);
         }
