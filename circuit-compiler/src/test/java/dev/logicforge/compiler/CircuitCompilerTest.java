@@ -136,6 +136,93 @@ class CircuitCompilerTest {
     }
 
     @Test
+    void wholeEightMapsToFullRangeInLsbRelativeOrder() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = busConstant(document, registry, 8, "a5");
+        ComponentInstance sink = busProbe(document, registry, 8);
+        PortReference sourcePort = new PortReference(source.id(), "OUT");
+        PortReference sinkPort = new PortReference(sink.id(), "IN");
+        document.addConnection(Connection.create(
+                PortEndpoint.whole(sourcePort), PortEndpoint.range(sinkPort, 7, 0)));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.fromUnsignedLong(0xa5, 8),
+                new Simulation(result.circuit()).readInput(sinkId, 0));
+        assertTrue(result.sourceMap().isBitMode(sourcePort));
+        assertTrue(result.sourceMap().netOf(sourcePort).isEmpty(),
+                "an effectively bit-atomized whole endpoint has no misleading vector net");
+    }
+
+    @Test
+    void fullRangeMapsToWholeEightSymmetrically() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = busConstant(document, registry, 8, "96");
+        ComponentInstance sink = busProbe(document, registry, 8);
+        document.addConnection(Connection.create(
+                PortEndpoint.range(new PortReference(source.id(), "OUT"), 7, 0),
+                PortEndpoint.whole(new PortReference(sink.id(), "IN"))));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.fromUnsignedLong(0x96, 8),
+                new Simulation(result.circuit()).readInput(sinkId, 0));
+    }
+
+    @Test
+    void wholeFourMapsBitZeroToRangeLsb() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = busConstant(document, registry, 4, "a");
+        ComponentInstance sink = busProbe(document, registry, 8);
+        document.addConnection(Connection.create(
+                PortEndpoint.whole(new PortReference(source.id(), "OUT")),
+                PortEndpoint.range(new PortReference(sink.id(), "IN"), 7, 4)));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.of("1010ZZZZ"),
+                new Simulation(result.circuit()).readInput(sinkId, 0));
+    }
+
+    @Test
+    void sourceRangeMapsToWholeFourInLsbRelativeOrder() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = busConstant(document, registry, 8, "2c");
+        ComponentInstance sink = busProbe(document, registry, 4);
+        document.addConnection(Connection.create(
+                PortEndpoint.range(new PortReference(source.id(), "OUT"), 5, 2),
+                PortEndpoint.whole(new PortReference(sink.id(), "IN"))));
+
+        CompilationResult result = new CircuitCompiler(registry).compile(document);
+        int sinkId = result.sourceMap().componentId(sink.id()).orElseThrow();
+
+        assertEquals(LogicVector.fromUnsignedLong(0xb, 4),
+                new Simulation(result.circuit()).readInput(sinkId, 0));
+    }
+
+    @Test
+    void wholeToRangeStillRejectsMismatchedWidths() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument document = new CircuitDocument();
+        ComponentInstance source = busConstant(document, registry, 8, "ff");
+        ComponentInstance sink = busProbe(document, registry, 8);
+        document.addConnection(Connection.create(
+                PortEndpoint.whole(new PortReference(source.id(), "OUT")),
+                PortEndpoint.range(new PortReference(sink.id(), "IN"), 6, 0)));
+
+        CircuitCompileException error = assertThrows(CircuitCompileException.class,
+                () -> new CircuitCompiler(registry).compile(document));
+        assertTrue(error.getMessage().contains("8 and 7 bits wide"));
+    }
+
+    @Test
     void outOfBoundsRangeEndpointIsRejected() {
         ComponentRegistry registry = createWidthTestRegistry();
         CircuitDocument document = new CircuitDocument();
@@ -834,5 +921,27 @@ class CircuitCompilerTest {
         registry.register(ComponentType.of(input1Def, input1Behavior));
 
         return registry;
+    }
+
+    private static ComponentInstance busConstant(CircuitDocument document,
+                                                 ComponentRegistry registry,
+                                                 int width, String value) {
+        ComponentInstance instance = ComponentInstance.create("routing.bus_constant",
+                new CircuitPoint(0, 0),
+                registry.require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, width)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, value));
+        document.addComponent(instance);
+        return instance;
+    }
+
+    private static ComponentInstance busProbe(CircuitDocument document,
+                                              ComponentRegistry registry, int width) {
+        ComponentInstance instance = ComponentInstance.create("routing.bus_probe",
+                new CircuitPoint(100, 0),
+                registry.require("routing.bus_probe").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, width));
+        document.addComponent(instance);
+        return instance;
     }
 }

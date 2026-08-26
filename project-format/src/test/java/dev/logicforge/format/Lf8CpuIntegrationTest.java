@@ -71,16 +71,9 @@ import org.junit.jupiter.api.io.TempDir;
  * STORE and LOAD already use for their address — confirming the fetch/decode/execute loop
  * itself did not need to change to add instructions.
  *
- * <p><b>Compiler sharp edge found while wiring this up:</b> a genuinely multi-bit
- * {@link PortEndpoint#whole} endpoint cannot pair with a {@link PortEndpoint#range} (or
- * {@link PortEndpoint#bit}) endpoint on the other side of the same {@link Connection} — the
- * compiler's per-offset atom correspondence only lines up when <em>both</em> sides are
- * bit/range-sliced, even if one side's slice covers its entire width. Assembling a wide bus
- * from narrower registers (as MAR_LO/MAR_HI feed RAM.ADDRESS and PC.DATA here) therefore
- * needs a self-full-range endpoint (e.g. {@code PortEndpoint.range(marLo.Q, 7, 0)}) on the
- * source side, never {@code PortEndpoint.whole(...)}, or compilation fails with "N bit wide
- * but shares a net with an M bit wide endpoint" errors that don't obviously point at the
- * real cause. See {@link #buildCircuit} for every place this applies.
+ * <p>Wide buses are assembled with natural whole endpoints on the narrow source and a range
+ * on the wide destination. The compiler plans both sides as LSB-relative bit atoms for that
+ * connection, so the circuit document does not need artificial self-full-range slices.
  */
 class Lf8CpuIntegrationTest {
 
@@ -356,9 +349,9 @@ class Lf8CpuIntegrationTest {
         // registers STORE/LOAD already fetch an address into — and only actually taken when
         // PC_LOAD (JMP) asserts LOAD; the rest of the time PC.LOAD is 0 and DATA is ignored.
         wire(main, pc, "COUNT", progRom, "ADDRESS");
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(marLo.id(), "Q"), 7, 0),
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(marLo.id(), "Q")),
                 PortEndpoint.range(new PortReference(pc.id(), "DATA"), 7, 0)));
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(marHi.id(), "Q"), 7, 0),
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(marHi.id(), "Q")),
                 PortEndpoint.range(new PortReference(pc.id(), "DATA"), 15, 8)));
         wire(main, progRomEn, "OUT", progRom, "ENABLE");
         wire(main, progRom, "DATA", ir, "DATA");
@@ -385,13 +378,12 @@ class Lf8CpuIntegrationTest {
         wire(main, r1LoadOr, "OUT", r1, "LOAD");
 
         // Microcode addressing: {opcode, flags (tied 0 for now), microstep}. Every
-        // multi-bit source here must be self-sliced (not WHOLE), matching the destination
-        // RANGE endpoints — see the note on the compiler's per-offset atom correspondence.
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(ir.id(), "Q"), 7, 0),
+        // multi-bit source maps naturally, LSB-relative, into its destination range.
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(ir.id(), "Q")),
                 PortEndpoint.range(new PortReference(microcodeRom.id(), "ADDRESS"), 11, 4)));
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(flagsTie.id(), "OUT"), 1, 0),
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(flagsTie.id(), "OUT")),
                 PortEndpoint.range(new PortReference(microcodeRom.id(), "ADDRESS"), 3, 2)));
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(microstep.id(), "COUNT"), 1, 0),
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(microstep.id(), "COUNT")),
                 PortEndpoint.range(new PortReference(microcodeRom.id(), "ADDRESS"), 1, 0)));
         wire(main, microcodeRomEn, "OUT", microcodeRom, "ENABLE");
 
@@ -430,9 +422,9 @@ class Lf8CpuIntegrationTest {
         // Data memory: address assembled from MAR_HI:MAR_LO. R0 drives DATA only while WE
         // is active (a real tri-state gate, since RAM itself now also drives DATA during a
         // LOAD's OE-active read) — R0.Q never contends with RAM's own output.
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(marLo.id(), "Q"), 7, 0),
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(marLo.id(), "Q")),
                 PortEndpoint.range(new PortReference(ram.id(), "ADDRESS"), 7, 0)));
-        main.addConnection(Connection.create(PortEndpoint.range(new PortReference(marHi.id(), "Q"), 7, 0),
+        main.addConnection(Connection.create(PortEndpoint.whole(new PortReference(marHi.id(), "Q")),
                 PortEndpoint.range(new PortReference(ram.id(), "ADDRESS"), 15, 8)));
         wire(main, r0, "Q", r0ToRamDriver, "A");
         wire(main, r0ToRamDriver, "Y", ram, "DATA");

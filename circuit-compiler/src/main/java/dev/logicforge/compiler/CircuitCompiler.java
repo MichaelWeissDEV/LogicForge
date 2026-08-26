@@ -117,6 +117,9 @@ public final class CircuitCompiler {
         private final Map<PortReference, Integer> portIndex = new LinkedHashMap<>();
         private final List<PortReference> portsByIndex = new ArrayList<>();
         private final List<PortSpec> portSpecs = new ArrayList<>();
+        /** Syntactic whole/partial usage, kept separate to reject ambiguous overlaps. */
+        private final Map<PortReference, Boolean> partialUsage = new HashMap<>();
+        /** Effective electrical representation selected while planning connections. */
         private final Map<PortReference, Boolean> bitMode = new HashMap<>();
         private final List<Connection> mergedConnections = new ArrayList<>();
         private final Map<PortEndpoint, Integer> atomByEndpoint = new LinkedHashMap<>();
@@ -197,6 +200,10 @@ public final class CircuitCompiler {
                             "Two outputs drive the same net; this is only meaningful with tri-state drivers",
                             connection.id()));
                 }
+                if (!connection.from().isWhole() || !connection.to().isWhole()) {
+                    bitMode.put(connection.fromPort(), true);
+                    bitMode.put(connection.toPort(), true);
+                }
                 mergedConnections.add(connection);
             }
         }
@@ -222,7 +229,7 @@ public final class CircuitCompiler {
             }
 
             boolean endpointPartialMode = !endpoint.isWhole();
-            Boolean previous = bitMode.putIfAbsent(endpoint.port(), endpointPartialMode);
+            Boolean previous = partialUsage.putIfAbsent(endpoint.port(), endpointPartialMode);
             if (previous != null && previous != endpointPartialMode) {
                 if (mixedReported.add(endpoint.port())) {
                     issues.add(ValidationIssue.error(
@@ -269,13 +276,13 @@ public final class CircuitCompiler {
 
         /** Returns the atom for one LSB-relative bit of a whole, bit or range endpoint. */
         private int atomFor(PortEndpoint endpoint, int offset) {
-            if (endpoint.isWhole()) {
+            if (endpoint.isWhole() && !bitMode.getOrDefault(endpoint.port(), false)) {
                 return atomByEndpoint.get(endpoint);
             }
             int bit = switch (endpoint.slice()) {
                 case PortSlice.Bit selected -> selected.index();
                 case PortSlice.Range range -> range.lsb() + offset;
-                case PortSlice.Whole ignored -> throw new IllegalStateException("handled above");
+                case PortSlice.Whole ignored -> offset;
             };
             return atomByEndpoint.get(PortEndpoint.bit(endpoint.port(), bit));
         }
@@ -391,6 +398,11 @@ public final class CircuitCompiler {
                     for (int bit = 0; bit < width; bit++) {
                         netByEndpoint.put(PortEndpoint.bit(endpoint.port(), bit), netId);
                     }
+                } else if (portSpecs.get(portByAtom.get(atom)).width().bits() == 1) {
+                    // A one-bit whole port paired with a BIT endpoint is atomized, but its
+                    // sole scalar atom is still also the complete logical port.
+                    netByPort.put(endpoint.port(), netId);
+                    netByEndpoint.put(PortEndpoint.whole(endpoint.port()), netId);
                 }
             }
             Map<UUID, Integer> netByConnection = new LinkedHashMap<>();
@@ -398,8 +410,12 @@ public final class CircuitCompiler {
                 int firstAtom = atomFor(connection.from(), 0);
                 int net = netByAtom[firstAtom];
                 netByConnection.put(connection.id(), net);
-                netByEndpoint.put(connection.from(), net);
-                netByEndpoint.put(connection.to(), netByAtom[atomFor(connection.to(), 0)]);
+                if (!isMultiBitAtomizedWhole(connection.from())) {
+                    netByEndpoint.put(connection.from(), net);
+                }
+                if (!isMultiBitAtomizedWhole(connection.to())) {
+                    netByEndpoint.put(connection.to(), netByAtom[atomFor(connection.to(), 0)]);
+                }
             }
 
             Map<PortReference, Integer> portWidth = new LinkedHashMap<>();
@@ -414,6 +430,12 @@ public final class CircuitCompiler {
                     netByPort, portsByNet, netByConnection, netByEndpoint, endpointsByNet,
                     portWidth, portBitMode);
             return new CompilationResult(builder.build(), sourceMap, issues);
+        }
+
+        private boolean isMultiBitAtomizedWhole(PortEndpoint endpoint) {
+            return endpoint.isWhole()
+                    && bitMode.getOrDefault(endpoint.port(), false)
+                    && portSpecs.get(portIndex.get(endpoint.port())).width().bits() > 1;
         }
 
         private CompiledInputBinding inputBinding(PortReference reference, PortSpec spec,
