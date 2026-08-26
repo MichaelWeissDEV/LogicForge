@@ -427,6 +427,18 @@ public final class CircuitEditor {
         return compilation == null ? Optional.empty() : hierarchyContext().resolveSignal(endpoint);
     }
 
+    /**
+     * Resolves against an explicitly given hierarchy instance path rather than whatever
+     * circuit the editor currently has open — see {@link #memorySnapshot(Optional, UUID)} for
+     * why a long-lived watch (a logic analyzer trace) must capture its instance path instead
+     * of relying on the editor's ambient current view, which changes as the user navigates.
+     */
+    public Optional<dev.logicforge.compiler.ResolvedSignal> signalAt(
+            Optional<String> instancePath, PortEndpoint endpoint) {
+        return compilation == null ? Optional.empty()
+                : new HierarchyRuntimeContext(compilation, instancePath).resolveSignal(endpoint);
+    }
+
     /** The value on a wire, for drawing it in the colour of its signal. */
     public Optional<LogicVector> valueOfConnection(UUID connectionId) {
         if (simulation == null) {

@@ -1,14 +1,18 @@
 package dev.logicforge.ui.edit;
 
+import dev.logicforge.analyzer.AnalyzerSignalBinding;
 import dev.logicforge.analyzer.SignalRecorder;
 import dev.logicforge.analyzer.SignalTrace;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortSlice;
+import dev.logicforge.compiler.ResolvedSignal;
 import dev.logicforge.simulation.Simulation;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -26,8 +30,17 @@ import java.util.Set;
  */
 public final class LogicAnalyzerController {
 
-    /** A signal the user chose to watch, identified the way the rest of the editor does. */
-    public record WatchedSignal(PortEndpoint reference, String hierarchyPath, String label) {
+    /**
+     * A signal the user chose to watch, identified the way the rest of the editor does.
+     * {@code instancePath} is captured at the moment the watch is added — the same reason
+     * {@code ComponentViewTarget} exists for a long-lived Memory view: resolution must stay
+     * pinned to that one hierarchy instance, never drift onto whatever the editor's ambient
+     * current view happens to be later. {@code hierarchyPath} is the combined path, kept for
+     * display and as a resolution fallback for signals that predate an instance's own path
+     * entry (see {@link #resolveBinding}).
+     */
+    public record WatchedSignal(
+            PortEndpoint reference, Optional<String> instancePath, String hierarchyPath, String label) {
     }
 
     private final CircuitEditor editor;
@@ -56,7 +69,7 @@ public final class LogicAnalyzerController {
         if (watched.stream().anyMatch(signal -> signal.hierarchyPath().equals(path.get()))) {
             return;
         }
-        watched.add(new WatchedSignal(reference, path.get(), label));
+        watched.add(new WatchedSignal(reference, editor.activeInstancePath(), path.get(), label));
         resync();
     }
 
@@ -93,16 +106,7 @@ public final class LogicAnalyzerController {
         if (recorder == null) {
             return Optional.empty();
         }
-        java.util.OptionalInt netId = resolveNet(signal);
-        if (netId.isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<SignalTrace> trace = recorder.trace(netId.getAsInt());
-        if (trace.isPresent() && signal.reference().slice() instanceof PortSlice.Bit bit
-                && trace.get().width().bits() > 1) {
-            return Optional.of(trace.get().bit(bit.index()));
-        }
-        return trace;
+        return resolveBinding(signal).flatMap(recorder::trace);
     }
 
     public boolean isCapturing() {
@@ -141,43 +145,45 @@ public final class LogicAnalyzerController {
             attachedSimulation = current;
         }
         if (recorder != null) {
-            Set<Integer> desiredNets = new LinkedHashSet<>();
+            Map<WatchedSignal, AnalyzerSignalBinding> desired = new LinkedHashMap<>();
             for (WatchedSignal signal : watched) {
-                resolveNet(signal).ifPresent(desiredNets::add);
+                resolveBinding(signal).ifPresent(binding -> desired.put(signal, binding));
             }
+            Set<AnalyzerSignalBinding> desiredBindings = new LinkedHashSet<>(desired.values());
             for (SignalTrace trace : recorder.traces()) {
-                if (!desiredNets.contains(trace.netId())) {
-                    recorder.unwatch(trace.netId());
+                if (!desiredBindings.contains(trace.binding())) {
+                    recorder.unwatch(trace.binding());
                 }
             }
-            for (WatchedSignal signal : watched) {
-                resolveNet(signal)
-                        .ifPresent(netId -> recorder.watch(netId, signal.label()));
-            }
+            desired.forEach((signal, binding) -> recorder.watch(binding, signal.label()));
         }
         notifyListeners();
     }
 
     /**
-     * Resolves by the canonical hierarchy path captured when the watch was added, falling
-     * back only to the flat, instance-agnostic source map — never to whatever circuit
-     * happens to be open right now. The flat map's fallback is safe because it is keyed by
-     * runtime UUIDs that only ever equal a root-level component's own local UUID (a nested
-     * instance's local UUID is never a key there), so it covers root-level cases the
-     * hierarchy path map does not — such as a single bit of an otherwise whole-wired bus,
-     * which was never itself a connection endpoint — without ever resolving to a different
-     * instance. A watch whose instance genuinely disappeared (the subcircuit was removed,
-     * or recompilation no longer has that path) still correctly goes unresolved rather than
-     * silently re-binding to a different instance's signal of the same local shape.
+     * Resolves a watched signal to the runtime net(s) that carry its value, pinned to the
+     * hierarchy instance captured when the watch was added — never the editor's ambient
+     * current view, which changes as the user navigates (see {@code
+     * HierarchyRuntimeContext}). This is what lets a watch cover a whole port, a single bit,
+     * or a range that spans several independent nets on a bit-mode port, all uniformly: the
+     * compiler's {@link ResolvedSignal} does the actual multi-net reconstruction, and this
+     * method only translates it into the analyzer's own {@link AnalyzerSignalBinding}
+     * vocabulary (the analyzer module has no dependency on the compiler, by design). A watch
+     * whose instance genuinely disappeared (the subcircuit was removed, or recompilation no
+     * longer has that path) still correctly goes unresolved rather than silently re-binding
+     * to a different instance's signal of the same local shape.
      */
-    private java.util.OptionalInt resolveNet(WatchedSignal signal) {
-        java.util.OptionalInt hierarchical = editor.netOfHierarchyPath(signal.hierarchyPath());
-        if (hierarchical.isPresent()) {
-            return hierarchical;
-        }
-        return editor.compilation()
-                .map(compilation -> compilation.sourceMap().netOf(signal.reference()))
-                .orElse(java.util.OptionalInt.empty());
+    private Optional<AnalyzerSignalBinding> resolveBinding(WatchedSignal signal) {
+        return editor.signalAt(signal.instancePath(), signal.reference()).map(this::toBinding);
+    }
+
+    private AnalyzerSignalBinding toBinding(ResolvedSignal resolved) {
+        return switch (resolved) {
+            case ResolvedSignal.VectorNet vector ->
+                    new AnalyzerSignalBinding.Vector(vector.netId(), vector.offset(), vector.width());
+            case ResolvedSignal.ScalarNet scalar -> new AnalyzerSignalBinding.Scalar(scalar.netId());
+            case ResolvedSignal.BitVector bits -> new AnalyzerSignalBinding.Bits(bits.nets());
+        };
     }
 
     private Optional<String> hierarchyPath(PortEndpoint endpoint) {

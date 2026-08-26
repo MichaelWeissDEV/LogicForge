@@ -6,28 +6,44 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The recorded history of one net: a label for display, its bit width, and the ordered
- * transitions captured for it so far.
+ * The recorded history of one watched signal: a label for display, its bit width, the
+ * runtime binding it was reconstructed from, and the ordered transitions captured so far.
  *
- * <p>Consecutive identical values are never recorded twice — a net that does not change
+ * <p>Consecutive identical values are never recorded twice — a signal that does not change
  * produces no new transition — so {@link #transitions()} is exactly the waveform's corner
  * points.
  */
 public final class SignalTrace {
 
-    private final int netId;
+    private final AnalyzerSignalBinding binding;
     private final String label;
     private final BitWidth width;
     private final List<SignalTransition> transitions = new ArrayList<>();
 
-    SignalTrace(int netId, String label, BitWidth width) {
-        this.netId = netId;
+    SignalTrace(AnalyzerSignalBinding binding, String label, BitWidth width) {
+        this.binding = binding;
         this.label = label;
         this.width = width;
     }
 
+    /** The runtime net or nets this trace was reconstructed from. */
+    public AnalyzerSignalBinding binding() {
+        return binding;
+    }
+
+    /**
+     * The single net this trace watches, for the common case of a {@link
+     * AnalyzerSignalBinding.Vector} or {@link AnalyzerSignalBinding.Scalar} binding. Throws
+     * for a {@link AnalyzerSignalBinding.Bits} binding, which has no single net — use {@link
+     * #binding()} instead for signals that may span several.
+     */
     public int netId() {
-        return netId;
+        List<Integer> nets = binding.netIds();
+        if (nets.size() != 1) {
+            throw new IllegalStateException(
+                    "This trace's binding spans " + nets.size() + " nets, not one: " + binding);
+        }
+        return nets.get(0);
     }
 
     public String label() {
@@ -47,12 +63,12 @@ public final class SignalTrace {
         return transitions.isEmpty();
     }
 
-    /** A derived scalar view of one bit of this recorded vector net. */
+    /** A derived scalar view of one bit of this recorded vector. */
     public SignalTrace bit(int bitIndex) {
         if (bitIndex < 0 || bitIndex >= width.bits()) {
             throw new IndexOutOfBoundsException("Bit " + bitIndex + " of " + width);
         }
-        SignalTrace extracted = new SignalTrace(netId, label + "[" + bitIndex + "]", BitWidth.ONE);
+        SignalTrace extracted = new SignalTrace(binding, label + "[" + bitIndex + "]", BitWidth.ONE);
         for (SignalTransition transition : transitions) {
             extracted.record(transition.time(), transition.deltaCycle(),
                     LogicVector.single(transition.value().getBit(bitIndex)));
