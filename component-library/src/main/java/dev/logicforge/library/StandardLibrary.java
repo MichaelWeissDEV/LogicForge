@@ -20,6 +20,7 @@ import dev.logicforge.library.behavior.AddSubBehavior;
 import dev.logicforge.library.behavior.AdderBehavior;
 import dev.logicforge.library.behavior.BitCounterBehavior;
 import dev.logicforge.library.behavior.ClockBehavior;
+import dev.logicforge.library.behavior.ClockDividerBehavior;
 import dev.logicforge.library.behavior.ComparatorBehavior;
 import dev.logicforge.library.behavior.ConstantBehavior;
 import dev.logicforge.library.behavior.ConstantVectorBehavior;
@@ -35,13 +36,17 @@ import dev.logicforge.library.behavior.HalfAdderBehavior;
 import dev.logicforge.library.behavior.IncrementDecrementBehavior;
 import dev.logicforge.library.behavior.JkFlipFlopBehavior;
 import dev.logicforge.library.behavior.JoinerBehavior;
+import dev.logicforge.library.behavior.LoadableCounterBehavior;
+import dev.logicforge.library.behavior.ModuloCounterBehavior;
 import dev.logicforge.library.behavior.MuxBehavior;
 import dev.logicforge.library.behavior.NaryGateBehavior;
 import dev.logicforge.library.behavior.OverflowDetectorBehavior;
 import dev.logicforge.library.behavior.ParityBehavior;
+import dev.logicforge.library.behavior.PisoBehavior;
 import dev.logicforge.library.behavior.PriorityEncoderBehavior;
 import dev.logicforge.library.behavior.RamBehavior;
 import dev.logicforge.library.behavior.RegisterBehavior;
+import dev.logicforge.library.behavior.RingJohnsonCounterBehavior;
 import dev.logicforge.library.behavior.RomBehavior;
 import dev.logicforge.library.behavior.ShiftBehavior;
 import dev.logicforge.library.behavior.ShiftRegisterBehavior;
@@ -54,6 +59,7 @@ import dev.logicforge.library.behavior.SubtractorBehavior;
 import dev.logicforge.library.behavior.TFlipFlopBehavior;
 import dev.logicforge.library.behavior.TriStateBehavior;
 import dev.logicforge.library.behavior.UnaryGateBehavior;
+import dev.logicforge.library.behavior.UniversalShiftRegisterBehavior;
 import dev.logicforge.library.behavior.UserInputBehavior;
 import dev.logicforge.library.behavior.WideTriStateBehavior;
 import dev.logicforge.library.behavior.ZeroDetectorBehavior;
@@ -85,6 +91,7 @@ final class StandardLibrary {
         registerSequential(registry);
         registerRegisters(registry);
         registerCounters(registry);
+        registerSequentialExpansion(registry);
         registerRouting(registry);
         registerArithmetic(registry);
         registerMemory(registry);
@@ -435,6 +442,169 @@ final class StandardLibrary {
                         keywords),
                 values -> new CounterBehavior(
                         BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values), direction)));
+    }
+
+    private static void registerSequentialExpansion(ComponentRegistry registry) {
+        registry.register(new ComponentType(
+                definition("sequential.loadable_counter", "Loadable Counter", SEQUENTIAL,
+                        "Counts up by one on every clock edge while ENABLE is 1; LOAD instead "
+                                + "captures DATA, taking priority over ENABLE — the shape a program "
+                                + "counter needs for jumps and branches",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                                "Parallel value captured when LOAD is 1"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE",
+                                                "While high (and LOAD is 0), COUNT advances on the active edge"),
+                                        PortLayouts.DynamicPortDef.fixed("LOAD",
+                                                "While high, COUNT captures DATA on the active edge instead of counting"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces COUNT to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("COUNT", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("TC",
+                                                "Terminal count: 1 when COUNT is at its maximum value")),
+                                REGISTER_WIDTH),
+                        List.of("counter", "program counter", "pc", "loadable", "jump")),
+                values -> new LoadableCounterBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values))));
+
+        registry.register(new ComponentType(
+                definition("sequential.modulo_counter", "Modulo Counter", SEQUENTIAL,
+                        "Counts up by one on every clock edge while ENABLE is 1, wrapping back "
+                                + "to zero at an arbitrary modulus rather than at the full bit range",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.MODULUS, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE",
+                                                "While high, COUNT advances on the active edge"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces COUNT to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("COUNT", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("TC",
+                                                "Terminal count: 1 when COUNT equals modulus - 1")),
+                                REGISTER_WIDTH),
+                        List.of("counter", "modulo", "wraparound", "bcd", "divide by n")),
+                values -> new ModuloCounterBehavior(BitWidth.of(values.getInt(LibraryParameters.WIDTH)),
+                        isRisingEdge(values), values.getInt(LibraryParameters.MODULUS))));
+
+        registry.register(new ComponentType(
+                definition("sequential.clock_divider", "Clock Divider", SEQUENTIAL,
+                        "Divides CLK down by counting its active edges in virtual simulation "
+                                + "time: CLK_OUT toggles every DIVISOR edges of CLK",
+                        List.of(LibraryParameters.DIVISOR, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input to divide"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces CLK_OUT low and resets the edge count"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE",
+                                                "While high, CLK edges are counted towards the next toggle")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("CLK_OUT",
+                                        "Toggles every DIVISOR active edges of CLK")),
+                                REGISTER_WIDTH),
+                        List.of("clock", "divider", "prescaler", "frequency")),
+                values -> new ClockDividerBehavior(isRisingEdge(values), values.getInt(LibraryParameters.DIVISOR))));
+
+        registry.register(new ComponentType(
+                definition("sequential.universal_shift_register", "Universal Shift Register", SEQUENTIAL,
+                        "Holds, parallel-loads, or shifts either direction depending on MODE, "
+                                + "sampled on the active clock edge (0=HOLD, 1=LOAD, 2=SHIFT_LEFT, 3=SHIFT_RIGHT)",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("PARALLEL_DATA", LibraryParameters.WIDTH,
+                                                "Parallel value captured in LOAD mode"),
+                                        PortLayouts.DynamicPortDef.fixed("SERIAL_LEFT",
+                                                "Bit shifted in at bit 0 in SHIFT_LEFT mode"),
+                                        PortLayouts.DynamicPortDef.fixed("SERIAL_RIGHT",
+                                                "Bit shifted in at the MSB in SHIFT_RIGHT mode"),
+                                        new PortLayouts.DynamicPortDef("MODE", v -> BitWidth.of(2),
+                                                "0=HOLD, 1=LOAD, 2=SHIFT_LEFT, 3=SHIFT_RIGHT"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces Q to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH,
+                                                "Current register contents"),
+                                        PortLayouts.DynamicPortDef.fixed("SERIAL_OUT_LEFT",
+                                                "Current MSB — the bit the next SHIFT_LEFT would drop"),
+                                        PortLayouts.DynamicPortDef.fixed("SERIAL_OUT_RIGHT",
+                                                "Current LSB — the bit the next SHIFT_RIGHT would drop")),
+                                REGISTER_WIDTH),
+                        List.of("shift register", "universal", "bidirectional", "siso", "piso", "sipo")),
+                values -> new UniversalShiftRegisterBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values))));
+
+        registry.register(new ComponentType(
+                definition("sequential.piso", "PISO Shift Register", SEQUENTIAL,
+                        "Parallel-in/serial-out: LOAD captures DATA in parallel; otherwise, "
+                                + "while SHIFT is 1, shifts one bit towards the LSB every clock edge, "
+                                + "pulling SERIAL_IN in at the MSB",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH,
+                                                "Parallel value captured when LOAD is 1"),
+                                        PortLayouts.DynamicPortDef.fixed("LOAD",
+                                                "While high, Q captures DATA on the active edge; takes priority over SHIFT"),
+                                        PortLayouts.DynamicPortDef.fixed("SHIFT",
+                                                "While high (and LOAD is 0), Q shifts towards the LSB on the active edge"),
+                                        PortLayouts.DynamicPortDef.fixed("SERIAL_IN",
+                                                "Bit shifted in at the MSB — chain to the previous stage's SERIAL_OUT"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces Q to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH,
+                                                "Current register contents"),
+                                        PortLayouts.DynamicPortDef.fixed("SERIAL_OUT",
+                                                "Current bit 0 — the bit the next shift would drop")),
+                                REGISTER_WIDTH),
+                        List.of("shift register", "piso", "parallel load", "serializer")),
+                values -> new PisoBehavior(BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values))));
+
+        registry.register(new ComponentType(
+                definition("sequential.sipo", "SIPO Shift Register", SEQUENTIAL,
+                        "Serial-in/parallel-out: shifts SIN in at bit 0 towards the MSB on "
+                                + "every clock edge, exposing the full register on Q",
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.fixed("SIN", "Serial data input, enters at bit 0"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear: forces Q to zero, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH,
+                                                "Current shift register contents"),
+                                        PortLayouts.DynamicPortDef.fixed("SOUT",
+                                                "Current most significant bit, the next value shifted out")),
+                                REGISTER_WIDTH),
+                        List.of("shift register", "sipo", "serial to parallel", "deserializer")),
+                values -> new ShiftRegisterBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values))));
+
+        registerRingJohnson(registry, "sequential.ring_counter", "Ring Counter",
+                "Walks a single 1 bit around a loop of flip-flops: resets to 0...01 and "
+                        + "shifts the MSB back in at bit 0 every clock edge, an n-cycle sequence",
+                RingJohnsonCounterBehavior.Kind.RING,
+                List.of("ring counter", "shift counter", "one-hot"));
+
+        registerRingJohnson(registry, "sequential.johnson_counter", "Johnson Counter",
+                "A twisted ring counter: resets to all zero and shifts the inverted MSB back "
+                        + "in at bit 0 every clock edge, a 2n-cycle sequence",
+                RingJohnsonCounterBehavior.Kind.JOHNSON,
+                List.of("johnson counter", "twisted ring counter", "walking ring"));
+    }
+
+    private static void registerRingJohnson(ComponentRegistry registry, String id, String name, String description,
+                                            RingJohnsonCounterBehavior.Kind kind, List<String> keywords) {
+        registry.register(new ComponentType(
+                definition(id, name, SEQUENTIAL, description,
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.CLOCK_EDGE),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.fixed("CLK", "Clock input"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET",
+                                                "Asynchronous clear, independent of CLK")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Q", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH),
+                        keywords),
+                values -> new RingJohnsonCounterBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.WIDTH)), isRisingEdge(values), kind)));
     }
 
     private static void registerRouting(ComponentRegistry registry) {

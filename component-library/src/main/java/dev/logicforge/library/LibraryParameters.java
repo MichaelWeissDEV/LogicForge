@@ -80,6 +80,14 @@ public final class LibraryParameters {
     public static final ParameterSpec.IntegerParameter REGISTER_COUNT =
             new ParameterSpec.IntegerParameter("registerCount", "Register Count", 8, 2, 32);
 
+    /** The wrap point of a modulo counter: COUNT cycles through 0..modulus-1. */
+    public static final ParameterSpec.IntegerParameter MODULUS =
+            new ParameterSpec.IntegerParameter("modulus", "Modulus", 10, 2, 1 << 24);
+
+    /** How many active input clock edges a clock divider counts per output half-period. */
+    public static final ParameterSpec.IntegerParameter DIVISOR =
+            new ParameterSpec.IntegerParameter("divisor", "Divisor", 2, 2, 1 << 24);
+
     private LibraryParameters() {
     }
 }
