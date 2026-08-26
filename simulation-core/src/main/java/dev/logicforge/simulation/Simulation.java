@@ -87,6 +87,16 @@ public final class Simulation {
     private SimulationStatus status = SimulationStatus.STABLE;
     private SimulationOscillationException oscillation;
 
+    // Cumulative activity counters backing metrics(); see SimulationMetrics for what each
+    // one means. Plain longs updated at the point the corresponding work already happens -
+    // no extra allocation, no behavior change.
+    private long metricEventsProcessed;
+    private long metricComponentEvaluations;
+    private long metricNetTransitions;
+    private long metricDeltaCycles;
+    private long metricScheduledWakeups;
+    private long metricMaxDeltaDepth;
+
     public Simulation(CompiledCircuit circuit) {
         this(circuit, true);
     }
@@ -128,6 +138,12 @@ public final class Simulation {
         time = 0;
         deltaCycle = 0;
         deltaCyclesAtCurrentTime = 0;
+        metricEventsProcessed = 0;
+        metricComponentEvaluations = 0;
+        metricNetTransitions = 0;
+        metricDeltaCycles = 0;
+        metricScheduledWakeups = 0;
+        metricMaxDeltaDepth = 0;
         Arrays.fill(pendingWakeupAt, -1);
         for (int netId = 0; netId < netValues.length; netId++) {
             netValues[netId] = undriven(netId);
@@ -183,11 +199,16 @@ public final class Simulation {
         time = newTime;
         deltaCycle = newDeltaCycle;
         deltaCyclesAtCurrentTime++;
+        metricDeltaCycles++;
+        if (deltaCyclesAtCurrentTime > metricMaxDeltaDepth) {
+            metricMaxDeltaDepth = deltaCyclesAtCurrentTime;
+        }
 
         TreeSet<Integer> dirtyNets = new TreeSet<>();
         TreeSet<Integer> toEvaluate = new TreeSet<>();
         while (!queue.isEmpty() && queue.peek().time() == time && queue.peek().deltaCycle() == deltaCycle) {
             TimelineEntry entry = queue.poll();
+            metricEventsProcessed++;
             switch (entry) {
                 case SimulationEvent event -> {
                     driverValues[event.driverId()] = event.value();
@@ -208,6 +229,7 @@ public final class Simulation {
             LogicVector previous = netValues[netId];
             if (!resolved.equals(previous)) {
                 netValues[netId] = resolved;
+                metricNetTransitions++;
                 lastChangedNets.add(netId);
                 for (SimulationObserver observer : observers) {
                     observer.onNetChanged(netId, previous, resolved, time, deltaCycle);
@@ -361,6 +383,13 @@ public final class Simulation {
     /** Details of the last detected oscillation, while {@link #status()} reports one. */
     public java.util.Optional<SimulationOscillationException> oscillation() {
         return java.util.Optional.ofNullable(oscillation);
+    }
+
+    /** A snapshot of cumulative activity counters since construction or the last {@link #reset()}. */
+    public SimulationMetrics metrics() {
+        return new SimulationMetrics(metricEventsProcessed, metricComponentEvaluations,
+                metricNetTransitions, metricDeltaCycles, metricScheduledWakeups, time,
+                metricMaxDeltaDepth);
     }
 
     /**
@@ -609,6 +638,7 @@ public final class Simulation {
     private void evaluate(int componentId, int scheduleDelta) {
         context.component = circuit.component(componentId);
         context.scheduleDelta = scheduleDelta;
+        metricComponentEvaluations++;
         context.component.behavior().evaluate(context);
     }
 
@@ -725,6 +755,7 @@ public final class Simulation {
                 return;
             }
             pendingWakeupAt[componentId] = wakeupTime;
+            metricScheduledWakeups++;
             queue.add(new WakeupEvent(wakeupTime, 0, sequence++, componentId));
         }
 
