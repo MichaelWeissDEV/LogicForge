@@ -255,7 +255,7 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.MODULUS, Lf8Microcode.MICROSTEPS), "MICROSTEP");
         ComponentInstance microcode = add(document, registry, "memory.rom", 480, 100,
                 defaults(registry, "memory.rom")
-                        .with(LibraryParameters.ADDRESS_WIDTH, 15)
+                        .with(LibraryParameters.ADDRESS_WIDTH, 16)
                         .with(LibraryParameters.WIDTH, Lf8ControlSignal.wordWidth())
                         .with(LibraryParameters.ROM_CONTENTS, Lf8Microcode.contents()), "MICROCODE_ROM");
         ComponentInstance microcodeEnable = constant(document, registry, 480, 160, 1, 1,
@@ -264,13 +264,23 @@ public final class Lf8CircuitFactory {
                 defaults(registry, "routing.splitter")
                         .with(LibraryParameters.WIDTH, Lf8ControlSignal.wordWidth()),
                 "MICROCODE_BITS");
+        // IRQ_TAKEN_TIE is a placeholder 5th "flags" address bit, tied to constant 0 so
+        // ROM addressing at microstep 0 is unchanged (both flags16-31 rows already mirror
+        // flags0-15 exactly, since set()/setAlu()/branch() loop over the whole FLAG_SLOTS
+        // range). A later change wires this to a real IRQ_TAKEN latch instead.
+        ComponentInstance irqTakenTie = constant(document, registry, 260, 220, 1, 0,
+                "IRQ_TAKEN_TIE");
+        ComponentInstance flagsWithIrq = add(document, registry, "routing.bus_concat", 300, 220,
+                defaults(registry, "routing.bus_concat")
+                        .with(LibraryParameters.LOW_WIDTH, 4)
+                        .with(LibraryParameters.HIGH_WIDTH, 1), "FLAGS_WITH_IRQ");
         ComponentInstance stepAndFlags = add(document, registry, "routing.bus_concat", 350, 190,
                 defaults(registry, "routing.bus_concat")
                         .with(LibraryParameters.LOW_WIDTH, 3)
-                        .with(LibraryParameters.HIGH_WIDTH, 4), "STEP_AND_FLAGS");
+                        .with(LibraryParameters.HIGH_WIDTH, 5), "STEP_AND_FLAGS");
         ComponentInstance microcodeAddress = add(document, registry, "routing.bus_concat", 400, 240,
                 defaults(registry, "routing.bus_concat")
-                        .with(LibraryParameters.LOW_WIDTH, 7)
+                        .with(LibraryParameters.LOW_WIDTH, 8)
                         .with(LibraryParameters.HIGH_WIDTH, 8), "MICROCODE_ADDRESS");
         ComponentInstance haltLatch = add(document, registry, "sequential.register_reset", 690, 20,
                 defaults(registry, "sequential.register_reset").with(LibraryParameters.WIDTH, 1),
@@ -289,7 +299,9 @@ public final class Lf8CircuitFactory {
         wire(document, reset, "OUT", haltLatch, "RESET");
         wire(document, irq, "OUT", irqProbe, "IN");
         wire(document, microstep, "COUNT", stepAndFlags, "LOW");
-        wire(document, flags, "OUT", stepAndFlags, "HIGH");
+        wire(document, flags, "OUT", flagsWithIrq, "LOW");
+        wire(document, irqTakenTie, "OUT", flagsWithIrq, "HIGH");
+        wire(document, flagsWithIrq, "OUT", stepAndFlags, "HIGH");
         wire(document, stepAndFlags, "OUT", microcodeAddress, "LOW");
         wire(document, opcode, "OUT", microcodeAddress, "HIGH");
         wire(document, microcodeAddress, "OUT", microcode, "ADDRESS");

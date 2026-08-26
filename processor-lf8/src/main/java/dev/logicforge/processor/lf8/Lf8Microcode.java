@@ -6,7 +6,16 @@ import static dev.logicforge.processor.lf8.Lf8ControlSignal.*;
 public final class Lf8Microcode {
 
     public static final int MICROSTEPS = 8;
-    public static final int FLAG_SLOTS = 16;
+    /**
+     * ROM address bits contributed by the flags field: bits 0-3 are the stored Z/C/N/V flags
+     * (as before); bit 4 is IRQ_TAKEN, a synthetic "flag" latched once per instruction
+     * boundary that redirects microstep 0 into the interrupt entry sequence instead of a
+     * normal fetch. Reusing the flags-indexed ROM addressing scheme already built for
+     * conditional branches means every existing instruction's steps 1+ are automatically
+     * defined identically across both IRQ_TAKEN values with no extra code, since set()/
+     * setAlu()/branch() already loop over the full FLAG_SLOTS range.
+     */
+    public static final int FLAG_SLOTS = 32;
     public static final int WORDS = 256 * FLAG_SLOTS * MICROSTEPS;
     private static final int ZERO_FLAG = 1;
     private static final int CARRY_FLAG = 1 << 1;
@@ -145,7 +154,7 @@ public final class Lf8Microcode {
             throw new IllegalArgumentException("Opcode is outside 0..255: " + opcode);
         }
         if (flags < 0 || flags >= FLAG_SLOTS) {
-            throw new IllegalArgumentException("Flags are outside 0..15: " + flags);
+            throw new IllegalArgumentException("Flags are outside 0.." + (FLAG_SLOTS - 1) + ": " + flags);
         }
         if (microstep < 0 || microstep >= MICROSTEPS) {
             throw new IllegalArgumentException("Microstep is outside 0..7: " + microstep);
