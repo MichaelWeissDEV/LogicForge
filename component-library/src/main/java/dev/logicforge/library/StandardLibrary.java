@@ -17,8 +17,11 @@ import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.component.ComponentCategory;
 import dev.logicforge.circuit.component.ParameterSpec;
 import dev.logicforge.library.behavior.AddSubBehavior;
+import dev.logicforge.library.behavior.AddressDecoderBehavior;
 import dev.logicforge.library.behavior.AdderBehavior;
 import dev.logicforge.library.behavior.BitCounterBehavior;
+import dev.logicforge.library.behavior.BusConcatBehavior;
+import dev.logicforge.library.behavior.BusSliceBehavior;
 import dev.logicforge.library.behavior.ClockBehavior;
 import dev.logicforge.library.behavior.ClockDividerBehavior;
 import dev.logicforge.library.behavior.ComparatorBehavior;
@@ -749,6 +752,61 @@ final class StandardLibrary {
                                 REGISTER_WIDTH),
                         List.of("tristate", "buffer", "bus", "z")),
                 values -> new WideTriStateBehavior(busWidth(values), values.getBoolean(LibraryParameters.ACTIVE_LOW))));
+
+        registry.register(new ComponentType(
+                definition("routing.bus_concat", "Bus Concat", ROUTING,
+                        "Concatenates HIGH above LOW: OUT = {HIGH, LOW}",
+                        List.of(LibraryParameters.LOW_WIDTH, LibraryParameters.HIGH_WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("LOW", LibraryParameters.LOW_WIDTH,
+                                                "Low-order output bits"),
+                                        PortLayouts.DynamicPortDef.bus("HIGH", LibraryParameters.HIGH_WIDTH,
+                                                "High-order output bits")),
+                                List.of(new PortLayouts.DynamicPortDef("OUT",
+                                        v -> BitWidth.of(v.getInt(LibraryParameters.LOW_WIDTH)
+                                                + v.getInt(LibraryParameters.HIGH_WIDTH)),
+                                        "HIGH followed by LOW")),
+                                REGISTER_WIDTH),
+                        List.of("concat", "bus", "join", "combine")),
+                values -> new BusConcatBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.LOW_WIDTH)),
+                        BitWidth.of(values.getInt(LibraryParameters.HIGH_WIDTH)))));
+
+        registry.register(new ComponentType(
+                definition("routing.bus_slice", "Bus Slice", ROUTING,
+                        "Extracts OUTPUT_WIDTH bits from IN starting at SLICE_LSB",
+                        List.of(LibraryParameters.INPUT_WIDTH, LibraryParameters.OUTPUT_WIDTH,
+                                LibraryParameters.SLICE_LSB),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("IN", LibraryParameters.INPUT_WIDTH,
+                                        "Bus to slice")),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.OUTPUT_WIDTH,
+                                        "Selected contiguous bits")),
+                                REGISTER_WIDTH),
+                        List.of("slice", "bus", "range", "extract")),
+                values -> new BusSliceBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.INPUT_WIDTH)),
+                        values.getInt(LibraryParameters.SLICE_LSB),
+                        BitWidth.of(values.getInt(LibraryParameters.OUTPUT_WIDTH)))));
+
+        registry.register(new ComponentType(
+                definition("routing.address_decoder", "Address Decoder", ROUTING,
+                        "SELECT=1 when (ADDRESS & MASK) equals (BASE & MASK)",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.ADDRESS_BASE,
+                                LibraryParameters.ADDRESS_MASK),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("ADDRESS", LibraryParameters.ADDRESS_WIDTH,
+                                        "Address to decode")),
+                                List.of(PortLayouts.DynamicPortDef.fixed("SELECT",
+                                        "1 on match, X if a relevant address bit is unknown")),
+                                REGISTER_WIDTH),
+                        List.of("address", "decoder", "chip select", "memory map")),
+                values -> {
+                    int width = values.getInt(LibraryParameters.ADDRESS_WIDTH);
+                    return new AddressDecoderBehavior(BitWidth.of(width),
+                            parseBusConstant(values.get(LibraryParameters.ADDRESS_BASE), width),
+                            parseBusConstant(values.get(LibraryParameters.ADDRESS_MASK), width));
+                }));
 
         registry.register(new ComponentType(
                 definition("routing.splitter", "Splitter", ROUTING,

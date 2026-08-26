@@ -80,6 +80,32 @@ public final class LibraryParameters {
     public static final ParameterSpec.IntegerParameter REGISTER_COUNT =
             new ParameterSpec.IntegerParameter("registerCount", "Register Count", 8, 2, 32);
 
+    /** Width of the low-order input to a bus concatenator. */
+    public static final ParameterSpec.IntegerParameter LOW_WIDTH =
+            new ParameterSpec.IntegerParameter("lowWidth", "Low Width", 8, 1, 32);
+
+    /** Width of the high-order input to a bus concatenator. */
+    public static final ParameterSpec.IntegerParameter HIGH_WIDTH =
+            new ParameterSpec.IntegerParameter("highWidth", "High Width", 8, 1, 32);
+
+    /** Width of a bus utility's input independently of its output width. */
+    public static final ParameterSpec.IntegerParameter INPUT_WIDTH =
+            new ParameterSpec.IntegerParameter("inputWidth", "Input Width", 16, 1, 64);
+
+    /** Width of a bus utility's output independently of its input width. */
+    public static final ParameterSpec.IntegerParameter OUTPUT_WIDTH =
+            new ParameterSpec.IntegerParameter("outputWidth", "Output Width", 8, 1, 64);
+
+    /** Least-significant source bit selected by a bus slice. */
+    public static final ParameterSpec.IntegerParameter SLICE_LSB =
+            new ParameterSpec.IntegerParameter("sliceLsb", "Slice LSB", 0, 0, 63);
+
+    /** Address decoder base and mask, entered in hexadecimal. */
+    public static final ParameterSpec.StringParameter ADDRESS_BASE =
+            new ParameterSpec.StringParameter("base", "Base (hex)", "2000");
+    public static final ParameterSpec.StringParameter ADDRESS_MASK =
+            new ParameterSpec.StringParameter("mask", "Mask (hex)", "f000");
+
     /** The wrap point of a modulo counter: COUNT cycles through 0..modulus-1. */
     public static final ParameterSpec.IntegerParameter MODULUS =
             new ParameterSpec.IntegerParameter("modulus", "Modulus", 10, 2, 1 << 24);
