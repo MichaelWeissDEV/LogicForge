@@ -733,6 +733,53 @@ public final class CircuitEditor {
         return memorySnapshot(target.instancePath(), target.componentId());
     }
 
+    /**
+     * Cheap memory metadata (size, content/access revision, last access) with no contents
+     * array — the primary signal a viewer like {@link dev.logicforge.ui.view.MemoryView}
+     * should poll on every editor change, reserving {@link #memorySnapshot} and {@link
+     * #memoryPage} for when the actual words are needed.
+     */
+    public java.util.Optional<dev.logicforge.simulation.MemoryInfo> memoryInfo(UUID componentId) {
+        return memoryInfo(view.instancePath(), componentId);
+    }
+
+    /** @see #memorySnapshot(Optional, UUID) */
+    public java.util.Optional<dev.logicforge.simulation.MemoryInfo> memoryInfo(
+            Optional<String> instancePath, UUID componentId) {
+        if (simulation == null || compilation == null) return java.util.Optional.empty();
+        OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath).resolveComponent(componentId);
+        return runtimeId.isEmpty() ? java.util.Optional.empty() : simulation.memoryInfo(runtimeId.getAsInt());
+    }
+
+    /** @see #writeMemoryWord(ComponentViewTarget, int, LogicVector) */
+    public java.util.Optional<dev.logicforge.simulation.MemoryInfo> memoryInfo(ComponentViewTarget target) {
+        return memoryInfo(target.instancePath(), target.componentId());
+    }
+
+    /**
+     * A window of a memory's contents, for paging through a large RAM/ROM without ever
+     * cloning more than one page's worth of words.
+     */
+    public java.util.Optional<dev.logicforge.simulation.MemoryPageSnapshot> memoryPage(
+            UUID componentId, int startAddress, int count) {
+        return memoryPage(view.instancePath(), componentId, startAddress, count);
+    }
+
+    /** @see #memorySnapshot(Optional, UUID) */
+    public java.util.Optional<dev.logicforge.simulation.MemoryPageSnapshot> memoryPage(
+            Optional<String> instancePath, UUID componentId, int startAddress, int count) {
+        if (simulation == null || compilation == null) return java.util.Optional.empty();
+        OptionalInt runtimeId = new HierarchyRuntimeContext(compilation, instancePath).resolveComponent(componentId);
+        return runtimeId.isEmpty() ? java.util.Optional.empty()
+                : simulation.memoryPage(runtimeId.getAsInt(), startAddress, count);
+    }
+
+    /** @see #writeMemoryWord(ComponentViewTarget, int, LogicVector) */
+    public java.util.Optional<dev.logicforge.simulation.MemoryPageSnapshot> memoryPage(
+            ComponentViewTarget target, int startAddress, int count) {
+        return memoryPage(target.instancePath(), target.componentId(), startAddress, count);
+    }
+
     /** A stable target capturing the circuit and hierarchy instance a component is opened
      *  in right now, for a widget that must keep addressing it after the editor navigates
      *  elsewhere. See {@link #writeMemoryWord(ComponentViewTarget, int, LogicVector)}. */

@@ -1,6 +1,7 @@
 package dev.logicforge.library.behavior;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -8,6 +9,7 @@ import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.CompiledCircuit;
 import dev.logicforge.simulation.ComponentRuntimeState;
+import dev.logicforge.simulation.MemoryInfo;
 import dev.logicforge.simulation.MemorySnapshot;
 import dev.logicforge.simulation.Simulation;
 import org.junit.jupiter.api.Test;
@@ -260,5 +262,101 @@ class RuntimeStateSnapshotTest {
         assertEquals(8, memory.wordWidth());
         assertEquals(3, memory.lastWriteAddress());
         assertEquals(LogicVector.fromUnsignedLong(0xAB, 8), memory.lastWrittenValue());
+    }
+
+    // ------------------------------------------------------------------
+    // MemoryInfo: content vs access revision split
+    // ------------------------------------------------------------------
+
+    @Test
+    void readingDoesNotBumpContentRevisionOnlyAccessRevision() {
+        RamCircuit rc = buildRam(WIDTH4, WIDTH8);
+        Simulation sim = rc.simulation();
+        MemoryInfo before = sim.memoryInfo(rc.ramComponent()).orElseThrow();
+
+        sim.setInput(rc.csSrc(), LogicVector.ONE);
+        sim.setInput(rc.oeSrc(), LogicVector.ONE);
+        sim.setInput(rc.addrSrc(), LogicVector.fromUnsignedLong(7, 4)); // a read, no write
+
+        MemoryInfo after = sim.memoryInfo(rc.ramComponent()).orElseThrow();
+        assertEquals(before.contentRevision(), after.contentRevision(),
+                "reading must never change stored data");
+        assertNotEquals(before.accessRevision(), after.accessRevision(),
+                "a new read address must still move the access/highlight revision");
+    }
+
+    @Test
+    void writingANewValueBumpsBothContentAndAccessRevision() {
+        RamCircuit rc = buildRam(WIDTH4, WIDTH8);
+        Simulation sim = rc.simulation();
+        MemoryInfo before = sim.memoryInfo(rc.ramComponent()).orElseThrow();
+
+        sim.setInput(rc.csSrc(), LogicVector.ONE);
+        sim.setInput(rc.addrSrc(), LogicVector.fromUnsignedLong(2, 4));
+        sim.setInput(rc.dataSrc(), LogicVector.fromUnsignedLong(0x5A, 8));
+        sim.setInput(rc.weSrc(), LogicVector.ONE);
+        sim.setInput(rc.weSrc(), LogicVector.ZERO);
+
+        MemoryInfo after = sim.memoryInfo(rc.ramComponent()).orElseThrow();
+        assertNotEquals(before.contentRevision(), after.contentRevision(),
+                "a genuinely new stored value must bump the content revision");
+        assertNotEquals(before.accessRevision(), after.accessRevision());
+    }
+
+    @Test
+    void rewritingTheSameValueAtTheSameAddressDoesNotBumpEitherRevision() {
+        RamCircuit rc = buildRam(WIDTH4, WIDTH8);
+        Simulation sim = rc.simulation();
+        sim.setInput(rc.csSrc(), LogicVector.ONE);
+        sim.setInput(rc.addrSrc(), LogicVector.fromUnsignedLong(2, 4));
+        sim.setInput(rc.dataSrc(), LogicVector.fromUnsignedLong(0x5A, 8));
+        sim.setInput(rc.weSrc(), LogicVector.ONE);
+        sim.setInput(rc.weSrc(), LogicVector.ZERO);
+        MemoryInfo afterFirstWrite = sim.memoryInfo(rc.ramComponent()).orElseThrow();
+
+        // Same address, same value, same WE pulse shape: nothing about this write is new.
+        sim.setInput(rc.weSrc(), LogicVector.ONE);
+        sim.setInput(rc.weSrc(), LogicVector.ZERO);
+        MemoryInfo afterSecondWrite = sim.memoryInfo(rc.ramComponent()).orElseThrow();
+
+        assertEquals(afterFirstWrite.contentRevision(), afterSecondWrite.contentRevision());
+        assertEquals(afterFirstWrite.accessRevision(), afterSecondWrite.accessRevision());
+    }
+
+    // ------------------------------------------------------------------
+    // MemoryPageSnapshot: paging without cloning the whole memory
+    // ------------------------------------------------------------------
+
+    @Test
+    void memoryPageReturnsOnlyTheRequestedWindow() {
+        RamCircuit rc = buildRam(BitWidth.of(8), WIDTH8); // 256 words
+        Simulation sim = rc.simulation();
+        sim.setInput(rc.csSrc(), LogicVector.ONE);
+        for (int address : new int[]{0, 10, 20, 200}) {
+            sim.setInput(rc.addrSrc(), LogicVector.fromUnsignedLong(address, 8));
+            sim.setInput(rc.dataSrc(), LogicVector.fromUnsignedLong(address + 1, 8));
+            sim.setInput(rc.weSrc(), LogicVector.ONE);
+            sim.setInput(rc.weSrc(), LogicVector.ZERO);
+        }
+
+        dev.logicforge.simulation.MemoryPageSnapshot page =
+                sim.memoryPage(rc.ramComponent(), 8, 16).orElseThrow();
+
+        assertEquals(8, page.startAddress());
+        assertEquals(16, page.size(), "a full page fits well inside 256 words");
+        assertEquals(LogicVector.fromUnsignedLong(11, 8), page.wordAt(10), "address 10 is inside this page");
+        assertEquals(LogicVector.fromUnsignedLong(21, 8), page.wordAt(20), "address 20 is just past the page end");
+    }
+
+    @Test
+    void memoryPageClampsAWindowThatRunsPastTheEndOfMemory() {
+        RamCircuit rc = buildRam(WIDTH4, WIDTH8); // 16 words
+        Simulation sim = rc.simulation();
+
+        dev.logicforge.simulation.MemoryPageSnapshot page =
+                sim.memoryPage(rc.ramComponent(), 10, 100).orElseThrow();
+
+        assertEquals(10, page.startAddress());
+        assertEquals(6, page.size(), "only 6 words remain from address 10 in a 16-word RAM");
     }
 }

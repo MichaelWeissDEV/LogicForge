@@ -37,6 +37,11 @@ public interface ComponentBehavior {
         return state.memoryInfo();
     }
 
+    /** @see ComponentRuntimeState#memoryPage(int, int) */
+    default MemoryPageSnapshot memoryPage(ComponentRuntimeState state, int startAddress, int count) {
+        return state.memoryPage(startAddress, count);
+    }
+
     default ComponentDebugSnapshot debugSnapshot(ComponentRuntimeState state) {
         return state.debugSnapshot();
     }

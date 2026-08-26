@@ -54,10 +54,38 @@ public interface ComponentRuntimeState {
      * for non-memory state. Memory-backed states should override this directly rather than
      * relying on the default derivation from {@link #memorySnapshot()}, which still clones
      * every word — see {@code RamState} for the cheap override.
+     *
+     * <p>The default cannot distinguish content changes from access-only ones (a single
+     * {@link MemorySnapshot#revision()} counts as both), which is always safe — a viewer
+     * following {@link MemoryInfo#contentRevision()} just reloads a page it didn't strictly
+     * need to. A state that tracks the two separately should override this directly instead.
      */
     default MemoryInfo memoryInfo() {
         MemorySnapshot memory = memorySnapshot();
-        return memory == null ? null : MemoryInfo.of(memory);
+        return memory == null ? null : new MemoryInfo(memory.size(), memory.wordWidth(),
+                memory.revision(), memory.revision(),
+                memory.lastReadAddress(), memory.lastWriteAddress(), memory.lastWrittenValue());
+    }
+
+    /**
+     * A window of {@code count} words starting at {@code startAddress}, or {@code null} for
+     * non-memory state. The default derives it from {@link #memorySnapshot()} (still a full
+     * clone under the hood); a memory-backed state should override this directly so a large
+     * RAM/ROM can be paged through without ever cloning more than one page's worth of words
+     * — see {@code RamState} for the cheap override.
+     */
+    default MemoryPageSnapshot memoryPage(int startAddress, int count) {
+        MemorySnapshot memory = memorySnapshot();
+        if (memory == null) {
+            return null;
+        }
+        int clampedStart = Math.max(0, Math.min(startAddress, memory.size()));
+        int clampedCount = Math.max(0, Math.min(count, memory.size() - clampedStart));
+        dev.logicforge.logic.LogicVector[] words = new dev.logicforge.logic.LogicVector[clampedCount];
+        for (int i = 0; i < clampedCount; i++) {
+            words[i] = memory.wordAt(clampedStart + i);
+        }
+        return new MemoryPageSnapshot(clampedStart, words, memory.revision());
     }
 
     /** Generic live state exposed without UI casts to component-specific state classes. */

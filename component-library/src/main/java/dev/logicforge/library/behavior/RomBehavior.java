@@ -59,7 +59,18 @@ public record RomBehavior(BitWidth dataWidth, LogicVector[] contents) implements
     /** Avoids {@link #memorySnapshot}'s array clone — the Inspector only needs metadata. */
     @Override
     public dev.logicforge.simulation.MemoryInfo memoryInfo(ComponentRuntimeState state) {
-        return new dev.logicforge.simulation.MemoryInfo(contents.length, dataWidth.bits(), 0, -1, -1, null);
+        return new dev.logicforge.simulation.MemoryInfo(contents.length, dataWidth.bits(), 0, 0, -1, -1, null);
+    }
+
+    /** Avoids {@link #memorySnapshot}'s array clone — only the requested window. */
+    @Override
+    public dev.logicforge.simulation.MemoryPageSnapshot memoryPage(ComponentRuntimeState state,
+                                                                   int startAddress, int count) {
+        int start = Math.max(0, Math.min(startAddress, contents.length));
+        int clampedCount = Math.max(0, Math.min(count, contents.length - start));
+        LogicVector[] page = new LogicVector[clampedCount];
+        System.arraycopy(contents, start, page, 0, clampedCount);
+        return new dev.logicforge.simulation.MemoryPageSnapshot(start, page, 0);
     }
 
     @Override

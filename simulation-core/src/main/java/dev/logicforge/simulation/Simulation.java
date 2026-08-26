@@ -510,6 +510,19 @@ public final class Simulation {
         return component.behavior().memoryRevision(states[componentId]);
     }
 
+    /** Cheap memory metadata (size, content/access revision, last access) with no contents. */
+    public java.util.Optional<MemoryInfo> memoryInfo(int componentId) {
+        CompiledComponent component = circuit.component(componentId);
+        return java.util.Optional.ofNullable(component.behavior().memoryInfo(states[componentId]));
+    }
+
+    /** A window of a memory's contents, for paging through a large RAM/ROM. */
+    public java.util.Optional<MemoryPageSnapshot> memoryPage(int componentId, int startAddress, int count) {
+        CompiledComponent component = circuit.component(componentId);
+        return java.util.Optional.ofNullable(
+                component.behavior().memoryPage(states[componentId], startAddress, count));
+    }
+
     public ComponentDebugSnapshot debugSnapshot(int componentId) {
         CompiledComponent component = circuit.component(componentId);
         return component.behavior().debugSnapshot(states[componentId]);

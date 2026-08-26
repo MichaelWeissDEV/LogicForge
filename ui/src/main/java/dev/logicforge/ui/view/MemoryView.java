@@ -2,7 +2,8 @@ package dev.logicforge.ui.view;
 
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
-import dev.logicforge.simulation.MemorySnapshot;
+import dev.logicforge.simulation.MemoryInfo;
+import dev.logicforge.simulation.MemoryPageSnapshot;
 import dev.logicforge.ui.edit.CircuitEditor;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,10 +43,11 @@ public final class MemoryView extends Stage {
     private final Label pageLabel = new Label();
     private final Runnable editorListener = this::refresh;
     
-    private int dataWidth = 8; // default, updated from snapshot
+    private int dataWidth = 8; // default, updated from memory info
     private int memorySize;
     private int pageStart;
-    private long lastRevision = Long.MIN_VALUE;
+    private long lastContentRevision = Long.MIN_VALUE;
+    private long lastAccessRevision = Long.MIN_VALUE;
     private int lastReadAddress = -1;
     private int lastWriteAddress = -1;
 
@@ -138,37 +140,56 @@ public final class MemoryView extends Stage {
         refresh(false);
     }
 
+    /**
+     * Polls cheap {@link MemoryInfo} metadata rather than the full contents on every editor
+     * change — content and access revisions are tracked separately so a read-only access
+     * (which moves the highlight but not any stored value) only updates the highlight,
+     * without re-fetching this page's words; only an actual content change, a forced
+     * refresh, or a page navigation fetches a fresh {@link MemoryPageSnapshot}.
+     */
     private void refresh(boolean force) {
-        long revision = editor.memoryRevision(target);
-        if (!force && revision >= 0 && revision == lastRevision) {
-            return;
-        }
-        Optional<MemorySnapshot> snap = editor.memorySnapshot(target);
-        if (snap.isEmpty()) {
+        Optional<MemoryInfo> info = editor.memoryInfo(target);
+        if (info.isEmpty()) {
             rows.clear();
             memorySize = 0;
             return;
         }
-        MemorySnapshot snapshot = snap.get();
-        lastRevision = snapshot.revision();
-        dataWidth = snapshot.wordWidth();
-        memorySize = snapshot.size();
-        lastReadAddress = snapshot.lastReadAddress();
-        lastWriteAddress = snapshot.lastWriteAddress();
+        MemoryInfo memory = info.get();
+        dataWidth = memory.wordWidth();
+        memorySize = memory.size();
+        lastReadAddress = memory.lastReadAddress();
+        lastWriteAddress = memory.lastWriteAddress();
+
+        boolean contentChanged = force || memory.contentRevision() != lastContentRevision;
+        boolean accessChanged = memory.accessRevision() != lastAccessRevision;
+        lastContentRevision = memory.contentRevision();
+        lastAccessRevision = memory.accessRevision();
+        if (!contentChanged && !accessChanged) {
+            return;
+        }
+
         pageStart = Math.max(0, Math.min(pageStart,
                 Math.max(0, ((memorySize - 1) / PAGE_SIZE) * PAGE_SIZE)));
-        
-        int addrWidth = Math.max(1, Integer.toHexString(Math.max(0, snapshot.size() - 1)).length());
-        
-        int pageEnd = Math.min(snapshot.size(), pageStart + PAGE_SIZE);
-        List<MemoryRow> newRows = new ArrayList<>(Math.max(0, pageEnd - pageStart));
-        for (int i = pageStart; i < pageEnd; i++) {
-            newRows.add(new MemoryRow(i, addrWidth, snapshot.wordAt(i), dataWidth));
+
+        if (contentChanged) {
+            reloadCurrentPage();
         }
+        table.refresh(); // re-renders the read/write highlight styles either way
+    }
+
+    private void reloadCurrentPage() {
+        int addrWidth = Math.max(1, Integer.toHexString(Math.max(0, memorySize - 1)).length());
+        Optional<MemoryPageSnapshot> page = editor.memoryPage(target, pageStart, PAGE_SIZE);
+        List<MemoryRow> newRows = new ArrayList<>();
+        page.ifPresent(p -> {
+            for (int i = 0; i < p.size(); i++) {
+                newRows.add(new MemoryRow(pageStart + i, addrWidth, p.wordAt(pageStart + i), dataWidth));
+            }
+        });
         rows.setAll(newRows);
+        int pageEnd = pageStart + newRows.size();
         pageLabel.setText(memorySize == 0 ? "Empty"
                 : String.format("%X–%X / %X", pageStart, Math.max(pageStart, pageEnd - 1), memorySize - 1));
-        table.refresh();
     }
 
     private void changePage(int delta) {
@@ -220,20 +241,30 @@ public final class MemoryView extends Stage {
         }
     }
 
+    /** Reads the memory in fixed-size chunks rather than cloning it whole in one go. */
+    private static final int SAVE_CHUNK_WORDS = 4096;
+
     private void saveBinary() {
-        Optional<MemorySnapshot> snapshot = editor.memorySnapshot(target);
-        if (snapshot.isEmpty()) return;
+        Optional<MemoryInfo> info = editor.memoryInfo(target);
+        if (info.isEmpty()) return;
+        int size = info.get().size();
+        int bytesPerWord = (info.get().wordWidth() + 7) / 8;
         FileChooser chooser = binaryChooser("Save memory image");
         java.io.File file = chooser.showSaveDialog(this);
         if (file == null) return;
         try {
-            int bytesPerWord = (dataWidth + 7) / 8;
-            byte[] bytes = new byte[snapshot.get().size() * bytesPerWord];
-            for (int word = 0; word < snapshot.get().size(); word++) {
-                long value = snapshot.get().wordAt(word).toUnsignedLong().orElse(0L);
-                for (int offset = bytesPerWord - 1; offset >= 0; offset--) {
-                    bytes[word * bytesPerWord + offset] = (byte) value;
-                    value >>>= 8;
+            byte[] bytes = new byte[size * bytesPerWord];
+            for (int start = 0; start < size; start += SAVE_CHUNK_WORDS) {
+                int count = Math.min(SAVE_CHUNK_WORDS, size - start);
+                Optional<MemoryPageSnapshot> page = editor.memoryPage(target, start, count);
+                if (page.isEmpty()) break;
+                for (int i = 0; i < page.get().size(); i++) {
+                    int word = start + i;
+                    long value = page.get().wordAt(word).toUnsignedLong().orElse(0L);
+                    for (int offset = bytesPerWord - 1; offset >= 0; offset--) {
+                        bytes[word * bytesPerWord + offset] = (byte) value;
+                        value >>>= 8;
+                    }
                 }
             }
             Files.write(file.toPath(), bytes);
