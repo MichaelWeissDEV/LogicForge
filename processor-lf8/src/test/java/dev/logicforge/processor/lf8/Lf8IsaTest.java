@@ -20,17 +20,18 @@ class Lf8IsaTest {
 
     @Test
     void instructionLengthsAreDerivedFromOperandEncoding() {
-        assertEquals(2, Lf8Isa.LDI_R0.length());
-        assertEquals(1, Lf8Isa.ADD_R0_R1.length());
-        assertEquals(3, Lf8Isa.STORE_R0.length());
+        assertEquals(3, Lf8Isa.LDI.length());
+        assertEquals(3, Lf8Isa.ADD.length());
+        assertEquals(4, Lf8Isa.STORE.length());
         assertEquals(3, Lf8Isa.JMP.length());
     }
 
     @Test
     void microcodeUsesCanonicalInstructionOpcodes() {
         int[] words = Lf8Microcode.words();
-        assertEquals(Lf8ControlSignal.ALU_LOAD.mask(),
-                words[Lf8Microcode.address(Lf8Isa.ADD_R0_R1.opcode(), 1)]);
+        assertEquals(Lf8ControlSignal.REGISTER_FILE_WRITE.mask()
+                        | Lf8ControlSignal.ALU_SOURCE.mask(),
+                words[Lf8Microcode.address(Lf8Isa.ADD.opcode(), 3)]);
         assertEquals(Lf8ControlSignal.HALT.mask(),
                 words[Lf8Microcode.address(Lf8Isa.HLT.opcode(), 1)]);
     }

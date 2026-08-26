@@ -4,18 +4,19 @@ package dev.logicforge.processor.lf8;
 public enum Lf8ControlSignal {
     PC_INCREMENT(0),
     IR_LOAD(1),
-    R0_LOAD_IMMEDIATE(2),
-    R1_LOAD_IMMEDIATE(3),
+    DESTINATION_REGISTER_LOAD(2),
+    SOURCE_REGISTER_LOAD(3),
     MAR_LOW_LOAD(4),
     MAR_HIGH_LOAD(5),
-    ALU_LOAD(6),
-    MEMORY_WRITE(7),
-    HALT(8),
-    ALU_SUBTRACT(9),
-    MOVE_R0_FROM_R1(10),
-    MOVE_R1_FROM_R0(11),
-    LOAD_R0_FROM_MEMORY(12),
-    PC_LOAD(13);
+    REGISTER_FILE_WRITE(6),
+    ALU_SOURCE(7),
+    MOV_SOURCE(8),
+    ALTERNATE_SOURCE(9),
+    MEMORY_WRITE(10),
+    MEMORY_READ(11),
+    HALT(12),
+    ALU_SUBTRACT(13),
+    PC_LOAD(14);
 
     private final int bit;
 

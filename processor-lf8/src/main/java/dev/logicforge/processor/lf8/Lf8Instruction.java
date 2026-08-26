@@ -26,7 +26,7 @@ public record Lf8Instruction(
     }
 
     public enum OperandForm {
-        FIXED_R0(0), FIXED_R1(0), IMMEDIATE8(1), ADDRESS16(2);
+        REGISTER(1), IMMEDIATE8(1), ADDRESS16(2);
 
         private final int encodedBytes;
 
