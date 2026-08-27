@@ -2,27 +2,32 @@ package dev.logicforge.circuit.chip;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
  * Headless definition of a physical chip.
  *
- * <p>{@code logicalUnits} maps unit names such as {@code 1} to ordinary LogicForge
- * component definition ids. It deliberately contains no rendering or simulation state.
+ * <p>Logical units carry their complete ordinary-component configuration. The definition
+ * deliberately contains no rendering or simulation state.
  */
 public record ChipDefinition(ChipMetadata metadata, PackageDefinition packageDefinition,
-                             Map<String, String> logicalUnits,
+                             List<ChipLogicalUnit> logicalUnits,
                              List<LogicalPinMapping> logicalPinMappings) {
     public ChipDefinition {
         Objects.requireNonNull(metadata, "metadata");
         Objects.requireNonNull(packageDefinition, "packageDefinition");
-        logicalUnits = Map.copyOf(Objects.requireNonNull(logicalUnits, "logicalUnits"));
+        logicalUnits = List.copyOf(Objects.requireNonNull(logicalUnits, "logicalUnits"));
         logicalPinMappings = List.copyOf(Objects.requireNonNull(
                 logicalPinMappings, "logicalPinMappings"));
         if (logicalUnits.isEmpty()) {
             throw new IllegalArgumentException("A chip requires at least one logical unit");
+        }
+        HashSet<String> unitNames = new HashSet<>();
+        for (ChipLogicalUnit unit : logicalUnits) {
+            if (!unitNames.add(unit.name())) {
+                throw new IllegalArgumentException("Duplicate logical unit " + unit.name());
+            }
         }
         HashSet<Integer> mappedPins = new HashSet<>();
         for (LogicalPinMapping mapping : logicalPinMappings) {
@@ -33,7 +38,7 @@ public record ChipDefinition(ChipMetadata metadata, PackageDefinition packageDef
                 throw new IllegalArgumentException("Only signal pins can map to logical ports: "
                         + mapping.physicalPinNumber());
             }
-            if (!logicalUnits.containsKey(mapping.unitName())) {
+            if (!unitNames.contains(mapping.unitName())) {
                 throw new IllegalArgumentException("Unknown logical unit " + mapping.unitName());
             }
             if (!mappedPins.add(mapping.physicalPinNumber())) {
@@ -53,5 +58,9 @@ public record ChipDefinition(ChipMetadata metadata, PackageDefinition packageDef
         return logicalPinMappings.stream()
                 .filter(mapping -> mapping.physicalPinNumber() == physicalPinNumber)
                 .findFirst();
+    }
+
+    public Optional<ChipLogicalUnit> logicalUnit(String name) {
+        return logicalUnits.stream().filter(unit -> unit.name().equals(name)).findFirst();
     }
 }

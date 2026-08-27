@@ -17,6 +17,9 @@ import java.util.List;
 /** Builds canonical reference circuits entirely from ordinary gates and subcircuits. */
 public final class StructuralCircuitFactory {
 
+    private static final String REGISTER_FILE_REGISTER_ROLE_PREFIX =
+            "struct.register-file.register.";
+
     public static final String HALF_ADDER = "STRUCT_HALF_ADDER";
     public static final String FULL_ADDER = "STRUCT_FULL_ADDER";
     public static final String MUX2 = "STRUCT_MUX2";
@@ -33,8 +36,17 @@ public final class StructuralCircuitFactory {
     public static final String ALU8 = "STRUCT_ALU8";
     public static final String LOADABLE_COUNTER16 = "STRUCT_LOADABLE_COUNTER16";
     public static final String MODULO_COUNTER3 = "STRUCT_MODULO_COUNTER3";
+    public static final String DECREMENTER16 = "STRUCT_DECREMENTER16";
 
     private StructuralCircuitFactory() {
+    }
+
+    /** Stable role of one storage register inside the structural 8x8 register file. */
+    public static String registerFileRegisterRole(int index) {
+        if (index < 0 || index >= 8) {
+            throw new IllegalArgumentException("Register index must be in 0..7");
+        }
+        return REGISTER_FILE_REGISTER_ROLE_PREFIX + index;
     }
 
     public static CircuitProject halfAdderProject() {
@@ -62,6 +74,28 @@ public final class StructuralCircuitFactory {
     public static CircuitProject mux2Project() {
         CircuitProject project = baseProject("struct-mux2");
         project.putCircuit(mux2Circuit());
+        return project;
+    }
+
+    /** Parameterized bus mux family, each bit descending through {@link #MUX2} to gates. */
+    public static CircuitProject structuralBusMuxProject(int width) {
+        requireRegisterWidth(width);
+        CircuitProject project = mux2Project();
+        project.setName("struct-bus-mux" + width);
+        project.putCircuit(busMuxCircuit(width));
+        return project;
+    }
+
+    public static String structuralBusMuxName(int width) {
+        requireRegisterWidth(width);
+        return "STRUCT_MUX" + width;
+    }
+
+    /** 16-bit A-1 path implemented as A + 0xFFFF through the ripple-adder hierarchy. */
+    public static CircuitProject decrementer16Project() {
+        CircuitProject project = rippleAdderProject(16);
+        project.setName("struct-decrementer16");
+        project.putCircuit(decrementer16Circuit());
         return project;
     }
 
@@ -528,12 +562,12 @@ public final class StructuralCircuitFactory {
 
     private static CircuitDocument busMuxCircuit(int width) {
         ComponentRegistry registry = ComponentRegistry.standard();
-        String name = "STRUCT_MUX" + width;
+        String name = structuralBusMuxName(width);
         CircuitDocument circuit = document(name, width + "-bit mux made from scalar gate muxes");
-        ComponentInstance a = input(circuit, registry, -320, -80, "A", width);
-        ComponentInstance b = input(circuit, registry, -320, 0, "B", width);
-        ComponentInstance select = input(circuit, registry, -320, 80, "S", 1);
-        ComponentInstance y = output(circuit, registry, 320, -40, "Y", width);
+        ComponentInstance a = input(circuit, registry, -320, -80, "IN0", width);
+        ComponentInstance b = input(circuit, registry, -320, 0, "IN1", width);
+        ComponentInstance select = input(circuit, registry, -320, 80, "SEL", 1);
+        ComponentInstance y = output(circuit, registry, 320, -40, "OUT", width);
         ComponentInstance aBits = component(circuit, registry, "routing.splitter", -240, -80,
                 registry.require("routing.splitter").definition().defaultParameters()
                         .with(LibraryParameters.WIDTH, width), "A_BITS");
@@ -585,13 +619,13 @@ public final class StructuralCircuitFactory {
         wire(circuit, storage, "Q", adder, "A");
         wire(circuit, one, "OUT", adder, "B");
         wire(circuit, zero, "OUT", adder, "CIN");
-        wire(circuit, storage, "Q", enableMux, "A");
-        wire(circuit, adder, "SUM", enableMux, "B");
-        wire(circuit, enable, "OUT", enableMux, "S");
-        wire(circuit, enableMux, "Y", loadMux, "A");
-        wire(circuit, data, "OUT", loadMux, "B");
-        wire(circuit, load, "OUT", loadMux, "S");
-        wire(circuit, loadMux, "Y", storage, "DATA");
+        wire(circuit, storage, "Q", enableMux, "IN0");
+        wire(circuit, adder, "SUM", enableMux, "IN1");
+        wire(circuit, enable, "OUT", enableMux, "SEL");
+        wire(circuit, enableMux, "OUT", loadMux, "IN0");
+        wire(circuit, data, "OUT", loadMux, "IN1");
+        wire(circuit, load, "OUT", loadMux, "SEL");
+        wire(circuit, loadMux, "OUT", storage, "DATA");
         wire(circuit, loadTie, "OUT", storage, "LOAD");
         wire(circuit, clk, "OUT", storage, "CLK");
         wire(circuit, reset, "OUT", storage, "RESET");
@@ -622,14 +656,35 @@ public final class StructuralCircuitFactory {
         wire(circuit, storage, "Q", adder, "A");
         wire(circuit, one, "OUT", adder, "B");
         wire(circuit, zero, "OUT", adder, "CIN");
-        wire(circuit, storage, "Q", mux, "A");
-        wire(circuit, adder, "SUM", mux, "B");
-        wire(circuit, enable, "OUT", mux, "S");
-        wire(circuit, mux, "Y", storage, "DATA");
+        wire(circuit, storage, "Q", mux, "IN0");
+        wire(circuit, adder, "SUM", mux, "IN1");
+        wire(circuit, enable, "OUT", mux, "SEL");
+        wire(circuit, mux, "OUT", storage, "DATA");
         wire(circuit, loadTie, "OUT", storage, "LOAD");
         wire(circuit, clk, "OUT", storage, "CLK");
         wire(circuit, reset, "OUT", storage, "RESET");
         wire(circuit, storage, "Q", count, "IN");
+        return circuit;
+    }
+
+    private static CircuitDocument decrementer16Circuit() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument circuit = document(DECREMENTER16,
+                "16-bit decrementer implemented as A + FFFF through RippleAdder16");
+        ComponentInstance a = input(circuit, registry, -300, -60, "A", 16);
+        ComponentInstance out = output(circuit, registry, 300, -40, "OUT", 16);
+        ComponentInstance minusOne = component(circuit, registry, "routing.bus_constant",
+                -260, 40, registry.require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 16)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, "ffff"), "MINUS_ONE");
+        ComponentInstance zero = component(circuit, registry, "source.zero", -260, 100,
+                "CIN_ZERO");
+        ComponentInstance adder = subcircuit(circuit, rippleAdderName(16), 0, -40,
+                "RIPPLE_ADDER16");
+        wire(circuit, a, "OUT", adder, "A");
+        wire(circuit, minusOne, "OUT", adder, "B");
+        wire(circuit, zero, "OUT", adder, "CIN");
+        wire(circuit, adder, "SUM", out, "IN");
         return circuit;
     }
 
@@ -819,7 +874,9 @@ public final class StructuralCircuitFactory {
                     -160 + register * 45.0, "WRITE_ENABLE_" + register);
             ComponentInstance storage = subcircuit(circuit, resetSupport
                             ? structuralRegisterName(8, true, 0) : REGISTER8, -100,
-                    -160 + register * 45.0, "REGISTER_" + register);
+                    -160 + register * 45.0, "REGISTER_" + register)
+                    .withSemanticRole(registerFileRegisterRole(register));
+            circuit.replaceComponent(storage);
             registerBits[register] = component(circuit, registry, "routing.splitter", 20,
                     -160 + register * 45.0,
                     registry.require("routing.splitter").definition().defaultParameters()

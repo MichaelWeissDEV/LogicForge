@@ -1,5 +1,7 @@
 package dev.logicforge.ui.study;
 
+import dev.logicforge.processor.lf8.runtime.Lf8RuntimeProbe;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;

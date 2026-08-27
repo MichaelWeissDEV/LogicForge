@@ -7,7 +7,6 @@ import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.ComponentBehavior;
 import dev.logicforge.simulation.ComponentContext;
 import dev.logicforge.simulation.ComponentRuntimeState;
-import java.util.OptionalLong;
 
 /**
  * A generic RAM: while CS is 1, WE is 0 and OE is 1, drives the addressed word onto the
@@ -39,11 +38,20 @@ public record RamBehavior(BitWidth addressWidth, BitWidth dataWidth) implements 
         LogicState cs = LogicOperations.asGateInput(context.readInput(CS).singleBit());
         LogicState we = LogicOperations.asGateInput(context.readInput(WE).singleBit());
         LogicState oe = LogicOperations.asGateInput(context.readInput(OE).singleBit());
-        OptionalLong address = context.readInput(ADDRESS).toUnsignedLong();
+        AddressPossibilities addresses = AddressPossibilities.resolve(
+                context.readInput(ADDRESS), state.wordCount());
 
-        // Write: only when all three signals are definitely in write state
-        if (cs == LogicState.ONE && we == LogicState.ONE && address.isPresent()) {
-            state.write((int) address.getAsLong(), LogicOperations.asGateInput(context.readInput(DATA_IN)));
+        // This device is level-sensitive rather than clocked. A write transaction is only
+        // committed under a definite CS/WE strobe, avoiding false mutation while connected
+        // source nets settle from their initial delta-cycle X values. Once strobed, an
+        // ambiguous address is still modeled conservatively.
+        if (cs == LogicState.ONE && we == LogicState.ONE) {
+            LogicVector data = LogicOperations.asGateInput(context.readInput(DATA_IN));
+            if (addresses.isSingle()) {
+                state.write(addresses.singleAddress(), data);
+            } else {
+                addresses.forEach(address -> state.mergeWord(address, data));
+            }
         }
 
         // Determine DATA output
@@ -56,9 +64,7 @@ public record RamBehavior(BitWidth addressWidth, BitWidth dataWidth) implements 
             output = LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth);
         } else if (cs == LogicState.ONE && we == LogicState.ZERO && oe == LogicState.ONE) {
             // Definitely reading
-            output = address.isPresent()
-                    ? state.read((int) address.getAsLong())
-                    : LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
+            output = state.readPossible(addresses);
         } else if (cs == LogicState.ONE && we == LogicState.ZERO && oe == LogicState.ZERO) {
             // Output-enable inactive — RAM doesn't drive
             output = LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth);

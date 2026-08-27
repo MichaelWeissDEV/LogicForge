@@ -162,24 +162,27 @@ public final class Lf8CircuitFactory {
                 ? add(document, registry, "arithmetic.alu", 570, 110,
                         defaults(registry, "arithmetic.alu").with(LibraryParameters.WIDTH, 8), "ALU")
                 : subcircuit(document, STRUCTURAL_ALU_ADAPTER_CIRCUIT, 570, 110, "ALU");
-        ComponentInstance aluB = mux(document, registry, 520, 170, 8, "ALU_B_SOURCE");
+        ComponentInstance aluB = mux(document, registry, mode, 520, 170, 8, "ALU_B_SOURCE");
         ComponentInstance one = constant(document, registry, 430, 210, 8, 1, "ALU_ONE");
 
-        ComponentInstance immediateOrAlu = mux(document, registry, 680, 60, 8,
+        ComponentInstance immediateOrAlu = mux(document, registry, mode, 680, 60, 8,
                 "WRITE_IMMEDIATE_ALU");
-        ComponentInstance memoryOrMove = mux(document, registry, 680, 130, 8,
+        ComponentInstance memoryOrMove = mux(document, registry, mode, 680, 130, 8,
                 "WRITE_MEMORY_MOVE");
-        ComponentInstance writeSource = mux(document, registry, 790, 95, 8, "WRITE_SOURCE");
+        ComponentInstance writeSource = mux(document, registry, mode, 790, 95, 8, "WRITE_SOURCE");
         ComponentInstance addressConcat = add(document, registry, "routing.bus_concat", 480, 270,
                 defaults(registry, "routing.bus_concat")
                         .with(LibraryParameters.LOW_WIDTH, 8)
                         .with(LibraryParameters.HIGH_WIDTH, 8), "MAR_ADDRESS");
-        ComponentInstance addressSource = mux(document, registry, 690, 270, 16, "ADDRESS_SOURCE");
+        ComponentInstance addressSource = mux(document, registry, mode, 690, 270, 16, "ADDRESS_SOURCE");
         ComponentInstance sp = counter16(document, registry, mode, 480, 340, 0xBFFF, "SP");
-        ComponentInstance spDecrementer = add(document, registry, "arithmetic.decrementer", 400, 340,
-                defaults(registry, "arithmetic.decrementer").with(LibraryParameters.WIDTH, 16),
-                "SP_DECREMENTER");
-        ComponentInstance addressWithSp = mux(document, registry, 780, 300, 16, "ADDRESS_WITH_SP");
+        ComponentInstance spDecrementer = mode == Lf8ImplementationMode.GATE_LEVEL
+                ? subcircuit(document, StructuralCircuitFactory.DECREMENTER16,
+                        400, 340, "SP_DECREMENTER")
+                : add(document, registry, "arithmetic.decrementer", 400, 340,
+                        defaults(registry, "arithmetic.decrementer")
+                                .with(LibraryParameters.WIDTH, 16), "SP_DECREMENTER");
+        ComponentInstance addressWithSp = mux(document, registry, mode, 780, 300, 16, "ADDRESS_WITH_SP");
         ComponentInstance irqVectorLow = constant(document, registry, 570, 470, 16,
                 Lf8MemoryMap.IRQ_VECTOR, "IRQ_VECTOR_LOW_ADDRESS");
         ComponentInstance irqVectorHigh = constant(document, registry, 570, 510, 16,
@@ -192,17 +195,17 @@ public final class Lf8CircuitFactory {
                 Lf8MemoryMap.NMI_VECTOR, "NMI_VECTOR_LOW_ADDRESS");
         ComponentInstance nmiVectorHigh = constant(document, registry, 460, 590, 16,
                 Lf8MemoryMap.NMI_VECTOR + 1, "NMI_VECTOR_HIGH_ADDRESS");
-        ComponentInstance irqVectorAddress = mux(document, registry, 680, 490, 16,
+        ComponentInstance irqVectorAddress = mux(document, registry, mode, 680, 490, 16,
                 "IRQ_VECTOR_BYTE_ADDRESS");
-        ComponentInstance nmiVectorAddress = mux(document, registry, 570, 650, 16,
+        ComponentInstance nmiVectorAddress = mux(document, registry, mode, 570, 650, 16,
                 "NMI_VECTOR_BYTE_ADDRESS");
-        ComponentInstance interruptVectorAddress = mux(document, registry, 680, 650, 16,
+        ComponentInstance interruptVectorAddress = mux(document, registry, mode, 680, 650, 16,
                 "INTERRUPT_VECTOR_ADDRESS");
-        ComponentInstance resetVectorAddress = mux(document, registry, 680, 570, 16,
+        ComponentInstance resetVectorAddress = mux(document, registry, mode, 680, 570, 16,
                 "RESET_VECTOR_BYTE_ADDRESS");
-        ComponentInstance selectedVectorAddress = mux(document, registry, 790, 530, 16,
+        ComponentInstance selectedVectorAddress = mux(document, registry, mode, 790, 530, 16,
                 "SELECTED_VECTOR_ADDRESS");
-        ComponentInstance finalAddress = mux(document, registry, 900, 360, 16,
+        ComponentInstance finalAddress = mux(document, registry, mode, 900, 360, 16,
                 "FINAL_ADDRESS_SOURCE");
         ComponentInstance pcLowSlice = slice(document, registry, 180, 340, 16, 8, "PC_LOW_SLICE");
         ComponentInstance pcHighSlice = add(document, registry, "routing.bus_slice", 180, 380,
@@ -223,12 +226,18 @@ public final class Lf8CircuitFactory {
                 "FLAGS_REGISTER");
         ComponentInstance ie = resetRegister(document, registry, mode, 820, 420, 1,
                 "IE_REGISTER");
+        role(document, pc, Lf8ComponentRoles.DATAPATH_PC);
+        role(document, sp, Lf8ComponentRoles.DATAPATH_SP);
+        role(document, ir, Lf8ComponentRoles.DATAPATH_IR);
+        role(document, registers, Lf8ComponentRoles.DATAPATH_REGISTER_FILE);
+        role(document, flags, Lf8ComponentRoles.DATAPATH_FLAGS);
+        role(document, ie, Lf8ComponentRoles.DATAPATH_IE);
         ComponentInstance storedCarry = bitSlice(document, registry, 650, 350, 4, 1,
                 "STORED_CARRY");
         ComponentInstance storedOverflow = bitSlice(document, registry, 650, 400, 4, 3,
                 "STORED_OVERFLOW");
-        ComponentInstance carryInput = mux(document, registry, 730, 350, 1, "CARRY_INPUT");
-        ComponentInstance overflowInput = mux(document, registry, 730, 400, 1, "OVERFLOW_INPUT");
+        ComponentInstance carryInput = mux(document, registry, mode, 730, 350, 1, "CARRY_INPUT");
+        ComponentInstance overflowInput = mux(document, registry, mode, 730, 400, 1, "OVERFLOW_INPUT");
 
         // FLAGS_REGISTER's next value is either the live ALU-derived nibble (as before) or,
         // for IRET, a popped stack byte's low nibble. Z/C/N/V are joined into one 4-bit bus,
@@ -238,9 +247,9 @@ public final class Lf8CircuitFactory {
                 defaults(registry, "routing.joiner").with(LibraryParameters.WIDTH, 4),
                 "LIVE_FLAGS_JOINER");
         ComponentInstance poppedFlags = slice(document, registry, 760, 450, 8, 4, "POPPED_FLAGS");
-        ComponentInstance flagsSource = mux(document, registry, 790, 400, 4, "FLAGS_SOURCE");
+        ComponentInstance flagsSource = mux(document, registry, mode, 790, 400, 4, "FLAGS_SOURCE");
         ComponentInstance poppedIe = bitSlice(document, registry, 760, 490, 8, 4, "POPPED_IE");
-        ComponentInstance ieSource = mux(document, registry, 790, 460, 1, "IE_SOURCE");
+        ComponentInstance ieSource = mux(document, registry, mode, 790, 460, 1, "IE_SOURCE");
 
         // STATUS is an explicit architectural byte: Z/C/N/V in bits 0..3, IE in bit 4,
         // and three reserved zero bits. Interrupt entry pushes it and IRET restores it.
@@ -484,6 +493,7 @@ public final class Lf8CircuitFactory {
                 ParameterValues.empty(), "HALT_NOT");
         ComponentInstance irqProbe = add(document, registry, "output.probe", 150, 80,
                 ParameterValues.empty(), "IRQ_PROBE");
+        role(document, irqProbe, Lf8ComponentRoles.CONTROL_IRQ_INPUT);
 
         // RESET_COMPLETE asynchronously clears to zero whenever RESET is asserted. Its
         // inverse therefore remains high after RESET is released until the reset-vector
@@ -496,7 +506,7 @@ public final class Lf8CircuitFactory {
                 ParameterValues.empty(), "RESET_PENDING");
         ComponentInstance resetOpcode = constant(document, registry, 300, 120, 8,
                 Lf8Microcode.RESET_PSEUDO_OPCODE, "RESET_PSEUDO_OPCODE");
-        ComponentInstance selectedOpcode = mux(document, registry, 390, 120, 8,
+        ComponentInstance selectedOpcode = mux(document, registry, mode, 390, 120, 8,
                 "MICROCODE_OPCODE");
 
         // IRQ_TAKEN latches "IRQ is asserted and interrupts are enabled" once per
@@ -540,7 +550,7 @@ public final class Lf8CircuitFactory {
                 ParameterValues.empty(), "IRQ_LATCH_LOAD");
         ComponentInstance irqAckClearZero = constant(document, registry, 60, 400, 1, 0,
                 "IRQ_ACK_CLEAR_ZERO");
-        ComponentInstance irqLatchData = mux(document, registry, 130, 400, 1, "IRQ_LATCH_DATA");
+        ComponentInstance irqLatchData = mux(document, registry, mode, 130, 400, 1, "IRQ_LATCH_DATA");
         ComponentInstance irqTakenLatch = resetRegister(document, registry, mode, 190, 400, 1,
                 "IRQ_TAKEN_LATCH");
         ComponentInstance nmiTakenNot = add(document, registry, "logic.not", 250, 360,
@@ -549,9 +559,14 @@ public final class Lf8CircuitFactory {
                 ParameterValues.empty(), "NMI_AUTO_LOAD");
         ComponentInstance nmiLatchLoad = add(document, registry, "logic.or", 370, 360,
                 ParameterValues.empty(), "NMI_LATCH_LOAD");
-        ComponentInstance nmiLatchData = mux(document, registry, 310, 400, 1, "NMI_LATCH_DATA");
+        ComponentInstance nmiLatchData = mux(document, registry, mode, 310, 400, 1, "NMI_LATCH_DATA");
         ComponentInstance nmiTakenLatch = resetRegister(document, registry, mode, 370, 400, 1,
                 "NMI_TAKEN_LATCH");
+        role(document, microstep, Lf8ComponentRoles.CONTROL_MICROSTEP);
+        role(document, microcode, Lf8ComponentRoles.CONTROL_MICROCODE);
+        role(document, haltLatch, Lf8ComponentRoles.CONTROL_HALT);
+        role(document, irqTakenLatch, Lf8ComponentRoles.CONTROL_IRQ_TAKEN);
+        role(document, nmiTakenLatch, Lf8ComponentRoles.CONTROL_NMI_TAKEN);
         ComponentInstance exceptionTaken = add(document, registry, "logic.or", 250, 440,
                 ParameterValues.empty(), "EXCEPTION_TAKEN");
 
@@ -661,6 +676,8 @@ public final class Lf8CircuitFactory {
 
         ComponentInstance datapath = subcircuit(document, DATAPATH_CIRCUIT, 250, 80, "DATAPATH");
         ComponentInstance control = subcircuit(document, CONTROL_CIRCUIT, 530, 80, "CONTROL");
+        role(document, datapath, Lf8ComponentRoles.CPU_DATAPATH);
+        role(document, control, Lf8ComponentRoles.CPU_CONTROL);
         wire(document, clk, "OUT", datapath, "CLK");
         wire(document, clk, "OUT", control, "CLK");
         wire(document, reset, "OUT", datapath, "RESET");
@@ -695,6 +712,7 @@ public final class Lf8CircuitFactory {
         ComponentInstance nmi = add(document, registry, "source.toggle", 0, 120,
                 ParameterValues.empty(), "NMI");
         ComponentInstance cpu = subcircuit(document, CPU_CIRCUIT, 220, 60, "CPU");
+        role(document, cpu, Lf8ComponentRoles.CPU);
         ComponentInstance rom = add(document, registry, "memory.rom", 680, 0,
                 defaults(registry, "memory.rom")
                         .with(LibraryParameters.ADDRESS_WIDTH, 15)
@@ -748,6 +766,13 @@ public final class Lf8CircuitFactory {
                 ParameterValues.empty(), "VECTOR_ENABLE");
         ComponentInstance haltProbe = add(document, registry, "output.probe", 420, 300,
                 ParameterValues.empty(), "HALT_PROBE");
+        // The asynchronous SRAM write window is the low clock phase. This guarantees that
+        // ripple-built PC/SP/address paths have settled before WE is asserted and closes
+        // the write window before the active edge changes architectural state.
+        ComponentInstance clockNot = add(document, registry, "logic.not", 260, 360,
+                ParameterValues.empty(), "RAM_WRITE_PHASE_NOT");
+        ComponentInstance ramWriteStrobe = add(document, registry, "logic.and", 340, 360,
+                ParameterValues.empty(), "RAM_WRITE_STROBE");
 
         wire(document, clk, "OUT", cpu, "CLK");
         wire(document, clk, "OUT", outputPort, "CLK");
@@ -782,7 +807,10 @@ public final class Lf8CircuitFactory {
         wire(document, vectorEnable, "OUT", vectorRom, "ENABLE");
         wire(document, ramDecoder, "SELECT", ram, "CS");
         wire(document, cpu, "MEMORY_READ", ram, "OE");
-        wire(document, cpu, "MEMORY_WRITE", ram, "WE");
+        wire(document, clk, "OUT", clockNot, "A");
+        wire(document, cpu, "MEMORY_WRITE", ramWriteStrobe, "IN0");
+        wire(document, clockNot, "Y", ramWriteStrobe, "IN1");
+        wire(document, ramWriteStrobe, "OUT", ram, "WE");
         wire(document, cpu, "DATA", outputPort, "DATA");
         wire(document, outputPortDecoder, "SELECT", outputPort, "SELECT");
         wire(document, cpu, "MEMORY_WRITE", outputPort, "WRITE");
@@ -854,7 +882,13 @@ public final class Lf8CircuitFactory {
                 StructuralCircuitFactory.resettableRegisterFile8x8Project(),
                 StructuralCircuitFactory.loadableCounter16Project(0),
                 StructuralCircuitFactory.loadableCounter16Project(0xBFFF),
-                StructuralCircuitFactory.moduloCounter3Project());
+                StructuralCircuitFactory.moduloCounter3Project(),
+                StructuralCircuitFactory.structuralBusMuxProject(1),
+                StructuralCircuitFactory.structuralBusMuxProject(3),
+                StructuralCircuitFactory.structuralBusMuxProject(4),
+                StructuralCircuitFactory.structuralBusMuxProject(8),
+                StructuralCircuitFactory.structuralBusMuxProject(16),
+                StructuralCircuitFactory.decrementer16Project());
         for (CircuitProject family : families) {
             family.circuits().stream()
                     .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(
@@ -867,6 +901,15 @@ public final class Lf8CircuitFactory {
                                          double x, double y, int width, String label) {
         return add(document, registry, "routing.mux2", x, y,
                 defaults(registry, "routing.mux2").with(LibraryParameters.WIDTH, width), label);
+    }
+
+    private static ComponentInstance mux(CircuitDocument document, ComponentRegistry registry,
+                                         Lf8ImplementationMode mode, double x, double y,
+                                         int width, String label) {
+        return mode == Lf8ImplementationMode.GATE_LEVEL
+                ? subcircuit(document, StructuralCircuitFactory.structuralBusMuxName(width),
+                        x, y, label)
+                : mux(document, registry, x, y, width, label);
     }
 
     private static ComponentInstance slice(CircuitDocument document, ComponentRegistry registry,
@@ -938,6 +981,13 @@ public final class Lf8CircuitFactory {
 
     private static ParameterValues defaults(ComponentRegistry registry, String definitionId) {
         return registry.require(definitionId).definition().defaultParameters();
+    }
+
+    private static ComponentInstance role(CircuitDocument document, ComponentInstance instance,
+                                          String semanticRole) {
+        ComponentInstance updated = instance.withSemanticRole(semanticRole);
+        document.replaceComponent(updated);
+        return updated;
     }
 
     private static ComponentInstance add(CircuitDocument document, ComponentRegistry registry,

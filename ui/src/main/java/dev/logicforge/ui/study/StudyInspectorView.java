@@ -1,5 +1,8 @@
 package dev.logicforge.ui.study;
 
+import dev.logicforge.processor.lf8.Lf8ComponentRoles;
+import dev.logicforge.processor.lf8.runtime.Lf8RuntimeProbe;
+
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.processor.lf8.Lf8ControlField;
@@ -118,15 +121,17 @@ public final class StudyInspectorView extends VBox {
             return;
         }
         body.getChildren().add(section("LF-8 architectural state"));
-        addOutput(probe, "PC", "DATAPATH/PC", "COUNT");
-        addOutput(probe, "SP", "DATAPATH/SP", "COUNT");
-        addOutput(probe, "IR", "DATAPATH/IR", "Q");
-        addOutput(probe, "STATUS flags", "DATAPATH/FLAGS_REGISTER", "Q");
-        addOutput(probe, "IE", "DATAPATH/IE_REGISTER", "Q");
-        addOutput(probe, "Microstep", "CONTROL/MICROSTEP", "COUNT");
-        addOutput(probe, "IRQ", "CONTROL/IRQ_PROBE", "IN");
-        addOutput(probe, "NMI taken", "CONTROL/NMI_TAKEN_LATCH", "Q");
-        addOutput(probe, "HALT", "CONTROL/HALT_LATCH", "Q");
+        String datapath = Lf8ComponentRoles.CPU_DATAPATH + "/";
+        String control = Lf8ComponentRoles.CPU_CONTROL + "/";
+        addOutput(probe, "PC", datapath + Lf8ComponentRoles.DATAPATH_PC, "COUNT");
+        addOutput(probe, "SP", datapath + Lf8ComponentRoles.DATAPATH_SP, "COUNT");
+        addOutput(probe, "IR", datapath + Lf8ComponentRoles.DATAPATH_IR, "Q");
+        addOutput(probe, "STATUS flags", datapath + Lf8ComponentRoles.DATAPATH_FLAGS, "Q");
+        addOutput(probe, "IE", datapath + Lf8ComponentRoles.DATAPATH_IE, "Q");
+        addOutput(probe, "Microstep", control + Lf8ComponentRoles.CONTROL_MICROSTEP, "COUNT");
+        addOutput(probe, "IRQ", control + Lf8ComponentRoles.CONTROL_IRQ_INPUT, "IN");
+        addOutput(probe, "NMI taken", control + Lf8ComponentRoles.CONTROL_NMI_TAKEN, "Q");
+        addOutput(probe, "HALT", control + Lf8ComponentRoles.CONTROL_HALT, "Q");
 
         probe.registerFile().ifPresent(snapshot -> {
             var registers = snapshot.registers();
@@ -144,10 +149,12 @@ public final class StudyInspectorView extends VBox {
                     body.getChildren().add(row("Instruction", decoded));
                 }));
 
-        probe.value("CONTROL/MICROCODE_ROM", "DATA").ifPresent(value ->
+        String microcode = Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_CONTROL,
+                Lf8ComponentRoles.CONTROL_MICROCODE);
+        probe.value(microcode, "DATA").ifPresent(value ->
                 value.toUnsignedLong().ifPresent(word -> {
                     body.getChildren().add(section("Microcode"));
-                    probe.value("CONTROL/MICROCODE_ROM", "ADDRESS").ifPresent(address ->
+                    probe.value(microcode, "ADDRESS").ifPresent(address ->
                             body.getChildren().add(row("ROM address", format(address))));
                     body.getChildren().add(row("Raw control word", "0x"
                             + Long.toUnsignedString(word, 16).toUpperCase(Locale.ROOT)));

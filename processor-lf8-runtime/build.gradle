@@ -1,0 +1,12 @@
+plugins {
+    id 'java-library'
+}
+
+dependencies {
+    api project(':processor-lf8')
+    api project(':circuit-compiler')
+    api project(':simulation-core')
+    implementation project(':component-structures')
+    testImplementation project(':component-library')
+    testImplementation project(':lf8-tools')
+}

@@ -66,7 +66,7 @@ public final class Workbench extends BorderPane {
         this.statusBar = new StatusBarView(editor, canvas.viewport());
         this.projects = new ProjectController(editor, stage, statusBar::showMessage);
         this.analyzerController = new LogicAnalyzerController(editor);
-        this.analyzerView = new LogicAnalyzerView(analyzerController);
+        this.analyzerView = new LogicAnalyzerView(analyzerController, this::showAnalyzerSignal);
         this.playback = new SimulationPlaybackController(editor);
 
         canvas.setStatusListener(statusBar::update);
@@ -120,6 +120,11 @@ public final class Workbench extends BorderPane {
         } else if (!visible) {
             verticalSplit.getItems().remove(analyzerView);
         }
+    }
+
+    private void showAnalyzerSignal(LogicAnalyzerController.WatchedSignal signal) {
+        analyzerController.location(signal).ifPresent(location ->
+                editor.navigateToRuntimeEndpoint(location.parentPath(), location.endpoint()));
     }
 
     private HBox buildToolbar() {

@@ -20,12 +20,19 @@ public record CharacterOutputBehavior(int capacity) implements ComponentBehavior
         LogicState reset = LogicOperations.asGateInput(context.readInput(4).singleBit());
         if (reset == LogicState.ONE) {
             state.text.setLength(0);
+            state.unknown = false;
         } else if (reset == LogicState.UNKNOWN) {
+            // The buffer is a String rather than a four-state vector. Retaining every
+            // possible string after an ambiguous reset/write would grow exponentially, so
+            // this component deliberately uses one persistent coarse uncertainty marker.
             state.unknown = true;
-        } else if (state.lastClock == LogicState.ZERO && clock == LogicState.ONE) {
+        } else if (ClockEdgePolicy.rising(state.lastClock, clock) != LogicState.ZERO) {
+            LogicState edge = ClockEdgePolicy.rising(state.lastClock, clock);
             LogicState write = LogicOperations.and(context.readInput(1).singleBit(),
                     context.readInput(2).singleBit());
-            if (write == LogicState.ONE) {
+            if (edge == LogicState.UNKNOWN && write != LogicState.ZERO) {
+                state.unknown = true;
+            } else if (write == LogicState.ONE) {
                 var value = context.readInput(0).toUnsignedLong();
                 if (value.isPresent()) {
                     if (state.text.length() == capacity) {
@@ -53,7 +60,7 @@ public record CharacterOutputBehavior(int capacity) implements ComponentBehavior
                 "UNKNOWN_WRITE", LogicVector.single(LogicState.of(state.unknown)));
         Map<String, Long> counters = Map.of("characters", (long) state.text.length());
         return new ComponentDebugSnapshot(values, List.of(), null, counters,
-                Map.of("TEXT", state.text.toString()));
+                Map.of("TEXT", state.unknown ? "<unknown>" : state.text.toString()));
     }
 
     public static String text(ComponentRuntimeState runtime) { return ((State) runtime).text.toString(); }

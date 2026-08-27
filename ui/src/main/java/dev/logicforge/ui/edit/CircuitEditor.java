@@ -219,6 +219,33 @@ public final class CircuitEditor {
         switchActiveCircuit(parent.circuitName(), parent.instancePath(), false);
     }
 
+    /** Opens the exact concrete hierarchy containing an analyzer endpoint and selects it. */
+    public boolean navigateToRuntimeEndpoint(
+            dev.logicforge.compiler.RuntimeInstancePath parentPath, PortEndpoint endpoint) {
+        if (project.circuit(parentPath.rootCircuitName()).isEmpty()) {
+            return false;
+        }
+        switchActiveCircuit(parentPath.rootCircuitName(),
+                Optional.of(parentPath.rootCircuitName()), true);
+        for (java.util.UUID instanceId : parentPath.instanceIds()) {
+            ComponentInstance instance = document.component(instanceId).orElse(null);
+            if (instance == null || !SubcircuitSupport.isInstanceDefinition(instance.definitionId())) {
+                return false;
+            }
+            openSubcircuit(instance);
+        }
+        if (document.component(endpoint.componentId()).isEmpty()) {
+            return false;
+        }
+        selection.selectComponent(endpoint.componentId());
+        document.connections().stream()
+                .filter(connection -> connection.from().port().equals(endpoint.port())
+                        || connection.to().port().equals(endpoint.port()))
+                .findFirst().ifPresent(connection -> selection.selectConnection(connection.id()));
+        notifyChanged();
+        return true;
+    }
+
     private void switchActiveCircuit(String circuitName, Optional<String> instancePath,
                                      boolean clearNavigation) {
         CircuitDocument next = project.circuit(circuitName).orElseThrow(() ->

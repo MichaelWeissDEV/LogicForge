@@ -39,8 +39,8 @@ public final class TimerBehavior implements ComponentBehavior {
         }
 
         LogicState clock = LogicOperations.asGateInput(context.readInput(CLK).singleBit());
-        boolean risingEdge = state.lastClock == LogicState.ZERO && clock == LogicState.ONE;
-        if (reset != LogicState.ONE && risingEdge) {
+        LogicState risingEdge = ClockEdgePolicy.rising(state.lastClock, clock);
+        if (reset != LogicState.ONE && risingEdge == LogicState.ONE) {
             tick(state);
             LogicState selectedWrite = LogicOperations.and(
                     context.readInput(SELECT).singleBit(), context.readInput(WRITE).singleBit());
@@ -50,6 +50,16 @@ public final class TimerBehavior implements ComponentBehavior {
             } else if (selectedWrite == LogicState.UNKNOWN) {
                 state.makeUnknown();
             }
+        } else if (reset != LogicState.ONE && risingEdge == LogicState.UNKNOWN) {
+            LogicState selectedWrite = LogicOperations.and(
+                    context.readInput(SELECT).singleBit(), context.readInput(WRITE).singleBit());
+            if (state.control.getBit(0) != LogicState.ZERO
+                    || selectedWrite != LogicState.ZERO) {
+                state.makeUnknown();
+            }
+        }
+        if (reset == LogicState.UNKNOWN) {
+            state.mergeResetState();
         }
         state.lastClock = clock;
 
@@ -197,6 +207,17 @@ public final class TimerBehavior implements ComponentBehavior {
             reload = LogicVector.repeat(LogicState.UNKNOWN, WORD);
             control = LogicVector.repeat(LogicState.UNKNOWN, BYTE);
             pending = LogicState.UNKNOWN;
+        }
+
+        private void mergeResetState() {
+            counter = StatefulControlPolicy.merge(counter,
+                    LogicVector.repeat(LogicState.ZERO, WORD));
+            reload = StatefulControlPolicy.merge(reload,
+                    LogicVector.repeat(LogicState.ZERO, WORD));
+            control = StatefulControlPolicy.merge(control,
+                    LogicVector.repeat(LogicState.ZERO, BYTE));
+            pending = StatefulControlPolicy.merge(LogicVector.single(pending), LogicVector.ZERO)
+                    .singleBit();
         }
 
         @Override

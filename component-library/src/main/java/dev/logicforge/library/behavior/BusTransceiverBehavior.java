@@ -15,22 +15,21 @@ public record BusTransceiverBehavior(BitWidth width) implements ComponentBehavio
         LogicState direction = LogicOperations.asGateInput(context.readInput(0).singleBit());
         LogicState enable = LogicOperations.asGateInput(context.readInput(1).singleBit());
         LogicVector z = LogicVector.repeat(LogicState.HIGH_IMPEDANCE, width);
-        LogicVector x = LogicVector.repeat(LogicState.UNKNOWN, width);
-        LogicVector driveA;
-        LogicVector driveB;
-        if (enable == LogicState.ZERO) {
-            driveA = z;
-            driveB = z;
-        } else if (enable == LogicState.ONE && direction == LogicState.ONE) {
-            driveA = z;
-            driveB = LogicOperations.asGateInput(context.readInput(2));
-        } else if (enable == LogicState.ONE && direction == LogicState.ZERO) {
-            driveA = LogicOperations.asGateInput(context.readInput(3));
-            driveB = z;
-        } else {
-            driveA = x;
-            driveB = x;
-        }
+        LogicVector a = context.readInput(2);
+        LogicVector b = context.readInput(3);
+
+        LogicVector enabledA = switch (direction) {
+            case ZERO -> b;
+            case ONE -> z;
+            case UNKNOWN, HIGH_IMPEDANCE -> StatefulControlPolicy.merge(b, z);
+        };
+        LogicVector enabledB = switch (direction) {
+            case ZERO -> z;
+            case ONE -> a;
+            case UNKNOWN, HIGH_IMPEDANCE -> StatefulControlPolicy.merge(z, a);
+        };
+        LogicVector driveA = StatefulControlPolicy.choose(enable, z, enabledA);
+        LogicVector driveB = StatefulControlPolicy.choose(enable, z, enabledB);
         context.driveOutput(0, driveA);
         context.driveOutput(1, driveB);
     }

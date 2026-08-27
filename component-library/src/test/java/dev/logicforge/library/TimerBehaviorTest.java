@@ -1,6 +1,7 @@
 package dev.logicforge.library;
 
 import static dev.logicforge.logic.LogicState.ONE;
+import static dev.logicforge.logic.LogicState.UNKNOWN;
 import static dev.logicforge.logic.LogicState.ZERO;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -47,6 +48,19 @@ class TimerBehaviorTest {
         assertEquals(ONE, timer.output(1));
         assertEquals(ZERO, behavior.debugSnapshot(timer.state()).namedValues()
                 .get("CONTROL").getBit(0));
+    }
+
+    @Test
+    void unknownResetPersistsAsMergedTimerState() {
+        TimerBehavior behavior = new TimerBehavior();
+        BehaviorHarness timer = harness(behavior);
+        write(timer, behavior, 0, 0xff);
+        timer.setInput(5, UNKNOWN);
+        behavior.evaluate(timer);
+        timer.setInput(5, ZERO);
+        behavior.evaluate(timer);
+        assertEquals(LogicVector.repeat(UNKNOWN, 8), behavior.debugSnapshot(timer.state())
+                .namedValues().get("RELOAD").slice(0, 8));
     }
 
     private static BehaviorHarness harness(TimerBehavior behavior) {

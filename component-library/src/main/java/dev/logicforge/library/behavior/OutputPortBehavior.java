@@ -24,14 +24,15 @@ public record OutputPortBehavior(BitWidth width) implements ComponentBehavior {
     public void evaluate(ComponentContext context) {
         State state = (State) context.state();
         LogicState clock = LogicOperations.asGateInput(context.readInput(CLK).singleBit());
-        boolean risingEdge = state.lastClock == LogicState.ZERO && clock == LogicState.ONE;
+        LogicState risingEdge = ClockEdgePolicy.rising(state.lastClock, clock);
 
         LogicVector normal = state.value;
-        if (risingEdge) {
+        if (risingEdge != LogicState.ZERO) {
             LogicState writeSelected = LogicOperations.and(
                     context.readInput(SELECT).singleBit(), context.readInput(WRITE).singleBit());
-            normal = StatefulControlPolicy.choose(writeSelected, state.value,
+            LogicVector edgeValue = StatefulControlPolicy.choose(writeSelected, state.value,
                     LogicOperations.asGateInput(context.readInput(DATA)));
+            normal = StatefulControlPolicy.choose(risingEdge, state.value, edgeValue);
         }
         LogicVector cleared = LogicVector.repeat(LogicState.ZERO, width);
         state.value = StatefulControlPolicy.choose(

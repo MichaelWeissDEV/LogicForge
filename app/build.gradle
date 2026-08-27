@@ -68,3 +68,59 @@ tasks.register('examples', JavaExec) {
     mainClass = 'dev.logicforge.app.ExampleGenerator'
     args = [rootProject.file('examples').absolutePath]
 }
+
+def verificationExamples = layout.buildDirectory.dir('generated/verify-examples')
+
+tasks.register('generateExamplesForVerification', JavaExec) {
+    group = 'verification'
+    description = 'Generates examples into an isolated build directory'
+    dependsOn tasks.named('toolsClasses')
+    classpath = sourceSets.tools.runtimeClasspath
+    mainClass = 'dev.logicforge.app.ExampleGenerator'
+    args = [verificationExamples.get().asFile.absolutePath]
+    doFirst {
+        delete verificationExamples
+    }
+}
+
+tasks.register('verifyExamples') {
+    group = 'verification'
+    description = 'Fails when committed generated .logic examples are stale'
+    dependsOn tasks.named('generateExamplesForVerification')
+    doLast {
+        def generatedRoot = verificationExamples.get().asFile.toPath()
+        def committedRoot = rootProject.file('examples').toPath()
+        def uuidPattern = java.util.regex.Pattern.compile(
+                '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+        def canonical = { String source ->
+            def ids = new LinkedHashMap<String, String>()
+            def matcher = uuidPattern.matcher(source)
+            def result = new StringBuffer()
+            while (matcher.find()) {
+                def replacement = ids.computeIfAbsent(matcher.group()) {
+                    String.format('00000000-0000-0000-0000-%012d', ids.size() + 1)
+                }
+                matcher.appendReplacement(result, replacement)
+            }
+            matcher.appendTail(result)
+            result.toString()
+        }
+        def stale = []
+        java.nio.file.Files.walk(generatedRoot).withCloseable { paths ->
+            paths.filter { java.nio.file.Files.isRegularFile(it) && it.toString().endsWith('.logic') }
+                    .sorted().forEach { generated ->
+                def relative = generatedRoot.relativize(generated)
+                def committed = committedRoot.resolve(relative)
+                if (!java.nio.file.Files.exists(committed)
+                        || canonical(java.nio.file.Files.readString(generated))
+                        != canonical(java.nio.file.Files.readString(committed))) {
+                    stale.add(relative.toString())
+                }
+            }
+        }
+        if (!stale.isEmpty()) {
+            throw new GradleException('Generated examples are stale: ' + stale.join(', ')
+                    + '. Run ./gradlew :app:examples and commit the results.')
+        }
+    }
+}

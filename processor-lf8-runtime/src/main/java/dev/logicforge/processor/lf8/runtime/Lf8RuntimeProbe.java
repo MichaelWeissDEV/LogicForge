@@ -1,4 +1,4 @@
-package dev.logicforge.ui.study;
+package dev.logicforge.processor.lf8.runtime;
 
 import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.CircuitProject;
@@ -8,16 +8,18 @@ import dev.logicforge.compiler.CompilationResult;
 import dev.logicforge.compiler.RuntimeInstancePath;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.processor.lf8.Lf8CircuitFactory;
+import dev.logicforge.processor.lf8.Lf8ComponentRoles;
 import dev.logicforge.simulation.ComponentDebugSnapshot;
 import dev.logicforge.simulation.InputSourceState;
 import dev.logicforge.simulation.Simulation;
+import dev.logicforge.structures.StructuralCircuitFactory;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.ArrayList;
-import java.util.Map;
 
-/** Instance-scoped LF-8 architectural probe; it never falls back to a global label. */
+/** Headless, instance-scoped LF-8 architectural probe based only on persisted roles. */
 public final class Lf8RuntimeProbe {
 
     private final CircuitProject project;
@@ -67,54 +69,57 @@ public final class Lf8RuntimeProbe {
         return Optional.ofNullable(cpu);
     }
 
-    public OptionalInt component(String relativePath) {
-        Resolved resolved = resolve(relativePath);
+    public OptionalInt component(String rolePath) {
+        Resolved resolved = resolve(rolePath);
         return compilation.hierarchySourceMap().componentId(resolved.path().toString());
     }
 
-    public Optional<LogicVector> output(String relativePath, int outputIndex) {
-        OptionalInt component = component(relativePath);
+    public Optional<LogicVector> output(String rolePath, int outputIndex) {
+        OptionalInt component = component(rolePath);
         return component.isEmpty() ? Optional.empty()
                 : Optional.of(simulation.readOutput(component.getAsInt(), outputIndex));
     }
 
-    /** Reads a named port on either a primitive or a hierarchy-only subcircuit instance. */
-    public Optional<LogicVector> value(String relativePath, String portName) {
-        Resolved resolved = resolve(relativePath);
-        OptionalInt net = compilation.hierarchySourceMap()
-                .netId(resolved.path() + "." + portName);
-        return net.isEmpty() ? Optional.empty()
-                : Optional.of(simulation.readNet(net.getAsInt()));
+    /** Reads a named port after resolving a slash-separated semantic-role path. */
+    public Optional<LogicVector> value(String rolePath, String portName) {
+        Resolved resolved = resolve(rolePath);
+        OptionalInt net = compilation.hierarchySourceMap().netId(resolved.path() + "." + portName);
+        return net.isEmpty() ? Optional.empty() : Optional.of(simulation.readNet(net.getAsInt()));
     }
 
-    public Optional<ComponentDebugSnapshot> debugSnapshot(String relativePath) {
-        OptionalInt component = component(relativePath);
+    public Optional<ComponentDebugSnapshot> debugSnapshot(String rolePath) {
+        OptionalInt component = component(rolePath);
         return component.isEmpty() ? Optional.empty()
                 : Optional.of(simulation.debugSnapshot(component.getAsInt()));
     }
 
     public Optional<LogicVector> pc() {
-        return value("DATAPATH/PC", "COUNT");
+        return value(Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_DATAPATH,
+                Lf8ComponentRoles.DATAPATH_PC), "COUNT");
     }
 
     public Optional<LogicVector> sp() {
-        return value("DATAPATH/SP", "COUNT");
+        return value(Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_DATAPATH,
+                Lf8ComponentRoles.DATAPATH_SP), "COUNT");
     }
 
     public Optional<LogicVector> ir() {
-        return value("DATAPATH/IR", "Q");
+        return value(Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_DATAPATH,
+                Lf8ComponentRoles.DATAPATH_IR), "Q");
     }
 
     public Optional<ComponentDebugSnapshot> registerFile() {
-        Optional<ComponentDebugSnapshot> primitive = debugSnapshot("DATAPATH/REGISTER_FILE")
+        String registerFile = Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_DATAPATH,
+                Lf8ComponentRoles.DATAPATH_REGISTER_FILE);
+        Optional<ComponentDebugSnapshot> primitive = debugSnapshot(registerFile)
                 .filter(snapshot -> !snapshot.registers().isEmpty());
         if (primitive.isPresent()) {
             return primitive;
         }
         ArrayList<LogicVector> registers = new ArrayList<>(8);
         for (int index = 0; index < 8; index++) {
-            Optional<LogicVector> value = value(
-                    "DATAPATH/REGISTER_FILE/REGISTER_" + index, "Q");
+            Optional<LogicVector> value = value(registerFile + "/"
+                    + StructuralCircuitFactory.registerFileRegisterRole(index), "Q");
             if (value.isEmpty()) {
                 return Optional.empty();
             }
@@ -125,8 +130,7 @@ public final class Lf8RuntimeProbe {
 
     /** Concrete user-driven source electrically connected to one CPU interface input. */
     public OptionalInt inputSource(String cpuPortName) {
-        OptionalInt net = compilation.hierarchySourceMap()
-                .netId(cpuPath + "." + cpuPortName);
+        OptionalInt net = compilation.hierarchySourceMap().netId(cpuPath + "." + cpuPortName);
         if (net.isEmpty()) {
             return OptionalInt.empty();
         }
@@ -144,26 +148,33 @@ public final class Lf8RuntimeProbe {
     }
 
     public Optional<LogicVector> microstep() {
-        return value("CONTROL/MICROSTEP", "COUNT");
+        return value(Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_CONTROL,
+                Lf8ComponentRoles.CONTROL_MICROSTEP), "COUNT");
     }
 
-    private Resolved resolve(String relativePath) {
-        if (relativePath == null || relativePath.isBlank() || relativePath.startsWith("/")) {
-            throw new IllegalArgumentException("LF-8 relative path cannot be blank or absolute");
+    /** Reads a port on this concrete CPU boundary without label lookup. */
+    public Optional<LogicVector> cpuPort(String portName) {
+        OptionalInt net = compilation.hierarchySourceMap().netId(cpuPath + "." + portName);
+        return net.isEmpty() ? Optional.empty() : Optional.of(simulation.readNet(net.getAsInt()));
+    }
+
+    private Resolved resolve(String rolePath) {
+        if (rolePath == null || rolePath.isBlank() || rolePath.startsWith("/")) {
+            throw new IllegalArgumentException("LF-8 semantic role path cannot be blank or absolute");
         }
         CircuitDocument document = project.circuit(Lf8CircuitFactory.CPU_CIRCUIT)
                 .orElseThrow(() -> new IllegalArgumentException("Project has no LF8_CPU circuit"));
         RuntimeInstancePath path = cpuPath;
-        String[] labels = Arrays.stream(relativePath.split("/"))
+        String[] roles = Arrays.stream(rolePath.split("/"))
                 .filter(segment -> !segment.isBlank()).toArray(String[]::new);
         ComponentInstance component = null;
-        for (int index = 0; index < labels.length; index++) {
-            String label = labels[index];
-            component = uniqueLabel(document, label);
+        for (int index = 0; index < roles.length; index++) {
+            String role = roles[index];
+            component = uniqueRole(document, role);
             path = path.child(component.id());
-            if (index < labels.length - 1) {
+            if (index < roles.length - 1) {
                 if (!SubcircuitSupport.isInstanceDefinition(component.definitionId())) {
-                    throw new IllegalArgumentException("LF-8 path segment is not hierarchical: " + label);
+                    throw new IllegalArgumentException("Role is not hierarchical: " + role);
                 }
                 String childName = SubcircuitSupport.circuitName(component.definitionId());
                 document = project.circuit(childName).orElseThrow(() ->
@@ -173,11 +184,11 @@ public final class Lf8RuntimeProbe {
         return new Resolved(path, component);
     }
 
-    private static ComponentInstance uniqueLabel(CircuitDocument document, String label) {
+    private static ComponentInstance uniqueRole(CircuitDocument document, String role) {
         var matches = document.components().stream()
-                .filter(component -> label.equals(component.label())).toList();
+                .filter(component -> role.equals(component.semanticRole())).toList();
         if (matches.size() != 1) {
-            throw new IllegalArgumentException("Expected one '" + label + "' in "
+            throw new IllegalArgumentException("Expected one semantic role '" + role + "' in "
                     + document.metadata().name() + ", found " + matches.size());
         }
         return matches.getFirst();

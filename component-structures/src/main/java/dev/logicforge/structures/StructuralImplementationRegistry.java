@@ -35,6 +35,11 @@ public final class StructuralImplementationRegistry {
                 StructuralCircuitFactory::fullAdderProject,
                 List.of("adder", "hierarchy", "gates")));
         registry.register(descriptor("arithmetic.adder",
+                ParameterMatcher.equalTo(LibraryParameters.WIDTH, 4),
+                "Ripple Adder 4", "Four explicit full-adder stages",
+                () -> StructuralCircuitFactory.rippleAdderProject(4),
+                List.of("adder", "ripple", "4-bit", "74HC283", "hierarchy")));
+        registry.register(descriptor("arithmetic.adder",
                 ParameterMatcher.equalTo(LibraryParameters.WIDTH, 8),
                 "Ripple Adder 8", "Eight explicit full-adder stages",
                 () -> StructuralCircuitFactory.rippleAdderProject(8),

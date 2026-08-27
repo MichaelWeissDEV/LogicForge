@@ -12,7 +12,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-/** Bounded clocked FIFO or LIFO stack with resettable, snapshot-safe storage. */
+/**
+ * Bounded clocked FIFO or LIFO stack with resettable, snapshot-safe storage.
+ *
+ * <p>An ambiguous reset or operation is represented by a persistent coarse uncertainty
+ * flag. Exact possible queue-state sets can grow exponentially with capacity; once coarse
+ * uncertainty is entered, data/count/empty/full remain X until a definite reset.
+ */
 public record QueueStorageBehavior(Kind kind, BitWidth width, int capacity)
         implements ComponentBehavior {
     public enum Kind { FIFO, STACK }
@@ -26,10 +32,13 @@ public record QueueStorageBehavior(Kind kind, BitWidth width, int capacity)
             state.reset();
         } else if (reset == LogicState.UNKNOWN) {
             state.unknown = true;
-        } else if (state.lastClock == LogicState.ZERO && clock == LogicState.ONE) {
+        } else if (ClockEdgePolicy.rising(state.lastClock, clock) != LogicState.ZERO) {
+            LogicState edge = ClockEdgePolicy.rising(state.lastClock, clock);
             LogicState put = LogicOperations.asGateInput(context.readInput(1).singleBit());
             LogicState take = LogicOperations.asGateInput(context.readInput(2).singleBit());
-            if (!put.isDefined() || !take.isDefined()) {
+            if (edge == LogicState.UNKNOWN && (put != LogicState.ZERO || take != LogicState.ZERO)) {
+                state.unknown = true;
+            } else if (!put.isDefined() || !take.isDefined()) {
                 state.unknown = true;
             } else if (kind == Kind.FIFO) {
                 fifoEdge(state, put == LogicState.ONE, take == LogicState.ONE,

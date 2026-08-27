@@ -16,25 +16,44 @@ public record SynchronousRamBehavior(BitWidth addressWidth, BitWidth dataWidth)
         State state = (State) context.state();
         LogicState reset = LogicOperations.asGateInput(context.readInput(4).singleBit());
         LogicState clock = LogicOperations.asGateInput(context.readInput(3).singleBit());
+        LogicVector normalOutput = state.output;
+        LogicState edge = ClockEdgePolicy.rising(state.lastClock, clock);
+        if (reset != LogicState.ONE && edge != LogicState.ZERO) {
+            AddressPossibilities addresses = AddressPossibilities.resolve(
+                    context.readInput(0), state.ram.wordCount());
+            LogicState write = LogicOperations.asGateInput(context.readInput(2).singleBit());
+            LogicVector data = LogicOperations.asGateInput(context.readInput(1));
+            LogicVector readCandidate = state.ram.readPossible(addresses);
+            if (write == LogicState.ZERO) {
+                normalOutput = StatefulControlPolicy.choose(edge, state.output, readCandidate);
+            } else if (write == LogicState.ONE) {
+                applyWrite(state.ram, addresses, data, edge == LogicState.ONE);
+            } else {
+                normalOutput = StatefulControlPolicy.merge(state.output, readCandidate);
+                applyWrite(state.ram, addresses, data, false);
+            }
+        }
         if (reset == LogicState.ONE) {
             state.ram.reset();
             state.output = LogicVector.repeat(LogicState.ZERO, dataWidth);
         } else if (reset == LogicState.UNKNOWN) {
-            state.output = LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
-        } else if (state.lastClock == LogicState.ZERO && clock == LogicState.ONE) {
-            var address = context.readInput(0).toUnsignedLong();
-            LogicState write = LogicOperations.asGateInput(context.readInput(2).singleBit());
-            if (address.isEmpty() || !write.isDefined()) {
-                state.output = LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
-            } else if (write == LogicState.ONE) {
-                state.ram.write((int) address.getAsLong(),
-                        LogicOperations.asGateInput(context.readInput(1)));
-            } else {
-                state.output = state.ram.read((int) address.getAsLong());
-            }
+            state.ram.mergeResetState();
+            state.output = StatefulControlPolicy.merge(normalOutput,
+                    LogicVector.repeat(LogicState.ZERO, dataWidth));
+        } else {
+            state.output = normalOutput;
         }
         state.lastClock = clock;
         context.driveOutput(0, state.output);
+    }
+
+    private static void applyWrite(RamState ram, AddressPossibilities addresses,
+                                   LogicVector data, boolean writeCertain) {
+        if (writeCertain && addresses.isSingle()) {
+            ram.write(addresses.singleAddress(), data);
+        } else {
+            addresses.forEach(address -> ram.mergeWord(address, data));
+        }
     }
     @Override public ComponentRuntimeState createState() { return new State(addressWidth, dataWidth); }
 

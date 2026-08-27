@@ -8,7 +8,6 @@ import dev.logicforge.simulation.ComponentBehavior;
 import dev.logicforge.simulation.ComponentContext;
 import dev.logicforge.simulation.ComponentRuntimeState;
 import dev.logicforge.simulation.MemorySnapshot;
-import java.util.OptionalLong;
 
 /**
  * A read-only memory: while ENABLE is 1, drives {@code contents[ADDRESS]} onto DATA;
@@ -41,12 +40,17 @@ public record RomBehavior(BitWidth dataWidth, LogicVector[] contents) implements
             context.driveOutput(0, LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth));
             return;
         }
-        OptionalLong address = context.readInput(ADDRESS).toUnsignedLong();
-        if (enable != LogicState.ONE || address.isEmpty() || address.getAsLong() >= contents.length) {
-            context.driveOutput(0, LogicVector.repeat(LogicState.UNKNOWN, dataWidth));
-            return;
-        }
-        context.driveOutput(0, contents[(int) address.getAsLong()]);
+        AddressPossibilities addresses = AddressPossibilities.resolve(
+                context.readInput(ADDRESS), contents.length);
+        LogicVector[] merged = {null};
+        addresses.forEach(address -> merged[0] = merged[0] == null ? contents[address]
+                : StatefulControlPolicy.merge(merged[0], contents[address]));
+        LogicVector read = merged[0] == null
+                ? LogicVector.repeat(LogicState.UNKNOWN, dataWidth) : merged[0];
+        LogicVector output = enable == LogicState.ONE ? read
+                : StatefulControlPolicy.merge(
+                        LogicVector.repeat(LogicState.HIGH_IMPEDANCE, dataWidth), read);
+        context.driveOutput(0, output);
     }
 
     @Override

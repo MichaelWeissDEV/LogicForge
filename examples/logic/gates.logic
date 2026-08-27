@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "application": "LogicForge",
   "name": "gates",
   "circuits": [
@@ -8,7 +8,7 @@
       "description": "Two switches demonstrate a basic two-input gate",
       "components": [
         {
-          "id": "bdbe37ec-ce92-44c8-84d1-6e69b8bbedbe",
+          "id": "90176538-d5ab-4e30-b4ca-4f65d814bdda",
           "type": "source.toggle",
           "x": 96,
           "y": 112,
@@ -18,7 +18,7 @@
           }
         },
         {
-          "id": "08a57859-c146-41b4-963d-ca588c19677b",
+          "id": "7b06ac87-f58d-4dec-aac9-8250106fc782",
           "type": "source.toggle",
           "x": 96,
           "y": 224,
@@ -28,7 +28,7 @@
           }
         },
         {
-          "id": "82666bbd-af99-418d-b76f-2eae42026848",
+          "id": "5b5aa514-4358-499f-8c60-acad748ba3b3",
           "type": "logic.and",
           "x": 288,
           "y": 168,
@@ -37,7 +37,7 @@
           }
         },
         {
-          "id": "5f3f5317-e5c2-4f0f-9701-1d451192c884",
+          "id": "183acd72-eb1a-4201-b866-7a2ee151da07",
           "type": "output.led",
           "x": 456,
           "y": 168,
@@ -49,35 +49,35 @@
       ],
       "connections": [
         {
-          "id": "90223a41-e455-4502-b662-e6113570c3e4",
+          "id": "8b89bc78-249b-4ff6-bf78-b77373d3ed15",
           "from": {
-            "component": "bdbe37ec-ce92-44c8-84d1-6e69b8bbedbe",
+            "component": "90176538-d5ab-4e30-b4ca-4f65d814bdda",
             "port": "OUT"
           },
           "to": {
-            "component": "82666bbd-af99-418d-b76f-2eae42026848",
+            "component": "5b5aa514-4358-499f-8c60-acad748ba3b3",
             "port": "IN0"
           }
         },
         {
-          "id": "f2d85948-103f-4aad-be3e-096f2ed493a7",
+          "id": "5dc8e92d-0c1e-4061-a6a0-3cffff534377",
           "from": {
-            "component": "08a57859-c146-41b4-963d-ca588c19677b",
+            "component": "7b06ac87-f58d-4dec-aac9-8250106fc782",
             "port": "OUT"
           },
           "to": {
-            "component": "82666bbd-af99-418d-b76f-2eae42026848",
+            "component": "5b5aa514-4358-499f-8c60-acad748ba3b3",
             "port": "IN1"
           }
         },
         {
-          "id": "676d4622-529a-4b8b-bbcd-fc6e8e530a98",
+          "id": "2a6e8e10-d295-4a5b-86b5-8f79938e142e",
           "from": {
-            "component": "82666bbd-af99-418d-b76f-2eae42026848",
+            "component": "5b5aa514-4358-499f-8c60-acad748ba3b3",
             "port": "OUT"
           },
           "to": {
-            "component": "5f3f5317-e5c2-4f0f-9701-1d451192c884",
+            "component": "183acd72-eb1a-4201-b866-7a2ee151da07",
             "port": "IN"
           }
         }

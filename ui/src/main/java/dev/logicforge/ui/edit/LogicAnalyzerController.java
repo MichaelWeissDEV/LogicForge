@@ -7,6 +7,7 @@ import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortSlice;
 import dev.logicforge.compiler.ResolvedSignal;
+import dev.logicforge.compiler.RuntimeInstancePath;
 import dev.logicforge.simulation.Simulation;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -95,6 +96,15 @@ public final class LogicAnalyzerController {
 
     public List<WatchedSignal> watchedSignals() {
         return List.copyOf(watched);
+    }
+
+    /** Stable source identity used for Analyzer -> Study/canvas navigation. */
+    public Optional<SignalLocation> location(WatchedSignal signal) {
+        return signal.instancePath().map(RuntimeInstancePath::parse)
+                .map(path -> new SignalLocation(path, signal.reference()));
+    }
+
+    public record SignalLocation(RuntimeInstancePath parentPath, PortEndpoint endpoint) {
     }
 
     public Optional<SignalTrace> traceFor(PortEndpoint reference) {

@@ -21,7 +21,8 @@ public record ComponentInstance(
         Rotation rotation,
         ParameterValues parameters,
         String label,
-        PortDisplayMode portDisplayMode) {
+        PortDisplayMode portDisplayMode,
+        String semanticRole) {
 
     public ComponentInstance {
         if (id == null || definitionId == null || position == null || rotation == null
@@ -30,18 +31,25 @@ public record ComponentInstance(
         }
         parameters = parameters == null ? ParameterValues.empty() : parameters;
         label = label == null ? "" : label;
+        semanticRole = semanticRole == null ? "" : semanticRole.strip();
+    }
+
+    public ComponentInstance(UUID id, String definitionId, CircuitPoint position,
+                             Rotation rotation, ParameterValues parameters, String label,
+                             PortDisplayMode portDisplayMode) {
+        this(id, definitionId, position, rotation, parameters, label, portDisplayMode, "");
     }
 
     /** A new instance with a fresh id. {@code position} is the centre of the body. */
     public static ComponentInstance create(String definitionId, CircuitPoint position,
                                            ParameterValues parameters) {
         return new ComponentInstance(UUID.randomUUID(), definitionId, position, Rotation.DEG_0,
-                parameters, "", PortDisplayMode.COMPACT);
+                parameters, "", PortDisplayMode.COMPACT, "");
     }
 
     public ComponentInstance withPosition(CircuitPoint newPosition) {
         return new ComponentInstance(id, definitionId, newPosition, rotation, parameters, label,
-                portDisplayMode);
+                portDisplayMode, semanticRole);
     }
 
     public ComponentInstance movedBy(double dx, double dy) {
@@ -50,30 +58,36 @@ public record ComponentInstance(
 
     public ComponentInstance withRotation(Rotation newRotation) {
         return new ComponentInstance(id, definitionId, position, newRotation, parameters, label,
-                portDisplayMode);
+                portDisplayMode, semanticRole);
     }
 
     public ComponentInstance withParameters(ParameterValues newParameters) {
         return new ComponentInstance(id, definitionId, position, rotation, newParameters, label,
-                portDisplayMode);
+                portDisplayMode, semanticRole);
     }
 
     public ComponentInstance withLabel(String newLabel) {
         return new ComponentInstance(id, definitionId, position, rotation, parameters, newLabel,
-                portDisplayMode);
+                portDisplayMode, semanticRole);
     }
 
     public ComponentInstance withId(UUID newId) {
         return new ComponentInstance(newId, definitionId, position, rotation, parameters, label,
-                portDisplayMode);
+                portDisplayMode, semanticRole);
     }
 
     public ComponentInstance withDefinitionId(String newDefinitionId) {
         return new ComponentInstance(id, newDefinitionId, position, rotation, parameters, label,
-                portDisplayMode);
+                portDisplayMode, semanticRole);
     }
 
     public ComponentInstance withPortDisplayMode(PortDisplayMode newMode) {
-        return new ComponentInstance(id, definitionId, position, rotation, parameters, label, newMode);
+        return new ComponentInstance(id, definitionId, position, rotation, parameters, label,
+                newMode, semanticRole);
+    }
+
+    public ComponentInstance withSemanticRole(String newRole) {
+        return new ComponentInstance(id, definitionId, position, rotation, parameters, label,
+                portDisplayMode, newRole);
     }
 }

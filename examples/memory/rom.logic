@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "application": "LogicForge",
   "name": "rom",
   "circuits": [
@@ -8,7 +8,7 @@
       "description": "Interactive ROM component example",
       "components": [
         {
-          "id": "c848544b-3884-4c90-8b66-b465625b88ea",
+          "id": "2ac31cad-ce42-4e9d-ba41-5cc1068d4d19",
           "type": "memory.rom",
           "x": 280,
           "y": 180,

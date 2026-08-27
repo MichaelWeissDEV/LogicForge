@@ -40,3 +40,9 @@ subprojects {
         }
     }
 }
+
+tasks.register('verifyExamples') {
+    group = 'verification'
+    description = 'Verifies committed generated examples are current'
+    dependsOn ':app:verifyExamples'
+}

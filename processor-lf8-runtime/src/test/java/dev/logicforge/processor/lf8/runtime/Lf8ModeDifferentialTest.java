@@ -1,4 +1,6 @@
-package dev.logicforge.ui.study;
+package dev.logicforge.processor.lf8.runtime;
+
+import dev.logicforge.processor.lf8.Lf8ComponentRoles;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -96,8 +98,10 @@ class Lf8ModeDifferentialTest {
         return new ArchitecturalState(
                 probe.pc().orElseThrow(), probe.sp().orElseThrow(), probe.ir().orElseThrow(),
                 registers,
-                probe.value("DATAPATH/FLAGS_REGISTER", "Q").orElseThrow(),
-                probe.value("DATAPATH/IE_REGISTER", "Q").orElseThrow(), halted,
+                probe.value(Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_DATAPATH,
+                        Lf8ComponentRoles.DATAPATH_FLAGS), "Q").orElseThrow(),
+                probe.value(Lf8ComponentRoles.path(Lf8ComponentRoles.CPU_DATAPATH,
+                        Lf8ComponentRoles.DATAPATH_IE), "Q").orElseThrow(), halted,
                 java.util.Arrays.asList(simulation.memoryPage(ram, 0, 4)
                         .orElseThrow().words()),
                 simulation.debugSnapshot(characterOutput).textValues().getOrDefault("TEXT", ""));

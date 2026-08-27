@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "application": "LogicForge",
   "name": "struct-register8",
   "circuits": [
@@ -8,7 +8,7 @@
       "description": "8 structural D flip-flops, each fed by a structural load multiplexer",
       "components": [
         {
-          "id": "944fedf8-9797-4f1d-b0b0-cd613c956f78",
+          "id": "c77fa594-1374-492f-abe3-ebaaaa619e66",
           "type": "hierarchy.input",
           "x": -360,
           "y": -80,
@@ -19,7 +19,7 @@
           }
         },
         {
-          "id": "b6b42aae-635e-4683-ba98-41449541039b",
+          "id": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
           "type": "hierarchy.input",
           "x": -360,
           "y": 0,
@@ -30,7 +30,7 @@
           }
         },
         {
-          "id": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+          "id": "8e761efa-ed0c-44b1-919e-262eab33f283",
           "type": "hierarchy.input",
           "x": -360,
           "y": 80,
@@ -41,7 +41,7 @@
           }
         },
         {
-          "id": "cbcb0028-8866-4b5f-a45f-7b54ebecae3c",
+          "id": "2ad29c00-9fe9-4c1f-9ad7-98b692d77797",
           "type": "hierarchy.output",
           "x": 360,
           "y": -80,
@@ -52,7 +52,7 @@
           }
         },
         {
-          "id": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+          "id": "9299a250-4ae2-403c-b051-3de990009000",
           "type": "routing.splitter",
           "x": -280,
           "y": -80,
@@ -62,7 +62,7 @@
           }
         },
         {
-          "id": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+          "id": "70468b4c-fae6-425b-9331-c2b1ed303c91",
           "type": "routing.joiner",
           "x": 280,
           "y": -80,
@@ -72,112 +72,112 @@
           }
         },
         {
-          "id": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+          "id": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
           "type": "subcircuit:STRUCT_MUX2",
           "x": -100,
           "y": -20,
           "label": "LOAD_MUX_0"
         },
         {
-          "id": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+          "id": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
           "type": "subcircuit:STRUCT_DFF",
           "x": -100,
           "y": 100,
           "label": "DFF_0"
         },
         {
-          "id": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+          "id": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
           "type": "subcircuit:STRUCT_MUX2",
           "x": -60,
           "y": -20,
           "label": "LOAD_MUX_1"
         },
         {
-          "id": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+          "id": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
           "type": "subcircuit:STRUCT_DFF",
           "x": -60,
           "y": 100,
           "label": "DFF_1"
         },
         {
-          "id": "387cd751-746e-419d-9296-0884b30d9b6a",
+          "id": "ace76719-dfb0-43ee-a118-6e5335b5648e",
           "type": "subcircuit:STRUCT_MUX2",
           "x": -20,
           "y": -20,
           "label": "LOAD_MUX_2"
         },
         {
-          "id": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+          "id": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
           "type": "subcircuit:STRUCT_DFF",
           "x": -20,
           "y": 100,
           "label": "DFF_2"
         },
         {
-          "id": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+          "id": "976a1bad-09af-4a45-bff0-f035cbe5369b",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 20,
           "y": -20,
           "label": "LOAD_MUX_3"
         },
         {
-          "id": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+          "id": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
           "type": "subcircuit:STRUCT_DFF",
           "x": 20,
           "y": 100,
           "label": "DFF_3"
         },
         {
-          "id": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+          "id": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 60,
           "y": -20,
           "label": "LOAD_MUX_4"
         },
         {
-          "id": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+          "id": "78cab5a5-1206-45b7-afbe-09da18451ee0",
           "type": "subcircuit:STRUCT_DFF",
           "x": 60,
           "y": 100,
           "label": "DFF_4"
         },
         {
-          "id": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+          "id": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 100,
           "y": -20,
           "label": "LOAD_MUX_5"
         },
         {
-          "id": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+          "id": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
           "type": "subcircuit:STRUCT_DFF",
           "x": 100,
           "y": 100,
           "label": "DFF_5"
         },
         {
-          "id": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+          "id": "86154952-2905-444e-85fe-2e7e857d13e6",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 140,
           "y": -20,
           "label": "LOAD_MUX_6"
         },
         {
-          "id": "61425475-d223-4819-b780-ccbee50ee39b",
+          "id": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
           "type": "subcircuit:STRUCT_DFF",
           "x": 140,
           "y": 100,
           "label": "DFF_6"
         },
         {
-          "id": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+          "id": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 180,
           "y": -20,
           "label": "LOAD_MUX_7"
         },
         {
-          "id": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+          "id": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
           "type": "subcircuit:STRUCT_DFF",
           "x": 180,
           "y": 100,
@@ -186,552 +186,552 @@
       ],
       "connections": [
         {
-          "id": "b7134170-84e6-4004-94d7-dafd0953cce3",
+          "id": "9f49dd42-e710-4d79-855a-1146b14a425b",
           "from": {
-            "component": "944fedf8-9797-4f1d-b0b0-cd613c956f78",
+            "component": "c77fa594-1374-492f-abe3-ebaaaa619e66",
             "port": "OUT"
           },
           "to": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BUS"
           }
         },
         {
-          "id": "42d7acbd-c25e-4c39-beb4-17536cca7c3f",
+          "id": "03718196-3edd-4331-ac92-654e38fc9bd8",
           "from": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BUS"
           },
           "to": {
-            "component": "cbcb0028-8866-4b5f-a45f-7b54ebecae3c",
+            "component": "2ad29c00-9fe9-4c1f-9ad7-98b692d77797",
             "port": "IN"
           }
         },
         {
-          "id": "ddd5c726-1b4c-4188-9967-86418a0ab6a8",
+          "id": "3110cfde-1c80-4980-be85-42972ff303b5",
           "from": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "Q"
           },
           "to": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "A"
           }
         },
         {
-          "id": "f26ed267-0436-4b08-8e77-cf67d9a672d8",
+          "id": "8a5fd41e-4f8b-4189-b2c1-0f44090b696d",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT0"
           },
           "to": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "B"
           }
         },
         {
-          "id": "93a81ae5-7a57-49b1-b16b-a3c1db1e61ec",
+          "id": "f34aa08b-11de-4a66-84c7-dac7cffe566d",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "S"
           }
         },
         {
-          "id": "dd4c21ec-5377-4090-8be1-e26e82796b0c",
+          "id": "fc17fd67-0ca1-46fc-b58a-a3289bb6469d",
           "from": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "Y"
           },
           "to": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "D"
           }
         },
         {
-          "id": "dd9cab25-c14d-4326-a2bf-15809b7e4077",
+          "id": "804e6a56-e4c1-44e6-9dc4-517bb0f3240b",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "CLK"
           }
         },
         {
-          "id": "7c55d345-f0cc-4be9-a992-fd1d6ba2817c",
+          "id": "6f0e4b26-068c-42e3-851d-22bf2c87ed8b",
           "from": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT0"
           }
         },
         {
-          "id": "60de57f3-09ec-4307-8906-40caa7f35fb7",
+          "id": "9d8cb31f-7832-430d-a45c-9376e893a75f",
           "from": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "Q"
           },
           "to": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "A"
           }
         },
         {
-          "id": "7735a27c-4cea-462d-8ad0-743cf383e8cb",
+          "id": "39f589ff-33bd-4944-b961-6ed3b1896b71",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT1"
           },
           "to": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "B"
           }
         },
         {
-          "id": "3eca6443-f941-4a92-9541-a8986fc3687a",
+          "id": "6953df1a-f3d8-4c95-b479-96c0a84c2f55",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "S"
           }
         },
         {
-          "id": "504caed5-1045-4b04-af49-f7597b764c8d",
+          "id": "91e3f7cb-422d-4cde-be29-ba0a587875ac",
           "from": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "Y"
           },
           "to": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "D"
           }
         },
         {
-          "id": "9dbb3489-3781-4544-a229-9e23547bcd36",
+          "id": "84da4abf-1dbb-4573-baa7-0481d8084a0e",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "CLK"
           }
         },
         {
-          "id": "e9f1c6dc-68e0-41e3-97a7-13420fe35298",
+          "id": "88e2ec83-f0bb-4d57-b0a5-d148185e9a53",
           "from": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT1"
           }
         },
         {
-          "id": "c7747812-a9ce-4bf3-b820-df62ded068d6",
+          "id": "cacb970f-d2f6-4b4b-9adb-d15072ab88e1",
           "from": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "Q"
           },
           "to": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "A"
           }
         },
         {
-          "id": "c4efcd21-f926-4f09-a1f7-1ca4faa33137",
+          "id": "cf5d8b50-4304-4caf-a379-0c327335fa22",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT2"
           },
           "to": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "B"
           }
         },
         {
-          "id": "295e8b05-1c21-48d7-8e88-77040a4751c6",
+          "id": "0b19b638-13f2-493a-8549-655fd3d53f98",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "S"
           }
         },
         {
-          "id": "a7466d15-d454-49a7-9a0c-06f7baf9688d",
+          "id": "d2c094b7-a7fb-4d7f-9598-5888f7ea32d4",
           "from": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "Y"
           },
           "to": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "D"
           }
         },
         {
-          "id": "2e212221-bf10-4fb3-bae5-2deb5ed4f21f",
+          "id": "83e54f13-c367-4e8c-9a08-26d08a9f2f06",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "CLK"
           }
         },
         {
-          "id": "40191d14-34f4-45ed-bef9-2daa6978d410",
+          "id": "93951f2f-42a6-45c8-909b-30849827596f",
           "from": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT2"
           }
         },
         {
-          "id": "e217075a-3277-4902-b7ea-849de7eb7dbd",
+          "id": "d62da8e5-357e-44f6-813e-efe97407d80d",
           "from": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "Q"
           },
           "to": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "A"
           }
         },
         {
-          "id": "3ae3d376-c7d0-4cf0-920a-c2656ba19e74",
+          "id": "ed7ae6c3-1521-47c1-8e8e-cf6efc97925f",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT3"
           },
           "to": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "B"
           }
         },
         {
-          "id": "5181004a-2849-4180-aa38-0a17f7f84433",
+          "id": "514b9af6-0b14-497d-9888-6bc203ef8c44",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "S"
           }
         },
         {
-          "id": "30d55a18-e880-4ccb-88e8-abaa7ca90c51",
+          "id": "0da5d9ea-6e86-45e3-ad78-3cb6f4c77adb",
           "from": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "Y"
           },
           "to": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "D"
           }
         },
         {
-          "id": "16a1f98a-4e0e-4fe2-86fc-e8cfc1514794",
+          "id": "54bf17d5-bbdd-4922-93d2-7101aae2a817",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "CLK"
           }
         },
         {
-          "id": "a93a88a5-c119-49c7-9889-34f4ce2861ad",
+          "id": "6c6988b1-dac7-49eb-8981-c5d567d5665c",
           "from": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT3"
           }
         },
         {
-          "id": "6dc50456-0e03-470a-8ccc-bdd7e1a1d8e4",
+          "id": "db3178e5-95d1-41c0-b470-d3630ff32749",
           "from": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "Q"
           },
           "to": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "A"
           }
         },
         {
-          "id": "9baf0615-e2be-46fb-a090-3fa88ab25395",
+          "id": "5dbec196-8d1a-40ce-b01c-65844d7bfc4d",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT4"
           },
           "to": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "B"
           }
         },
         {
-          "id": "3c7cbc92-1b3b-4c11-856e-2b459ba96c70",
+          "id": "531a4564-62b9-41e7-aacd-139dd9e7c4c4",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "S"
           }
         },
         {
-          "id": "6b99d9b8-3d81-4a23-b886-3fb8b8c953de",
+          "id": "f66b761b-7110-4b4e-a6a4-999a06e19093",
           "from": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "Y"
           },
           "to": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "D"
           }
         },
         {
-          "id": "0dd48ec1-ccda-4997-a5ab-146025f5cbbe",
+          "id": "761de833-8cdd-458a-8815-809b7b91ddef",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "CLK"
           }
         },
         {
-          "id": "7638e50c-64cc-41ce-b6b2-3b16374af6f7",
+          "id": "14377714-a6f7-4b1f-b825-3c3f496aaba3",
           "from": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT4"
           }
         },
         {
-          "id": "2f608b8b-663d-45ed-aa0c-5b1654c1855f",
+          "id": "da824d62-9a45-4431-9c65-67c7822b7d6b",
           "from": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "Q"
           },
           "to": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "A"
           }
         },
         {
-          "id": "d4633e9c-50c4-405c-8997-69ca6241e101",
+          "id": "e179e917-7550-488e-8728-6868ff464a6d",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT5"
           },
           "to": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "B"
           }
         },
         {
-          "id": "6cc6e06d-1b86-4ae5-a50a-c7855a796676",
+          "id": "2554ef29-7bce-4487-8e20-89c771141bf6",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "S"
           }
         },
         {
-          "id": "4761a769-d69a-4c9f-905d-a0492e0eec1a",
+          "id": "93e82ef1-8a15-4884-84f5-2d76b722dc20",
           "from": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "Y"
           },
           "to": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "D"
           }
         },
         {
-          "id": "d07023dc-d473-46b2-bf44-39a33c4b74a6",
+          "id": "93a577bc-b1c0-4185-b641-0db038a45fc2",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "CLK"
           }
         },
         {
-          "id": "be516eae-394f-4e05-9176-49c223c7f94b",
+          "id": "8946b551-3a5f-46e3-9631-5126b151e12a",
           "from": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT5"
           }
         },
         {
-          "id": "cc9ff1aa-4ad3-4f7f-ba95-ae85301f1bd5",
+          "id": "01125f14-3b5b-4de8-85cc-d1ebf06a62e6",
           "from": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "Q"
           },
           "to": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "A"
           }
         },
         {
-          "id": "3667768d-3e43-4eb4-a28e-da7cf5945cb6",
+          "id": "ac2e5d6b-dd73-4f4d-ba56-0cfcdc7f76ad",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT6"
           },
           "to": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "B"
           }
         },
         {
-          "id": "c562dc9a-6939-4024-b567-5448180170e8",
+          "id": "9c06de44-abc6-45f2-9cf1-0c123ad4b58b",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "S"
           }
         },
         {
-          "id": "f8a6baa1-411c-44fb-b4f6-510e65182da0",
+          "id": "b52fd58e-c3cc-4b30-925d-785b787223e3",
           "from": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "Y"
           },
           "to": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "D"
           }
         },
         {
-          "id": "e98feb0d-8c11-40cb-b4f7-adfed809617e",
+          "id": "0f98347d-5eb5-424a-9514-0c4f6fb416ce",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "CLK"
           }
         },
         {
-          "id": "61bc32f4-fa1d-4192-91c8-29b9b30cdd34",
+          "id": "4d34613e-8aa7-49c5-a736-cb4362678fda",
           "from": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT6"
           }
         },
         {
-          "id": "89a5e19a-4b5e-4a35-93d8-7a126f79b993",
+          "id": "71b5d499-e844-44f1-8db1-547dc388b7a2",
           "from": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "Q"
           },
           "to": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "A"
           }
         },
         {
-          "id": "2a5faf0f-d765-4f7b-ad19-e10674ed767e",
+          "id": "5f93539d-319f-4ef9-bd7f-ae374755a07f",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT7"
           },
           "to": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "B"
           }
         },
         {
-          "id": "7573415e-de26-4420-ba4e-a2aaeae057bb",
+          "id": "1935fa8e-e58c-4f31-8c0d-317678ff6e9a",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "S"
           }
         },
         {
-          "id": "721fa335-8ac9-4f4f-8b91-eff6f2607701",
+          "id": "34dd3a83-99c3-4b39-87c9-3d5be6ec6da7",
           "from": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "Y"
           },
           "to": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "D"
           }
         },
         {
-          "id": "bf8dc268-005a-42f5-be7b-dec0b0957816",
+          "id": "747b3c7b-c82b-4e20-8410-8c29fe7bc498",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "CLK"
           }
         },
         {
-          "id": "ef7e00c1-6ddd-46b6-99a7-24e3a686a5b8",
+          "id": "b89312da-8da3-47a9-87fc-db7ede18ee44",
           "from": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT7"
           }
         }
@@ -742,7 +742,7 @@
       "description": "Cross-coupled NOR SR latch with active-high S and R",
       "components": [
         {
-          "id": "5974417c-608e-4ce3-8647-e3273b58bf63",
+          "id": "621cf57d-75f5-4c9e-9695-2e41e8352b4b",
           "type": "hierarchy.input",
           "x": -220,
           "y": -50,
@@ -753,7 +753,7 @@
           }
         },
         {
-          "id": "b429e86d-d5f6-43eb-b0cf-3a98478b9051",
+          "id": "bac0db44-64d3-45e7-a4b5-2348e76274b0",
           "type": "hierarchy.input",
           "x": -220,
           "y": 50,
@@ -764,7 +764,7 @@
           }
         },
         {
-          "id": "3c98b6d1-f6a9-430c-ab96-d7850d0ac717",
+          "id": "060af6e4-1b8f-4095-b922-9f751b0c0e89",
           "type": "logic.nor",
           "x": 0,
           "y": 50,
@@ -774,7 +774,7 @@
           }
         },
         {
-          "id": "f0f757d5-ecc4-4536-92fd-eba66a3cb8da",
+          "id": "7aa71e53-5e79-447d-a830-fd2089c15935",
           "type": "logic.nor",
           "x": 0,
           "y": -50,
@@ -784,7 +784,7 @@
           }
         },
         {
-          "id": "c853f7b2-2f48-4710-81a4-3b4e489f0d60",
+          "id": "0b36e807-40b7-4eed-88d8-1dec1d3fe24d",
           "type": "hierarchy.output",
           "x": 220,
           "y": 50,
@@ -795,7 +795,7 @@
           }
         },
         {
-          "id": "65446e1b-11cf-487d-8a75-5050cea56ab5",
+          "id": "3420a05c-eeb5-4b40-8f63-e3b3d8bdec0c",
           "type": "hierarchy.output",
           "x": 220,
           "y": -50,
@@ -808,68 +808,68 @@
       ],
       "connections": [
         {
-          "id": "d4ed4a8a-a65a-4bf1-a820-1be185196b8b",
+          "id": "3239f906-4087-4e85-b737-c8ca6ff0e229",
           "from": {
-            "component": "b429e86d-d5f6-43eb-b0cf-3a98478b9051",
+            "component": "bac0db44-64d3-45e7-a4b5-2348e76274b0",
             "port": "OUT"
           },
           "to": {
-            "component": "3c98b6d1-f6a9-430c-ab96-d7850d0ac717",
+            "component": "060af6e4-1b8f-4095-b922-9f751b0c0e89",
             "port": "IN0"
           }
         },
         {
-          "id": "101410b0-696b-4552-9191-f321dc70c9c1",
+          "id": "041165cd-545f-49cd-a2e2-b4e88fb82d0e",
           "from": {
-            "component": "f0f757d5-ecc4-4536-92fd-eba66a3cb8da",
+            "component": "7aa71e53-5e79-447d-a830-fd2089c15935",
             "port": "OUT"
           },
           "to": {
-            "component": "3c98b6d1-f6a9-430c-ab96-d7850d0ac717",
+            "component": "060af6e4-1b8f-4095-b922-9f751b0c0e89",
             "port": "IN1"
           }
         },
         {
-          "id": "2dc03d7a-ed40-4120-91e9-d76487d483d0",
+          "id": "cfb0c017-90e8-4375-b3c7-23abd21bf6a8",
           "from": {
-            "component": "5974417c-608e-4ce3-8647-e3273b58bf63",
+            "component": "621cf57d-75f5-4c9e-9695-2e41e8352b4b",
             "port": "OUT"
           },
           "to": {
-            "component": "f0f757d5-ecc4-4536-92fd-eba66a3cb8da",
+            "component": "7aa71e53-5e79-447d-a830-fd2089c15935",
             "port": "IN0"
           }
         },
         {
-          "id": "fddbf067-7e63-4e95-85f7-a52cf8aa42c3",
+          "id": "11696b02-4fa9-43d8-8ac3-306036c4ff83",
           "from": {
-            "component": "3c98b6d1-f6a9-430c-ab96-d7850d0ac717",
+            "component": "060af6e4-1b8f-4095-b922-9f751b0c0e89",
             "port": "OUT"
           },
           "to": {
-            "component": "f0f757d5-ecc4-4536-92fd-eba66a3cb8da",
+            "component": "7aa71e53-5e79-447d-a830-fd2089c15935",
             "port": "IN1"
           }
         },
         {
-          "id": "2bb76f67-e8ec-481f-b349-d40892312833",
+          "id": "a9386e02-6c50-497d-bdb4-98df2df66b7d",
           "from": {
-            "component": "3c98b6d1-f6a9-430c-ab96-d7850d0ac717",
+            "component": "060af6e4-1b8f-4095-b922-9f751b0c0e89",
             "port": "OUT"
           },
           "to": {
-            "component": "c853f7b2-2f48-4710-81a4-3b4e489f0d60",
+            "component": "0b36e807-40b7-4eed-88d8-1dec1d3fe24d",
             "port": "IN"
           }
         },
         {
-          "id": "d1a57f01-627f-4e70-9985-227ce15efb72",
+          "id": "d42fc89a-6a4b-4f70-8706-43665fc3b664",
           "from": {
-            "component": "f0f757d5-ecc4-4536-92fd-eba66a3cb8da",
+            "component": "7aa71e53-5e79-447d-a830-fd2089c15935",
             "port": "OUT"
           },
           "to": {
-            "component": "65446e1b-11cf-487d-8a75-5050cea56ab5",
+            "component": "3420a05c-eeb5-4b40-8f63-e3b3d8bdec0c",
             "port": "IN"
           }
         }
@@ -880,7 +880,7 @@
       "description": "Structural active-high D latch feeding a NOR SR latch",
       "components": [
         {
-          "id": "8a1fd141-8747-4c52-adcc-f289af028992",
+          "id": "8c9b5cf8-b585-4914-89d4-611e4d525e9d",
           "type": "hierarchy.input",
           "x": -260,
           "y": -50,
@@ -891,7 +891,7 @@
           }
         },
         {
-          "id": "29963be8-5aed-4fee-a599-367145c3427a",
+          "id": "27e85284-7a87-446b-bfa5-7773eacb6ef3",
           "type": "hierarchy.input",
           "x": -260,
           "y": 50,
@@ -902,14 +902,14 @@
           }
         },
         {
-          "id": "d81be02a-5232-42f9-bba1-fa7e7518a856",
+          "id": "c413b2a6-4ac7-4db8-be01-fcc9f8ba8788",
           "type": "logic.not",
           "x": -150,
           "y": 0,
           "label": "NOT_D"
         },
         {
-          "id": "1e9c0dfa-a95c-43fd-903e-2d594c95bc30",
+          "id": "afa1120e-375c-495b-a319-9d0c6d3b8671",
           "type": "logic.and",
           "x": -60,
           "y": -60,
@@ -919,7 +919,7 @@
           }
         },
         {
-          "id": "770a14fe-508f-4581-81c8-67e86a41d33e",
+          "id": "091b3089-c3e1-4f6b-96c9-f1a1d097fcb8",
           "type": "logic.and",
           "x": -60,
           "y": 60,
@@ -929,14 +929,14 @@
           }
         },
         {
-          "id": "b351b9e5-7d22-458c-955a-252b47b2bc9a",
+          "id": "8152378a-7124-45b6-8b6a-4875e71680cf",
           "type": "subcircuit:STRUCT_SR_LATCH_NOR",
           "x": 70,
           "y": 0,
           "label": "SR_LATCH"
         },
         {
-          "id": "cf3b6985-7506-49c9-aaa8-25f429af61c3",
+          "id": "e6478716-f787-498f-a8d5-335833913862",
           "type": "hierarchy.output",
           "x": 260,
           "y": -40,
@@ -947,7 +947,7 @@
           }
         },
         {
-          "id": "d37271b0-fcf6-417f-864f-1143b47e06f3",
+          "id": "2d298619-70e1-453b-bc68-861380833157",
           "type": "hierarchy.output",
           "x": 260,
           "y": 40,
@@ -960,101 +960,101 @@
       ],
       "connections": [
         {
-          "id": "5e435006-3d8e-438a-9a43-5d9181ff1d6c",
+          "id": "7cf38262-f497-4025-a31c-2539aa673a20",
           "from": {
-            "component": "8a1fd141-8747-4c52-adcc-f289af028992",
+            "component": "8c9b5cf8-b585-4914-89d4-611e4d525e9d",
             "port": "OUT"
           },
           "to": {
-            "component": "d81be02a-5232-42f9-bba1-fa7e7518a856",
+            "component": "c413b2a6-4ac7-4db8-be01-fcc9f8ba8788",
             "port": "A"
           }
         },
         {
-          "id": "60b78116-68d6-4899-8211-5cfc5feacbbc",
+          "id": "eb8517dc-dee9-4651-bf93-30c7c83594f8",
           "from": {
-            "component": "8a1fd141-8747-4c52-adcc-f289af028992",
+            "component": "8c9b5cf8-b585-4914-89d4-611e4d525e9d",
             "port": "OUT"
           },
           "to": {
-            "component": "1e9c0dfa-a95c-43fd-903e-2d594c95bc30",
+            "component": "afa1120e-375c-495b-a319-9d0c6d3b8671",
             "port": "IN0"
           }
         },
         {
-          "id": "25bf4304-b1dc-45c2-acb7-a13798b0c61e",
+          "id": "4ecdc4eb-8548-480d-a7a1-5e8da5740219",
           "from": {
-            "component": "29963be8-5aed-4fee-a599-367145c3427a",
+            "component": "27e85284-7a87-446b-bfa5-7773eacb6ef3",
             "port": "OUT"
           },
           "to": {
-            "component": "1e9c0dfa-a95c-43fd-903e-2d594c95bc30",
+            "component": "afa1120e-375c-495b-a319-9d0c6d3b8671",
             "port": "IN1"
           }
         },
         {
-          "id": "65f76b87-7128-4337-b189-038b2cc6e1f4",
+          "id": "1a374d09-401f-4d85-826b-3dafc762ffaa",
           "from": {
-            "component": "d81be02a-5232-42f9-bba1-fa7e7518a856",
+            "component": "c413b2a6-4ac7-4db8-be01-fcc9f8ba8788",
             "port": "Y"
           },
           "to": {
-            "component": "770a14fe-508f-4581-81c8-67e86a41d33e",
+            "component": "091b3089-c3e1-4f6b-96c9-f1a1d097fcb8",
             "port": "IN0"
           }
         },
         {
-          "id": "478979f0-b4b0-4a88-8ee2-8e54e8f959cd",
+          "id": "ca6de4a6-6030-44ad-bada-6651a16949bd",
           "from": {
-            "component": "29963be8-5aed-4fee-a599-367145c3427a",
+            "component": "27e85284-7a87-446b-bfa5-7773eacb6ef3",
             "port": "OUT"
           },
           "to": {
-            "component": "770a14fe-508f-4581-81c8-67e86a41d33e",
+            "component": "091b3089-c3e1-4f6b-96c9-f1a1d097fcb8",
             "port": "IN1"
           }
         },
         {
-          "id": "9c3319f6-bdc5-4da8-b680-1275afacea86",
+          "id": "14442c7e-f4b4-41f9-928e-ae9a0248e25f",
           "from": {
-            "component": "1e9c0dfa-a95c-43fd-903e-2d594c95bc30",
+            "component": "afa1120e-375c-495b-a319-9d0c6d3b8671",
             "port": "OUT"
           },
           "to": {
-            "component": "b351b9e5-7d22-458c-955a-252b47b2bc9a",
+            "component": "8152378a-7124-45b6-8b6a-4875e71680cf",
             "port": "S"
           }
         },
         {
-          "id": "5cb4c9ab-a0b1-4627-8fa8-2f3a42726b8b",
+          "id": "0c2bd3b9-cfae-434e-8ddd-fe297ccb9d27",
           "from": {
-            "component": "770a14fe-508f-4581-81c8-67e86a41d33e",
+            "component": "091b3089-c3e1-4f6b-96c9-f1a1d097fcb8",
             "port": "OUT"
           },
           "to": {
-            "component": "b351b9e5-7d22-458c-955a-252b47b2bc9a",
+            "component": "8152378a-7124-45b6-8b6a-4875e71680cf",
             "port": "R"
           }
         },
         {
-          "id": "faad3463-d4b7-48d6-a109-9d85f8e194f1",
+          "id": "04869dbc-a84f-47c7-bf28-7a8ea68712cf",
           "from": {
-            "component": "b351b9e5-7d22-458c-955a-252b47b2bc9a",
+            "component": "8152378a-7124-45b6-8b6a-4875e71680cf",
             "port": "Q"
           },
           "to": {
-            "component": "cf3b6985-7506-49c9-aaa8-25f429af61c3",
+            "component": "e6478716-f787-498f-a8d5-335833913862",
             "port": "IN"
           }
         },
         {
-          "id": "e2bf9773-a62e-4fc9-b246-06d27f502820",
+          "id": "6d274133-1cff-4b27-a966-089584b61efe",
           "from": {
-            "component": "b351b9e5-7d22-458c-955a-252b47b2bc9a",
+            "component": "8152378a-7124-45b6-8b6a-4875e71680cf",
             "port": "Q_BAR"
           },
           "to": {
-            "component": "d37271b0-fcf6-417f-864f-1143b47e06f3",
+            "component": "2d298619-70e1-453b-bc68-861380833157",
             "port": "IN"
           }
         }
@@ -1065,7 +1065,7 @@
       "description": "Rising-edge master-slave D flip-flop built from two D latches",
       "components": [
         {
-          "id": "759f9b5f-24bc-4faf-9398-5be702a8e6ff",
+          "id": "00bb5479-7a79-471f-86ee-54829a1b1914",
           "type": "hierarchy.input",
           "x": -280,
           "y": -50,
@@ -1076,7 +1076,7 @@
           }
         },
         {
-          "id": "2ea68b4c-2bef-4864-8fc2-f2bc43185961",
+          "id": "32cdad53-e438-450f-be02-96cfb698a907",
           "type": "hierarchy.input",
           "x": -280,
           "y": 50,
@@ -1087,28 +1087,28 @@
           }
         },
         {
-          "id": "7ee8c7f3-d8f5-4cee-bc7d-b0ebc746859d",
+          "id": "26390b17-11d3-4919-9b38-c9996fe579a4",
           "type": "logic.not",
           "x": -170,
           "y": 60,
           "label": "NOT_CLK"
         },
         {
-          "id": "255280d4-1cd9-44bc-af05-821edd9c2273",
+          "id": "a98b4a62-418e-4eea-9693-e1b3403542d7",
           "type": "subcircuit:STRUCT_D_LATCH",
           "x": -60,
           "y": 0,
           "label": "MASTER_LATCH"
         },
         {
-          "id": "211a1794-6caa-4341-ae55-6fa7de91fe0a",
+          "id": "ace84153-94e6-49ca-a477-573f0daa7789",
           "type": "subcircuit:STRUCT_D_LATCH",
           "x": 100,
           "y": 0,
           "label": "SLAVE_LATCH"
         },
         {
-          "id": "8cf9a431-a2ed-4e0b-a2e8-2c04c62c2632",
+          "id": "b73a4e5f-8378-4eb7-976b-5c5a6e7b6b90",
           "type": "hierarchy.output",
           "x": 280,
           "y": -40,
@@ -1119,7 +1119,7 @@
           }
         },
         {
-          "id": "950839fe-3e93-4b2e-af67-2658583892a8",
+          "id": "73de8863-a131-4e1a-93b7-9f7d82249036",
           "type": "hierarchy.output",
           "x": 280,
           "y": 40,
@@ -1132,79 +1132,79 @@
       ],
       "connections": [
         {
-          "id": "58740cbe-199e-4a86-89cc-c44042eaa9e9",
+          "id": "ec777c71-c7de-41b1-8ed5-4585a6a20236",
           "from": {
-            "component": "2ea68b4c-2bef-4864-8fc2-f2bc43185961",
+            "component": "32cdad53-e438-450f-be02-96cfb698a907",
             "port": "OUT"
           },
           "to": {
-            "component": "7ee8c7f3-d8f5-4cee-bc7d-b0ebc746859d",
+            "component": "26390b17-11d3-4919-9b38-c9996fe579a4",
             "port": "A"
           }
         },
         {
-          "id": "18ac2690-0438-43a5-aac4-a5bb10b5312a",
+          "id": "a2508ec0-2bd5-4a78-b071-d2778395118c",
           "from": {
-            "component": "759f9b5f-24bc-4faf-9398-5be702a8e6ff",
+            "component": "00bb5479-7a79-471f-86ee-54829a1b1914",
             "port": "OUT"
           },
           "to": {
-            "component": "255280d4-1cd9-44bc-af05-821edd9c2273",
+            "component": "a98b4a62-418e-4eea-9693-e1b3403542d7",
             "port": "D"
           }
         },
         {
-          "id": "a2651be6-03e2-4370-b97e-51dd969b0e00",
+          "id": "f4c57ae9-08dc-454d-b75b-5ef75f3c84f4",
           "from": {
-            "component": "7ee8c7f3-d8f5-4cee-bc7d-b0ebc746859d",
+            "component": "26390b17-11d3-4919-9b38-c9996fe579a4",
             "port": "Y"
           },
           "to": {
-            "component": "255280d4-1cd9-44bc-af05-821edd9c2273",
+            "component": "a98b4a62-418e-4eea-9693-e1b3403542d7",
             "port": "EN"
           }
         },
         {
-          "id": "9d4ad6c1-680f-4f5b-a1cb-82e7a9140edb",
+          "id": "1e8608cf-73c5-463e-b196-4aba56709e4c",
           "from": {
-            "component": "255280d4-1cd9-44bc-af05-821edd9c2273",
+            "component": "a98b4a62-418e-4eea-9693-e1b3403542d7",
             "port": "Q"
           },
           "to": {
-            "component": "211a1794-6caa-4341-ae55-6fa7de91fe0a",
+            "component": "ace84153-94e6-49ca-a477-573f0daa7789",
             "port": "D"
           }
         },
         {
-          "id": "29a0485b-56cc-4fd0-8c39-18d85802a3d6",
+          "id": "a8ff3684-5d50-4711-b1e9-94ffc26696f8",
           "from": {
-            "component": "2ea68b4c-2bef-4864-8fc2-f2bc43185961",
+            "component": "32cdad53-e438-450f-be02-96cfb698a907",
             "port": "OUT"
           },
           "to": {
-            "component": "211a1794-6caa-4341-ae55-6fa7de91fe0a",
+            "component": "ace84153-94e6-49ca-a477-573f0daa7789",
             "port": "EN"
           }
         },
         {
-          "id": "9424b754-53e7-46e2-8fe3-bc8df7fa09cd",
+          "id": "fcabf786-80d2-4db4-9a99-e65037a8f98d",
           "from": {
-            "component": "211a1794-6caa-4341-ae55-6fa7de91fe0a",
+            "component": "ace84153-94e6-49ca-a477-573f0daa7789",
             "port": "Q"
           },
           "to": {
-            "component": "8cf9a431-a2ed-4e0b-a2e8-2c04c62c2632",
+            "component": "b73a4e5f-8378-4eb7-976b-5c5a6e7b6b90",
             "port": "IN"
           }
         },
         {
-          "id": "e4932919-5c6a-4b3f-bef1-8cb786861d64",
+          "id": "b29f2cc2-5cce-4dce-8efb-139a55a5ee01",
           "from": {
-            "component": "211a1794-6caa-4341-ae55-6fa7de91fe0a",
+            "component": "ace84153-94e6-49ca-a477-573f0daa7789",
             "port": "Q_BAR"
           },
           "to": {
-            "component": "950839fe-3e93-4b2e-af67-2658583892a8",
+            "component": "73de8863-a131-4e1a-93b7-9f7d82249036",
             "port": "IN"
           }
         }
@@ -1215,7 +1215,7 @@
       "description": "Gate-level 2:1 multiplexer: (!S & A) | (S & B)",
       "components": [
         {
-          "id": "d6d49489-863d-4d66-8ba0-99e47862c50a",
+          "id": "927951ca-a353-443f-8031-d03bf50e3a21",
           "type": "hierarchy.input",
           "x": -220,
           "y": -70,
@@ -1226,7 +1226,7 @@
           }
         },
         {
-          "id": "fe99fd2a-e07a-4152-85e1-288ed96bc2d4",
+          "id": "c62eeebd-6373-4ca3-adc4-1eede71219c6",
           "type": "hierarchy.input",
           "x": -220,
           "y": 0,
@@ -1237,7 +1237,7 @@
           }
         },
         {
-          "id": "11497825-2c35-42b3-a7b6-5b8f9fffd401",
+          "id": "0caaced3-31ca-47d7-8416-6c9d38800fd6",
           "type": "hierarchy.input",
           "x": -220,
           "y": 70,
@@ -1248,14 +1248,14 @@
           }
         },
         {
-          "id": "fd02c55f-b2b7-434d-a418-2d74af5d336c",
+          "id": "918ba202-a21a-492b-8e7e-d4023df5d588",
           "type": "logic.not",
           "x": -100,
           "y": 70,
           "label": "NOT_S"
         },
         {
-          "id": "1334bd73-2d48-4779-8fe1-46dd2f240252",
+          "id": "eb6e3dec-0f4a-4192-8171-f6512d98d953",
           "type": "logic.and",
           "x": 0,
           "y": -50,
@@ -1265,7 +1265,7 @@
           }
         },
         {
-          "id": "9b6cffaa-aed8-4b87-964f-8267d14e5b66",
+          "id": "8d7df8e7-9056-4ac4-a5cd-a2c8018f6167",
           "type": "logic.and",
           "x": 0,
           "y": 50,
@@ -1275,7 +1275,7 @@
           }
         },
         {
-          "id": "83ce8860-2d49-4935-97c0-724a1b880011",
+          "id": "55871f05-70d7-43ba-a952-7e186486d29d",
           "type": "logic.or",
           "x": 110,
           "y": 0,
@@ -1285,7 +1285,7 @@
           }
         },
         {
-          "id": "9cb9f085-9d45-44d9-b8d6-f3d9d7b02bc6",
+          "id": "d8400a84-4466-4394-91f3-619bb6177128",
           "type": "hierarchy.output",
           "x": 240,
           "y": 0,
@@ -1298,90 +1298,90 @@
       ],
       "connections": [
         {
-          "id": "9e6eeceb-8889-4e8b-9fbd-09e8cc5c9bb1",
+          "id": "3274284f-c902-4a9f-8a26-74562acf2814",
           "from": {
-            "component": "11497825-2c35-42b3-a7b6-5b8f9fffd401",
+            "component": "0caaced3-31ca-47d7-8416-6c9d38800fd6",
             "port": "OUT"
           },
           "to": {
-            "component": "fd02c55f-b2b7-434d-a418-2d74af5d336c",
+            "component": "918ba202-a21a-492b-8e7e-d4023df5d588",
             "port": "A"
           }
         },
         {
-          "id": "674315df-d2be-4ef4-a169-df1deb2c974f",
+          "id": "aea7786a-6590-4e90-a4f4-9ae7e880fd61",
           "from": {
-            "component": "d6d49489-863d-4d66-8ba0-99e47862c50a",
+            "component": "927951ca-a353-443f-8031-d03bf50e3a21",
             "port": "OUT"
           },
           "to": {
-            "component": "1334bd73-2d48-4779-8fe1-46dd2f240252",
+            "component": "eb6e3dec-0f4a-4192-8171-f6512d98d953",
             "port": "IN0"
           }
         },
         {
-          "id": "b003b163-dba7-4426-ac2b-ad0c758ce375",
+          "id": "a4e69150-39ce-4bb0-bf48-85cd07ffe31d",
           "from": {
-            "component": "fd02c55f-b2b7-434d-a418-2d74af5d336c",
+            "component": "918ba202-a21a-492b-8e7e-d4023df5d588",
             "port": "Y"
           },
           "to": {
-            "component": "1334bd73-2d48-4779-8fe1-46dd2f240252",
+            "component": "eb6e3dec-0f4a-4192-8171-f6512d98d953",
             "port": "IN1"
           }
         },
         {
-          "id": "7dde5f55-2e6f-49ca-a119-541e95f732c8",
+          "id": "db64645a-bff6-4c92-a310-efd3c72792af",
           "from": {
-            "component": "fe99fd2a-e07a-4152-85e1-288ed96bc2d4",
+            "component": "c62eeebd-6373-4ca3-adc4-1eede71219c6",
             "port": "OUT"
           },
           "to": {
-            "component": "9b6cffaa-aed8-4b87-964f-8267d14e5b66",
+            "component": "8d7df8e7-9056-4ac4-a5cd-a2c8018f6167",
             "port": "IN0"
           }
         },
         {
-          "id": "95db7178-7943-4bd0-894d-d2b4b0e0de50",
+          "id": "914e92e6-6ad9-4983-87e8-f35e10ffc5ca",
           "from": {
-            "component": "11497825-2c35-42b3-a7b6-5b8f9fffd401",
+            "component": "0caaced3-31ca-47d7-8416-6c9d38800fd6",
             "port": "OUT"
           },
           "to": {
-            "component": "9b6cffaa-aed8-4b87-964f-8267d14e5b66",
+            "component": "8d7df8e7-9056-4ac4-a5cd-a2c8018f6167",
             "port": "IN1"
           }
         },
         {
-          "id": "69cba5d4-8428-4d49-8560-ed0172ca73b1",
+          "id": "207ab91d-f243-4936-b618-ff8128e6a4a5",
           "from": {
-            "component": "1334bd73-2d48-4779-8fe1-46dd2f240252",
+            "component": "eb6e3dec-0f4a-4192-8171-f6512d98d953",
             "port": "OUT"
           },
           "to": {
-            "component": "83ce8860-2d49-4935-97c0-724a1b880011",
+            "component": "55871f05-70d7-43ba-a952-7e186486d29d",
             "port": "IN0"
           }
         },
         {
-          "id": "2179c612-4c54-42c2-972d-b85acf573c22",
+          "id": "e538c3d1-9e0a-47ee-94bd-11290319bea8",
           "from": {
-            "component": "9b6cffaa-aed8-4b87-964f-8267d14e5b66",
+            "component": "8d7df8e7-9056-4ac4-a5cd-a2c8018f6167",
             "port": "OUT"
           },
           "to": {
-            "component": "83ce8860-2d49-4935-97c0-724a1b880011",
+            "component": "55871f05-70d7-43ba-a952-7e186486d29d",
             "port": "IN1"
           }
         },
         {
-          "id": "1db0b2d7-c329-477a-a251-b84a23bd1748",
+          "id": "68d8da1d-b5d7-4578-bec5-f51183656d34",
           "from": {
-            "component": "83ce8860-2d49-4935-97c0-724a1b880011",
+            "component": "55871f05-70d7-43ba-a952-7e186486d29d",
             "port": "OUT"
           },
           "to": {
-            "component": "9cb9f085-9d45-44d9-b8d6-f3d9d7b02bc6",
+            "component": "d8400a84-4466-4394-91f3-619bb6177128",
             "port": "IN"
           }
         }
@@ -1392,7 +1392,7 @@
       "description": "8 structural D flip-flops, each fed by a structural load multiplexer",
       "components": [
         {
-          "id": "944fedf8-9797-4f1d-b0b0-cd613c956f78",
+          "id": "c77fa594-1374-492f-abe3-ebaaaa619e66",
           "type": "hierarchy.input",
           "x": -360,
           "y": -80,
@@ -1403,7 +1403,7 @@
           }
         },
         {
-          "id": "b6b42aae-635e-4683-ba98-41449541039b",
+          "id": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
           "type": "hierarchy.input",
           "x": -360,
           "y": 0,
@@ -1414,7 +1414,7 @@
           }
         },
         {
-          "id": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+          "id": "8e761efa-ed0c-44b1-919e-262eab33f283",
           "type": "hierarchy.input",
           "x": -360,
           "y": 80,
@@ -1425,7 +1425,7 @@
           }
         },
         {
-          "id": "cbcb0028-8866-4b5f-a45f-7b54ebecae3c",
+          "id": "2ad29c00-9fe9-4c1f-9ad7-98b692d77797",
           "type": "hierarchy.output",
           "x": 360,
           "y": -80,
@@ -1436,7 +1436,7 @@
           }
         },
         {
-          "id": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+          "id": "9299a250-4ae2-403c-b051-3de990009000",
           "type": "routing.splitter",
           "x": -280,
           "y": -80,
@@ -1446,7 +1446,7 @@
           }
         },
         {
-          "id": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+          "id": "70468b4c-fae6-425b-9331-c2b1ed303c91",
           "type": "routing.joiner",
           "x": 280,
           "y": -80,
@@ -1456,112 +1456,112 @@
           }
         },
         {
-          "id": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+          "id": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
           "type": "subcircuit:STRUCT_MUX2",
           "x": -100,
           "y": -20,
           "label": "LOAD_MUX_0"
         },
         {
-          "id": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+          "id": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
           "type": "subcircuit:STRUCT_DFF",
           "x": -100,
           "y": 100,
           "label": "DFF_0"
         },
         {
-          "id": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+          "id": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
           "type": "subcircuit:STRUCT_MUX2",
           "x": -60,
           "y": -20,
           "label": "LOAD_MUX_1"
         },
         {
-          "id": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+          "id": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
           "type": "subcircuit:STRUCT_DFF",
           "x": -60,
           "y": 100,
           "label": "DFF_1"
         },
         {
-          "id": "387cd751-746e-419d-9296-0884b30d9b6a",
+          "id": "ace76719-dfb0-43ee-a118-6e5335b5648e",
           "type": "subcircuit:STRUCT_MUX2",
           "x": -20,
           "y": -20,
           "label": "LOAD_MUX_2"
         },
         {
-          "id": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+          "id": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
           "type": "subcircuit:STRUCT_DFF",
           "x": -20,
           "y": 100,
           "label": "DFF_2"
         },
         {
-          "id": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+          "id": "976a1bad-09af-4a45-bff0-f035cbe5369b",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 20,
           "y": -20,
           "label": "LOAD_MUX_3"
         },
         {
-          "id": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+          "id": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
           "type": "subcircuit:STRUCT_DFF",
           "x": 20,
           "y": 100,
           "label": "DFF_3"
         },
         {
-          "id": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+          "id": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 60,
           "y": -20,
           "label": "LOAD_MUX_4"
         },
         {
-          "id": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+          "id": "78cab5a5-1206-45b7-afbe-09da18451ee0",
           "type": "subcircuit:STRUCT_DFF",
           "x": 60,
           "y": 100,
           "label": "DFF_4"
         },
         {
-          "id": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+          "id": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 100,
           "y": -20,
           "label": "LOAD_MUX_5"
         },
         {
-          "id": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+          "id": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
           "type": "subcircuit:STRUCT_DFF",
           "x": 100,
           "y": 100,
           "label": "DFF_5"
         },
         {
-          "id": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+          "id": "86154952-2905-444e-85fe-2e7e857d13e6",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 140,
           "y": -20,
           "label": "LOAD_MUX_6"
         },
         {
-          "id": "61425475-d223-4819-b780-ccbee50ee39b",
+          "id": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
           "type": "subcircuit:STRUCT_DFF",
           "x": 140,
           "y": 100,
           "label": "DFF_6"
         },
         {
-          "id": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+          "id": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
           "type": "subcircuit:STRUCT_MUX2",
           "x": 180,
           "y": -20,
           "label": "LOAD_MUX_7"
         },
         {
-          "id": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+          "id": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
           "type": "subcircuit:STRUCT_DFF",
           "x": 180,
           "y": 100,
@@ -1570,552 +1570,552 @@
       ],
       "connections": [
         {
-          "id": "b7134170-84e6-4004-94d7-dafd0953cce3",
+          "id": "9f49dd42-e710-4d79-855a-1146b14a425b",
           "from": {
-            "component": "944fedf8-9797-4f1d-b0b0-cd613c956f78",
+            "component": "c77fa594-1374-492f-abe3-ebaaaa619e66",
             "port": "OUT"
           },
           "to": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BUS"
           }
         },
         {
-          "id": "42d7acbd-c25e-4c39-beb4-17536cca7c3f",
+          "id": "03718196-3edd-4331-ac92-654e38fc9bd8",
           "from": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BUS"
           },
           "to": {
-            "component": "cbcb0028-8866-4b5f-a45f-7b54ebecae3c",
+            "component": "2ad29c00-9fe9-4c1f-9ad7-98b692d77797",
             "port": "IN"
           }
         },
         {
-          "id": "ddd5c726-1b4c-4188-9967-86418a0ab6a8",
+          "id": "3110cfde-1c80-4980-be85-42972ff303b5",
           "from": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "Q"
           },
           "to": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "A"
           }
         },
         {
-          "id": "f26ed267-0436-4b08-8e77-cf67d9a672d8",
+          "id": "8a5fd41e-4f8b-4189-b2c1-0f44090b696d",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT0"
           },
           "to": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "B"
           }
         },
         {
-          "id": "93a81ae5-7a57-49b1-b16b-a3c1db1e61ec",
+          "id": "f34aa08b-11de-4a66-84c7-dac7cffe566d",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "S"
           }
         },
         {
-          "id": "dd4c21ec-5377-4090-8be1-e26e82796b0c",
+          "id": "fc17fd67-0ca1-46fc-b58a-a3289bb6469d",
           "from": {
-            "component": "7b57db45-b717-4b18-a7d2-03d6fb1824e4",
+            "component": "3070fcaf-69f6-4df5-b4c7-52838d3cfad5",
             "port": "Y"
           },
           "to": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "D"
           }
         },
         {
-          "id": "dd9cab25-c14d-4326-a2bf-15809b7e4077",
+          "id": "804e6a56-e4c1-44e6-9dc4-517bb0f3240b",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "CLK"
           }
         },
         {
-          "id": "7c55d345-f0cc-4be9-a992-fd1d6ba2817c",
+          "id": "6f0e4b26-068c-42e3-851d-22bf2c87ed8b",
           "from": {
-            "component": "5623cfd9-1bfc-4434-807e-b01ce4f8c220",
+            "component": "4a15dc14-5115-46bb-84bb-6c4736ebabbb",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT0"
           }
         },
         {
-          "id": "60de57f3-09ec-4307-8906-40caa7f35fb7",
+          "id": "9d8cb31f-7832-430d-a45c-9376e893a75f",
           "from": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "Q"
           },
           "to": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "A"
           }
         },
         {
-          "id": "7735a27c-4cea-462d-8ad0-743cf383e8cb",
+          "id": "39f589ff-33bd-4944-b961-6ed3b1896b71",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT1"
           },
           "to": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "B"
           }
         },
         {
-          "id": "3eca6443-f941-4a92-9541-a8986fc3687a",
+          "id": "6953df1a-f3d8-4c95-b479-96c0a84c2f55",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "S"
           }
         },
         {
-          "id": "504caed5-1045-4b04-af49-f7597b764c8d",
+          "id": "91e3f7cb-422d-4cde-be29-ba0a587875ac",
           "from": {
-            "component": "6b9adccb-02a2-4dbe-86c4-b3c576f70fd1",
+            "component": "528ddc7a-b93a-4a9e-8b8a-34662f67fcac",
             "port": "Y"
           },
           "to": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "D"
           }
         },
         {
-          "id": "9dbb3489-3781-4544-a229-9e23547bcd36",
+          "id": "84da4abf-1dbb-4573-baa7-0481d8084a0e",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "CLK"
           }
         },
         {
-          "id": "e9f1c6dc-68e0-41e3-97a7-13420fe35298",
+          "id": "88e2ec83-f0bb-4d57-b0a5-d148185e9a53",
           "from": {
-            "component": "f0d32556-fbe1-4c10-ba7a-d5f7e062ac13",
+            "component": "ad96ab6f-57d9-4bbd-81d5-fe9471f7c9ca",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT1"
           }
         },
         {
-          "id": "c7747812-a9ce-4bf3-b820-df62ded068d6",
+          "id": "cacb970f-d2f6-4b4b-9adb-d15072ab88e1",
           "from": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "Q"
           },
           "to": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "A"
           }
         },
         {
-          "id": "c4efcd21-f926-4f09-a1f7-1ca4faa33137",
+          "id": "cf5d8b50-4304-4caf-a379-0c327335fa22",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT2"
           },
           "to": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "B"
           }
         },
         {
-          "id": "295e8b05-1c21-48d7-8e88-77040a4751c6",
+          "id": "0b19b638-13f2-493a-8549-655fd3d53f98",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "S"
           }
         },
         {
-          "id": "a7466d15-d454-49a7-9a0c-06f7baf9688d",
+          "id": "d2c094b7-a7fb-4d7f-9598-5888f7ea32d4",
           "from": {
-            "component": "387cd751-746e-419d-9296-0884b30d9b6a",
+            "component": "ace76719-dfb0-43ee-a118-6e5335b5648e",
             "port": "Y"
           },
           "to": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "D"
           }
         },
         {
-          "id": "2e212221-bf10-4fb3-bae5-2deb5ed4f21f",
+          "id": "83e54f13-c367-4e8c-9a08-26d08a9f2f06",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "CLK"
           }
         },
         {
-          "id": "40191d14-34f4-45ed-bef9-2daa6978d410",
+          "id": "93951f2f-42a6-45c8-909b-30849827596f",
           "from": {
-            "component": "74e800da-57e3-49d2-b0c2-8008a9f916ca",
+            "component": "4ce3adb9-1187-411c-ae87-2ac1132403b4",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT2"
           }
         },
         {
-          "id": "e217075a-3277-4902-b7ea-849de7eb7dbd",
+          "id": "d62da8e5-357e-44f6-813e-efe97407d80d",
           "from": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "Q"
           },
           "to": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "A"
           }
         },
         {
-          "id": "3ae3d376-c7d0-4cf0-920a-c2656ba19e74",
+          "id": "ed7ae6c3-1521-47c1-8e8e-cf6efc97925f",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT3"
           },
           "to": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "B"
           }
         },
         {
-          "id": "5181004a-2849-4180-aa38-0a17f7f84433",
+          "id": "514b9af6-0b14-497d-9888-6bc203ef8c44",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "S"
           }
         },
         {
-          "id": "30d55a18-e880-4ccb-88e8-abaa7ca90c51",
+          "id": "0da5d9ea-6e86-45e3-ad78-3cb6f4c77adb",
           "from": {
-            "component": "c0015e55-ad70-44ca-9d08-75f4ac4d9aec",
+            "component": "976a1bad-09af-4a45-bff0-f035cbe5369b",
             "port": "Y"
           },
           "to": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "D"
           }
         },
         {
-          "id": "16a1f98a-4e0e-4fe2-86fc-e8cfc1514794",
+          "id": "54bf17d5-bbdd-4922-93d2-7101aae2a817",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "CLK"
           }
         },
         {
-          "id": "a93a88a5-c119-49c7-9889-34f4ce2861ad",
+          "id": "6c6988b1-dac7-49eb-8981-c5d567d5665c",
           "from": {
-            "component": "73fb3694-d1d4-489a-a321-70ddc10b1136",
+            "component": "5ee53bcc-c67d-494e-a7be-b771b4a62be5",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT3"
           }
         },
         {
-          "id": "6dc50456-0e03-470a-8ccc-bdd7e1a1d8e4",
+          "id": "db3178e5-95d1-41c0-b470-d3630ff32749",
           "from": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "Q"
           },
           "to": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "A"
           }
         },
         {
-          "id": "9baf0615-e2be-46fb-a090-3fa88ab25395",
+          "id": "5dbec196-8d1a-40ce-b01c-65844d7bfc4d",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT4"
           },
           "to": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "B"
           }
         },
         {
-          "id": "3c7cbc92-1b3b-4c11-856e-2b459ba96c70",
+          "id": "531a4564-62b9-41e7-aacd-139dd9e7c4c4",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "S"
           }
         },
         {
-          "id": "6b99d9b8-3d81-4a23-b886-3fb8b8c953de",
+          "id": "f66b761b-7110-4b4e-a6a4-999a06e19093",
           "from": {
-            "component": "fcb4d7f9-3112-4c42-8620-2e41a539c647",
+            "component": "ebb39fdc-e444-4230-bbe3-59d3be9d4284",
             "port": "Y"
           },
           "to": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "D"
           }
         },
         {
-          "id": "0dd48ec1-ccda-4997-a5ab-146025f5cbbe",
+          "id": "761de833-8cdd-458a-8815-809b7b91ddef",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "CLK"
           }
         },
         {
-          "id": "7638e50c-64cc-41ce-b6b2-3b16374af6f7",
+          "id": "14377714-a6f7-4b1f-b825-3c3f496aaba3",
           "from": {
-            "component": "63f87cde-f16c-42ed-bac2-d31e18a90f33",
+            "component": "78cab5a5-1206-45b7-afbe-09da18451ee0",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT4"
           }
         },
         {
-          "id": "2f608b8b-663d-45ed-aa0c-5b1654c1855f",
+          "id": "da824d62-9a45-4431-9c65-67c7822b7d6b",
           "from": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "Q"
           },
           "to": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "A"
           }
         },
         {
-          "id": "d4633e9c-50c4-405c-8997-69ca6241e101",
+          "id": "e179e917-7550-488e-8728-6868ff464a6d",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT5"
           },
           "to": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "B"
           }
         },
         {
-          "id": "6cc6e06d-1b86-4ae5-a50a-c7855a796676",
+          "id": "2554ef29-7bce-4487-8e20-89c771141bf6",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "S"
           }
         },
         {
-          "id": "4761a769-d69a-4c9f-905d-a0492e0eec1a",
+          "id": "93e82ef1-8a15-4884-84f5-2d76b722dc20",
           "from": {
-            "component": "0180e082-f0d1-4793-bd43-e7b2ebbb1acd",
+            "component": "eb959eb8-9849-4522-8523-5e4f5796d5eb",
             "port": "Y"
           },
           "to": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "D"
           }
         },
         {
-          "id": "d07023dc-d473-46b2-bf44-39a33c4b74a6",
+          "id": "93a577bc-b1c0-4185-b641-0db038a45fc2",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "CLK"
           }
         },
         {
-          "id": "be516eae-394f-4e05-9176-49c223c7f94b",
+          "id": "8946b551-3a5f-46e3-9631-5126b151e12a",
           "from": {
-            "component": "d8cf7410-a28b-4fe6-85d9-c66466fba078",
+            "component": "cfab257d-99b5-48a1-8b1e-2c58d3a6da6c",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT5"
           }
         },
         {
-          "id": "cc9ff1aa-4ad3-4f7f-ba95-ae85301f1bd5",
+          "id": "01125f14-3b5b-4de8-85cc-d1ebf06a62e6",
           "from": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "Q"
           },
           "to": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "A"
           }
         },
         {
-          "id": "3667768d-3e43-4eb4-a28e-da7cf5945cb6",
+          "id": "ac2e5d6b-dd73-4f4d-ba56-0cfcdc7f76ad",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT6"
           },
           "to": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "B"
           }
         },
         {
-          "id": "c562dc9a-6939-4024-b567-5448180170e8",
+          "id": "9c06de44-abc6-45f2-9cf1-0c123ad4b58b",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "S"
           }
         },
         {
-          "id": "f8a6baa1-411c-44fb-b4f6-510e65182da0",
+          "id": "b52fd58e-c3cc-4b30-925d-785b787223e3",
           "from": {
-            "component": "0ccbd470-3de5-4c3a-825c-d6ec467d588e",
+            "component": "86154952-2905-444e-85fe-2e7e857d13e6",
             "port": "Y"
           },
           "to": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "D"
           }
         },
         {
-          "id": "e98feb0d-8c11-40cb-b4f7-adfed809617e",
+          "id": "0f98347d-5eb5-424a-9514-0c4f6fb416ce",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "CLK"
           }
         },
         {
-          "id": "61bc32f4-fa1d-4192-91c8-29b9b30cdd34",
+          "id": "4d34613e-8aa7-49c5-a736-cb4362678fda",
           "from": {
-            "component": "61425475-d223-4819-b780-ccbee50ee39b",
+            "component": "235e1acd-ef47-43fb-806d-ee61f3a4eedb",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT6"
           }
         },
         {
-          "id": "89a5e19a-4b5e-4a35-93d8-7a126f79b993",
+          "id": "71b5d499-e844-44f1-8db1-547dc388b7a2",
           "from": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "Q"
           },
           "to": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "A"
           }
         },
         {
-          "id": "2a5faf0f-d765-4f7b-ad19-e10674ed767e",
+          "id": "5f93539d-319f-4ef9-bd7f-ae374755a07f",
           "from": {
-            "component": "5cbb21f5-567d-4ec9-9eee-77ee01d23186",
+            "component": "9299a250-4ae2-403c-b051-3de990009000",
             "port": "BIT7"
           },
           "to": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "B"
           }
         },
         {
-          "id": "7573415e-de26-4420-ba4e-a2aaeae057bb",
+          "id": "1935fa8e-e58c-4f31-8c0d-317678ff6e9a",
           "from": {
-            "component": "b6b42aae-635e-4683-ba98-41449541039b",
+            "component": "41dcbeda-0e4e-4016-90bb-f09bbaf5a4dd",
             "port": "OUT"
           },
           "to": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "S"
           }
         },
         {
-          "id": "721fa335-8ac9-4f4f-8b91-eff6f2607701",
+          "id": "34dd3a83-99c3-4b39-87c9-3d5be6ec6da7",
           "from": {
-            "component": "8b7889f6-1fb7-413f-852a-a77fe7d5d22a",
+            "component": "3d7f968f-56f6-4047-98c6-6ef64dd6aabc",
             "port": "Y"
           },
           "to": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "D"
           }
         },
         {
-          "id": "bf8dc268-005a-42f5-be7b-dec0b0957816",
+          "id": "747b3c7b-c82b-4e20-8410-8c29fe7bc498",
           "from": {
-            "component": "25d4c78b-44ce-43dd-84ab-c7b4819a4127",
+            "component": "8e761efa-ed0c-44b1-919e-262eab33f283",
             "port": "OUT"
           },
           "to": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "CLK"
           }
         },
         {
-          "id": "ef7e00c1-6ddd-46b6-99a7-24e3a686a5b8",
+          "id": "b89312da-8da3-47a9-87fc-db7ede18ee44",
           "from": {
-            "component": "8c6fd7f3-15e6-4db8-9145-149055431cd9",
+            "component": "42a6553b-038c-4b7f-ac18-dfe35882a3d4",
             "port": "Q"
           },
           "to": {
-            "component": "7c46968b-544a-4df7-b9e1-0d2b2cf66189",
+            "component": "70468b4c-fae6-425b-9331-c2b1ed303c91",
             "port": "BIT7"
           }
         }

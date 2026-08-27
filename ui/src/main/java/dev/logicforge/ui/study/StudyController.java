@@ -1,8 +1,10 @@
 package dev.logicforge.ui.study;
 
+import dev.logicforge.processor.lf8.runtime.Lf8RuntimeProbe;
+import dev.logicforge.processor.lf8.runtime.ClockControl;
+
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.library.ComponentRegistry;
-import dev.logicforge.logic.LogicState;
 import dev.logicforge.simulation.Simulation;
 import dev.logicforge.ui.edit.CircuitEditor;
 import java.util.ArrayDeque;
@@ -141,17 +143,20 @@ public final class StudyController {
         if (probe == null || simulation == null) {
             return false;
         }
-        var clock = probe.inputSource("CLK");
+        var clock = ClockControl.discover(live().compilation(), simulation, probe.cpuPath());
         if (clock.isEmpty()) {
             return false;
         }
-        simulation.setInput(clock.getAsInt(), LogicState.ZERO);
-        simulation.runUntilStableAtCurrentTime();
-        simulation.setInput(clock.getAsInt(), LogicState.ONE);
-        simulation.runUntilStableAtCurrentTime();
+        if (!clock.orElseThrow().stepActiveEdge()) {
+            return false;
+        }
         editor.simulationSession().ifPresent(
                 dev.logicforge.simulation.SimulationSession::simulationChanged);
         return true;
+    }
+
+    private StudyTarget.LiveInstance live() {
+        return (StudyTarget.LiveInstance) target;
     }
 
     /** Advances only through real clock input changes until the next LF-8 boundary. */

@@ -57,7 +57,16 @@ class ExpansionBehaviorTest {
         harness.setInput(1, UNKNOWN);
         behavior.evaluate(harness);
         assertEquals(LogicVector.repeat(UNKNOWN, 4), harness.outputVector(0));
-        assertEquals(LogicVector.repeat(UNKNOWN, 4), harness.outputVector(1));
+        assertEquals(LogicVector.repeat(HIGH_IMPEDANCE, 4), harness.outputVector(1),
+                "ENABLE=X,DIR=0 leaves the B side unconditionally released");
+
+        harness.setInput(0, ONE);
+        harness.setInput(2, LogicVector.repeat(HIGH_IMPEDANCE, 4));
+        behavior.evaluate(harness);
+        assertEquals(LogicVector.repeat(HIGH_IMPEDANCE, 4), harness.outputVector(0),
+                "ENABLE=X,DIR=1 leaves the A side unconditionally released");
+        assertEquals(LogicVector.repeat(HIGH_IMPEDANCE, 4), harness.outputVector(1),
+                "merging Z with an already-Z source preserves Z");
     }
 
     @Test
@@ -82,6 +91,19 @@ class ExpansionBehaviorTest {
         harness.setInput(4, ONE);
         behavior.evaluate(harness);
         assertEquals("", behavior.debugSnapshot(harness.state()).textValues().get("TEXT"));
+
+        harness.setInput(4, ZERO);
+        harness.setInput(3, ZERO);
+        harness.setInput(0, LogicVector.fromUnsignedLong('X', 8));
+        behavior.evaluate(harness);
+        harness.setInput(3, ONE);
+        behavior.evaluate(harness);
+        harness.setInput(4, UNKNOWN);
+        behavior.evaluate(harness);
+        harness.setInput(4, ZERO);
+        behavior.evaluate(harness);
+        assertEquals("<unknown>", behavior.debugSnapshot(harness.state()).textValues().get("TEXT"),
+                "an ambiguous reset must not resurrect a known text buffer");
     }
 
     @Test

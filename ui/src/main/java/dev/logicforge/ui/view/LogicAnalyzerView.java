@@ -60,6 +60,7 @@ public final class LogicAnalyzerView extends BorderPane {
     private static final double MIN_PIXELS_PER_TICK = 70;
 
     private final LogicAnalyzerController controller;
+    private final java.util.function.Consumer<LogicAnalyzerController.WatchedSignal> showSignal;
     private final VBox labelColumn = new VBox();
     private final Canvas ruler = new Canvas(MIN_CANVAS_WIDTH, RULER_HEIGHT);
     private final Canvas canvas = new Canvas(MIN_CANVAS_WIDTH, ROW_HEIGHT);
@@ -75,7 +76,14 @@ public final class LogicAnalyzerView extends BorderPane {
     private boolean scrollingProgrammatically;
 
     public LogicAnalyzerView(LogicAnalyzerController controller) {
+        this(controller, ignored -> { });
+    }
+
+    public LogicAnalyzerView(LogicAnalyzerController controller,
+                             java.util.function.Consumer<LogicAnalyzerController.WatchedSignal>
+                                     showSignal) {
         this.controller = controller;
+        this.showSignal = java.util.Objects.requireNonNull(showSignal, "showSignal");
         getStyleClass().add("side-panel");
 
         setTop(buildHeader());
@@ -230,10 +238,13 @@ public final class LogicAnalyzerView extends BorderPane {
             Button removeButton = new Button("✕");
             removeButton.getStyleClass().add("tool-button");
             removeButton.setOnAction(event -> remove(signal));
+            Button showButton = new Button("Show");
+            showButton.getStyleClass().add("tool-button");
+            showButton.setOnAction(event -> showSignal.accept(signal));
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
-            HBox row = new HBox(4, name, value, spacer, removeButton);
+            HBox row = new HBox(4, name, value, spacer, showButton, removeButton);
             row.setAlignment(Pos.CENTER_LEFT);
             row.setPrefHeight(ROW_HEIGHT);
             row.setMinHeight(ROW_HEIGHT);

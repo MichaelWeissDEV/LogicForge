@@ -18,49 +18,78 @@ public record DualPortRamBehavior(BitWidth addressWidth, BitWidth dataWidth)
         LogicState reset = LogicOperations.asGateInput(context.readInput(8).singleBit());
         LogicState clockA = LogicOperations.asGateInput(context.readInput(3).singleBit());
         LogicState clockB = LogicOperations.asGateInput(context.readInput(7).singleBit());
-        boolean unknownReset = reset == LogicState.UNKNOWN;
         if (reset == LogicState.ONE) {
             state.ram.reset();
-        } else if (reset == LogicState.ZERO) {
-            boolean edgeA = state.clockA == LogicState.ZERO && clockA == LogicState.ONE;
-            boolean edgeB = state.clockB == LogicState.ZERO && clockB == LogicState.ONE;
-            var addressA = context.readInput(0).toUnsignedLong();
-            var addressB = context.readInput(4).toUnsignedLong();
-            LogicState weA = LogicOperations.asGateInput(context.readInput(2).singleBit());
-            LogicState weB = LogicOperations.asGateInput(context.readInput(6).singleBit());
-            if (edgeA && weA == LogicState.ONE && addressA.isPresent()
-                    && edgeB && weB == LogicState.ONE && addressB.isPresent()
-                    && addressA.getAsLong() == addressB.getAsLong()) {
-                LogicVector a = LogicOperations.asGateInput(context.readInput(1));
-                LogicVector b = LogicOperations.asGateInput(context.readInput(5));
-                state.ram.write((int) addressA.getAsLong(), a.equals(b) ? a
-                        : LogicVector.repeat(LogicState.UNKNOWN, dataWidth));
-            } else {
-                writePort(state, context, edgeA, weA, addressA, 1);
-                writePort(state, context, edgeB, weB, addressB, 5);
+        } else {
+            LogicState edgeA = ClockEdgePolicy.rising(state.clockA, clockA);
+            LogicState edgeB = ClockEdgePolicy.rising(state.clockB, clockB);
+            if (edgeA != LogicState.ZERO || edgeB != LogicState.ZERO) {
+                PortWrite a = new PortWrite(edgeA,
+                        LogicOperations.asGateInput(context.readInput(2).singleBit()),
+                        AddressPossibilities.resolve(context.readInput(0), state.ram.wordCount()),
+                        LogicOperations.asGateInput(context.readInput(1)));
+                PortWrite b = new PortWrite(edgeB,
+                        LogicOperations.asGateInput(context.readInput(6).singleBit()),
+                        AddressPossibilities.resolve(context.readInput(4), state.ram.wordCount()),
+                        LogicOperations.asGateInput(context.readInput(5)));
+                applyWrites(state.ram, a, b);
+            }
+            if (reset == LogicState.UNKNOWN) {
+                state.ram.mergeResetState();
             }
         }
         state.clockA = clockA; state.clockB = clockB;
-        context.driveOutput(0, unknownReset
-                ? LogicVector.repeat(LogicState.UNKNOWN, dataWidth)
-                : read(state, context.readInput(0)));
-        context.driveOutput(1, unknownReset
-                ? LogicVector.repeat(LogicState.UNKNOWN, dataWidth)
-                : read(state, context.readInput(4)));
+        context.driveOutput(0, read(state, context.readInput(0)));
+        context.driveOutput(1, read(state, context.readInput(4)));
     }
-    private void writePort(State state, ComponentContext context, boolean edge, LogicState we,
-                           java.util.OptionalLong address, int dataInput) {
-        if (edge && we == LogicState.ONE && address.isPresent()) {
-            state.ram.write((int) address.getAsLong(),
-                    LogicOperations.asGateInput(context.readInput(dataInput)));
-        } else if (edge && we == LogicState.UNKNOWN && address.isPresent()) {
-            state.ram.write((int) address.getAsLong(), LogicVector.repeat(LogicState.UNKNOWN, dataWidth));
+
+    private void applyWrites(RamState ram, PortWrite a, PortWrite b) {
+        for (int address = 0; address < ram.wordCount(); address++) {
+            boolean aMay = a.mayWrite(address);
+            boolean bMay = b.mayWrite(address);
+            if (!aMay && !bMay) {
+                continue;
+            }
+            boolean aMust = a.mustWrite(address);
+            boolean bMust = b.mustWrite(address);
+            LogicVector next = null;
+            if (!aMust && !bMust) {
+                next = ram.wordAt(address);
+            }
+            if (aMay && !bMust) {
+                next = mergeCandidate(next, a.data());
+            }
+            if (bMay && !aMust) {
+                next = mergeCandidate(next, b.data());
+            }
+            if (aMay && bMay) {
+                LogicVector collision = a.data().equals(b.data()) ? a.data()
+                        : LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
+                next = mergeCandidate(next, collision);
+            }
+            ram.write(address, next);
         }
     }
+
+    private static LogicVector mergeCandidate(LogicVector current, LogicVector candidate) {
+        return current == null ? candidate : StatefulControlPolicy.merge(current, candidate);
+    }
+
     private LogicVector read(State state, LogicVector address) {
-        var numeric = address.toUnsignedLong();
-        return numeric.isPresent() ? state.ram.read((int) numeric.getAsLong())
-                : LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
+        return state.ram.readPossible(AddressPossibilities.resolve(address, state.ram.wordCount()));
+    }
+
+    private record PortWrite(LogicState edge, LogicState writeEnable,
+                             AddressPossibilities addresses, LogicVector data) {
+        boolean mayWrite(int address) {
+            return edge != LogicState.ZERO && writeEnable != LogicState.ZERO
+                    && addresses.contains(address);
+        }
+
+        boolean mustWrite(int address) {
+            return edge == LogicState.ONE && writeEnable == LogicState.ONE
+                    && addresses.isCertain(address);
+        }
     }
     @Override public ComponentRuntimeState createState() { return new State(addressWidth, dataWidth); }
     private static final class State implements ComponentRuntimeState {

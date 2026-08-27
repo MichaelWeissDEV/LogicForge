@@ -48,6 +48,8 @@ import dev.logicforge.library.behavior.NaryGateBehavior;
 import dev.logicforge.library.behavior.OverflowDetectorBehavior;
 import dev.logicforge.library.behavior.OutputPortBehavior;
 import dev.logicforge.library.behavior.ParityBehavior;
+import dev.logicforge.library.behavior.PackagedRomBehavior;
+import dev.logicforge.library.behavior.PackagedSramBehavior;
 import dev.logicforge.library.behavior.PisoBehavior;
 import dev.logicforge.library.behavior.PriorityEncoderBehavior;
 import dev.logicforge.library.behavior.RamBehavior;
@@ -1382,6 +1384,44 @@ final class StandardLibrary {
                         List.of("ram", "memory", "read-write", "storage")),
                 values -> new RamBehavior(
                         BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("memory.packaged_sram", "Packaged SRAM Engine", MEMORY,
+                        "Generic asynchronous SRAM with active-low CS/OE/WE and optional active-high CS2",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH,
+                                LibraryParameters.DUAL_CHIP_SELECT),
+                        PortLayouts.dynamicBoxWithInout(
+                                List.of(new PortLayouts.DynamicPortDef("ADDRESS",
+                                                v -> BitWidth.of(v.getInt(LibraryParameters.ADDRESS_WIDTH)), ""),
+                                        PortLayouts.DynamicPortDef.fixed("WE_N"),
+                                        PortLayouts.DynamicPortDef.fixed("OE_N"),
+                                        PortLayouts.DynamicPortDef.fixed("CS_N"),
+                                        PortLayouts.DynamicPortDef.fixed("CS2")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH)),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("sram", "dip", "active low", "memory chip")),
+                values -> new PackagedSramBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values),
+                        values.getBoolean(LibraryParameters.DUAL_CHIP_SELECT))));
+
+        registry.register(new ComponentType(
+                definition("memory.packaged_rom", "Packaged EPROM Engine", MEMORY,
+                        "Generic read-mode EPROM with active-low CE/OE; programming voltage and timing are not modeled",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH,
+                                LibraryParameters.ROM_CONTENTS),
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("ADDRESS",
+                                                v -> BitWidth.of(v.getInt(LibraryParameters.ADDRESS_WIDTH)), ""),
+                                        PortLayouts.DynamicPortDef.fixed("CE_N"),
+                                        PortLayouts.DynamicPortDef.fixed("OE_N"),
+                                        PortLayouts.DynamicPortDef.fixed("PROGRAM_N")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH),
+                        List.of("eprom", "dip", "active low", "memory chip")),
+                values -> new PackagedRomBehavior(busWidth(values), parseMemoryContents(
+                        values.get(LibraryParameters.ROM_CONTENTS),
+                        1 << values.getInt(LibraryParameters.ADDRESS_WIDTH),
+                        values.getInt(LibraryParameters.WIDTH)))));
     }
 
     private static void registerQueueStorage(ComponentRegistry registry, String id, String name,

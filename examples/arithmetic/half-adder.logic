@@ -1,5 +1,5 @@
 {
-  "formatVersion": 3,
+  "formatVersion": 4,
   "application": "LogicForge",
   "name": "struct-half-adder",
   "circuits": [
@@ -8,7 +8,7 @@
       "description": "Gate-level half adder: XOR produces SUM and AND produces CARRY",
       "components": [
         {
-          "id": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+          "id": "13aa4dbb-40ae-4c8e-9793-56749db7de52",
           "type": "hierarchy.input",
           "x": -180,
           "y": -30,
@@ -19,7 +19,7 @@
           }
         },
         {
-          "id": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+          "id": "233a2587-3831-4301-858a-f5a3fba44659",
           "type": "hierarchy.input",
           "x": -180,
           "y": 50,
@@ -30,7 +30,7 @@
           }
         },
         {
-          "id": "719fce92-2f62-4f14-9fcc-e530c512db70",
+          "id": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
           "type": "logic.xor",
           "x": -20,
           "y": -40,
@@ -40,7 +40,7 @@
           }
         },
         {
-          "id": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+          "id": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
           "type": "logic.and",
           "x": -20,
           "y": 60,
@@ -50,7 +50,7 @@
           }
         },
         {
-          "id": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+          "id": "1b907596-c27b-438b-a6ed-0be514afadf7",
           "type": "hierarchy.output",
           "x": 160,
           "y": -40,
@@ -61,7 +61,7 @@
           }
         },
         {
-          "id": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+          "id": "b89d6c60-1331-493e-8dd2-94d218ce1b7c",
           "type": "hierarchy.output",
           "x": 160,
           "y": 60,
@@ -74,68 +74,68 @@
       ],
       "connections": [
         {
-          "id": "8d18ac57-e6de-4799-ab91-46f4825cb672",
+          "id": "07aaf362-3a25-42e8-93e8-df59f839ad3f",
           "from": {
-            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "component": "13aa4dbb-40ae-4c8e-9793-56749db7de52",
             "port": "OUT"
           },
           "to": {
-            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "component": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
             "port": "IN0"
           }
         },
         {
-          "id": "e5b04549-d844-4f5d-a074-398fd45c61d4",
+          "id": "ded960ac-00cd-46d8-bc6f-85030093c073",
           "from": {
-            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "component": "233a2587-3831-4301-858a-f5a3fba44659",
             "port": "OUT"
           },
           "to": {
-            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "component": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
             "port": "IN1"
           }
         },
         {
-          "id": "84a356e3-8e2e-4694-bc2d-15cd50f2a57a",
+          "id": "55cb6e0b-d3f5-4862-9eca-26f77a0f5141",
           "from": {
-            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "component": "13aa4dbb-40ae-4c8e-9793-56749db7de52",
             "port": "OUT"
           },
           "to": {
-            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "component": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
             "port": "IN0"
           }
         },
         {
-          "id": "8dc227b8-08ce-4b2e-8d1f-b6e46ea55077",
+          "id": "46502097-6f85-4802-9c81-4d2f37fe9437",
           "from": {
-            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "component": "233a2587-3831-4301-858a-f5a3fba44659",
             "port": "OUT"
           },
           "to": {
-            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "component": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
             "port": "IN1"
           }
         },
         {
-          "id": "57dfb5a2-aed4-4d85-b95f-6a196cb4e0f9",
+          "id": "f0a9bbae-8fd7-4fb4-8bda-4ff50d6f239f",
           "from": {
-            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "component": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
             "port": "OUT"
           },
           "to": {
-            "component": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+            "component": "1b907596-c27b-438b-a6ed-0be514afadf7",
             "port": "IN"
           }
         },
         {
-          "id": "349d097e-d6f7-4a60-a8e7-48ee75aa6789",
+          "id": "c679866b-8857-47d0-aff0-0169b5e243e8",
           "from": {
-            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "component": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
             "port": "OUT"
           },
           "to": {
-            "component": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+            "component": "b89d6c60-1331-493e-8dd2-94d218ce1b7c",
             "port": "IN"
           }
         }
@@ -146,7 +146,7 @@
       "description": "Gate-level half adder: XOR produces SUM and AND produces CARRY",
       "components": [
         {
-          "id": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+          "id": "13aa4dbb-40ae-4c8e-9793-56749db7de52",
           "type": "hierarchy.input",
           "x": -180,
           "y": -30,
@@ -157,7 +157,7 @@
           }
         },
         {
-          "id": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+          "id": "233a2587-3831-4301-858a-f5a3fba44659",
           "type": "hierarchy.input",
           "x": -180,
           "y": 50,
@@ -168,7 +168,7 @@
           }
         },
         {
-          "id": "719fce92-2f62-4f14-9fcc-e530c512db70",
+          "id": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
           "type": "logic.xor",
           "x": -20,
           "y": -40,
@@ -178,7 +178,7 @@
           }
         },
         {
-          "id": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+          "id": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
           "type": "logic.and",
           "x": -20,
           "y": 60,
@@ -188,7 +188,7 @@
           }
         },
         {
-          "id": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+          "id": "1b907596-c27b-438b-a6ed-0be514afadf7",
           "type": "hierarchy.output",
           "x": 160,
           "y": -40,
@@ -199,7 +199,7 @@
           }
         },
         {
-          "id": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+          "id": "b89d6c60-1331-493e-8dd2-94d218ce1b7c",
           "type": "hierarchy.output",
           "x": 160,
           "y": 60,
@@ -212,68 +212,68 @@
       ],
       "connections": [
         {
-          "id": "8d18ac57-e6de-4799-ab91-46f4825cb672",
+          "id": "07aaf362-3a25-42e8-93e8-df59f839ad3f",
           "from": {
-            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "component": "13aa4dbb-40ae-4c8e-9793-56749db7de52",
             "port": "OUT"
           },
           "to": {
-            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "component": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
             "port": "IN0"
           }
         },
         {
-          "id": "e5b04549-d844-4f5d-a074-398fd45c61d4",
+          "id": "ded960ac-00cd-46d8-bc6f-85030093c073",
           "from": {
-            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "component": "233a2587-3831-4301-858a-f5a3fba44659",
             "port": "OUT"
           },
           "to": {
-            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "component": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
             "port": "IN1"
           }
         },
         {
-          "id": "84a356e3-8e2e-4694-bc2d-15cd50f2a57a",
+          "id": "55cb6e0b-d3f5-4862-9eca-26f77a0f5141",
           "from": {
-            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "component": "13aa4dbb-40ae-4c8e-9793-56749db7de52",
             "port": "OUT"
           },
           "to": {
-            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "component": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
             "port": "IN0"
           }
         },
         {
-          "id": "8dc227b8-08ce-4b2e-8d1f-b6e46ea55077",
+          "id": "46502097-6f85-4802-9c81-4d2f37fe9437",
           "from": {
-            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "component": "233a2587-3831-4301-858a-f5a3fba44659",
             "port": "OUT"
           },
           "to": {
-            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "component": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
             "port": "IN1"
           }
         },
         {
-          "id": "57dfb5a2-aed4-4d85-b95f-6a196cb4e0f9",
+          "id": "f0a9bbae-8fd7-4fb4-8bda-4ff50d6f239f",
           "from": {
-            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "component": "3e924125-a0a0-4a45-9f00-61b16a1d9393",
             "port": "OUT"
           },
           "to": {
-            "component": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+            "component": "1b907596-c27b-438b-a6ed-0be514afadf7",
             "port": "IN"
           }
         },
         {
-          "id": "349d097e-d6f7-4a60-a8e7-48ee75aa6789",
+          "id": "c679866b-8857-47d0-aff0-0169b5e243e8",
           "from": {
-            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "component": "2ff81bf8-ceb9-4d17-a1cd-537f02dcb4f8",
             "port": "OUT"
           },
           "to": {
-            "component": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+            "component": "b89d6c60-1331-493e-8dd2-94d218ce1b7c",
             "port": "IN"
           }
         }

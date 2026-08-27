@@ -65,6 +65,58 @@ final class RamState implements ComponentRuntimeState {
         }
     }
 
+    LogicVector wordAt(int address) {
+        return address >= 0 && address < wordCount
+                ? memory[address] : LogicVector.repeat(LogicState.UNKNOWN, dataWidth);
+    }
+
+    /** Merges the current word with one possible replacement value. */
+    void mergeWord(int address, LogicVector candidate) {
+        if (address >= 0 && address < wordCount) {
+            write(address, StatefulControlPolicy.merge(memory[address], candidate));
+        }
+    }
+
+    void markWordUnknown(int address) {
+        write(address, LogicVector.repeat(LogicState.UNKNOWN, dataWidth));
+    }
+
+    /** Models RESET=X by merging every current bit with the zero-reset state. */
+    void mergeResetState() {
+        LogicVector zero = LogicVector.repeat(LogicState.ZERO, dataWidth);
+        for (int address = 0; address < wordCount; address++) {
+            mergeWord(address, zero);
+        }
+        lastReadAddress = -1;
+        lastWriteAddress = -1;
+        lastWrittenValue = null;
+    }
+
+    void markRangeUnknown(int startInclusive, int endExclusive) {
+        int start = Math.max(0, startInclusive);
+        int end = Math.min(wordCount, Math.max(start, endExclusive));
+        for (int address = start; address < end; address++) {
+            markWordUnknown(address);
+        }
+    }
+
+    void markAllUnknown() {
+        markRangeUnknown(0, wordCount);
+    }
+
+    /** Merges the contents of all addresses compatible with an ambiguous read. */
+    LogicVector readPossible(AddressPossibilities possibilities) {
+        if (possibilities.isSingle()) {
+            return read(possibilities.singleAddress());
+        }
+        LogicVector[] merged = {null};
+        possibilities.forEach(address -> merged[0] = merged[0] == null
+                ? memory[address] : StatefulControlPolicy.merge(merged[0], memory[address]));
+        lastReadAddress = -1;
+        accessRevision++;
+        return merged[0] == null ? LogicVector.repeat(LogicState.UNKNOWN, dataWidth) : merged[0];
+    }
+
     @Override
     public void writeMemoryWord(int address, LogicVector value) {
         write(address, value);

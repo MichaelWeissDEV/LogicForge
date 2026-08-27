@@ -24,3 +24,5 @@ jobs:
         uses: gradle/actions/wrapper-validation@v4
       - name: Run test suite
         run: ./gradlew test
+      - name: Verify generated examples
+        run: ./gradlew verifyExamples

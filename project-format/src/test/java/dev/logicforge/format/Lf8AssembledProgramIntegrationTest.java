@@ -247,7 +247,17 @@ class Lf8AssembledProgramIntegrationTest {
             CompilationResult compiled = compileAndRoundTrip(project);
             Simulation simulation = new Simulation(compiled.circuit());
             CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
-            runToHalt(simulation, probe, 1_000);
+            try {
+                runToHalt(simulation, probe, 1_000);
+            } catch (AssertionError failure) {
+                System.err.println(mode + " PC=" + hierarchyValue(project, compiled, simulation,
+                        "CPU/DATAPATH/PC", "COUNT"));
+                System.err.println(mode + " IR=" + hierarchyValue(project, compiled, simulation,
+                        "CPU/DATAPATH/IR", "Q"));
+                System.err.println(mode + " microstep=" + hierarchyValue(project, compiled,
+                        simulation, "CPU/CONTROL/MICROSTEP", "COUNT"));
+                throw failure;
+            }
             assertEquals(LogicVector.fromUnsignedLong(10, 8),
                     simulation.memoryPage(probe.ramId(), 2, 1).orElseThrow().wordAt(2),
                     mode + " must execute identical ISA/microcode behavior");

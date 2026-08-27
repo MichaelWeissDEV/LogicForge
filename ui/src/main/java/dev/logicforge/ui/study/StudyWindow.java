@@ -1,6 +1,8 @@
 package dev.logicforge.ui.study;
 
 import dev.logicforge.ui.view.CircuitCanvasView;
+import dev.logicforge.ui.view.LogicAnalyzerView;
+import dev.logicforge.ui.edit.LogicAnalyzerController;
 import javafx.animation.AnimationTimer;
 import javafx.geometry.Orientation;
 import javafx.scene.Scene;
@@ -22,6 +24,8 @@ public final class StudyWindow extends Stage {
     private final StudyController controller;
     private final CircuitCanvasView canvas;
     private final StudyInspectorView inspector;
+    private final LogicAnalyzerController analyzerController;
+    private final LogicAnalyzerView analyzer;
     private final HBox breadcrumbs = new HBox(4);
     private final Label status = new Label();
     private final Button back = new Button("Back");
@@ -38,6 +42,15 @@ public final class StudyWindow extends Stage {
         this.controller = new StudyController(target);
         this.canvas = new CircuitCanvasView(controller.editor(), true, false);
         this.inspector = new StudyInspectorView(controller);
+        this.analyzerController = new LogicAnalyzerController(controller.editor());
+        this.analyzer = new LogicAnalyzerView(analyzerController, signal ->
+                analyzerController.location(signal).ifPresent(location -> {
+                    controller.editor().navigateToRuntimeEndpoint(
+                            location.parentPath(), location.endpoint());
+                    canvas.zoomToFit();
+                }));
+        this.canvas.setAnalyzerListener(endpoint -> analyzerController.addSignal(endpoint,
+                endpoint.portName()));
         this.canvas.setHierarchyOpenListener(instance -> {
             controller.descend(instance);
             updateControls();
@@ -46,9 +59,12 @@ public final class StudyWindow extends Stage {
 
         BorderPane root = new BorderPane();
         root.setTop(buildTop());
-        SplitPane content = new SplitPane(canvas, inspector);
-        content.setOrientation(Orientation.HORIZONTAL);
-        content.setDividerPositions(0.76);
+        SplitPane schematic = new SplitPane(canvas, inspector);
+        schematic.setOrientation(Orientation.HORIZONTAL);
+        schematic.setDividerPositions(0.76);
+        SplitPane content = new SplitPane(schematic, analyzer);
+        content.setOrientation(Orientation.VERTICAL);
+        content.setDividerPositions(0.75);
         root.setCenter(content);
         root.setBottom(buildControls());
         setTitle("LogicForge Study — " + target.label());

@@ -11,17 +11,18 @@ import dev.logicforge.simulation.ComponentContext;
 public record GpioBehavior(BitWidth width) implements ComponentBehavior {
     @Override
     public void evaluate(ComponentContext context) {
-        LogicVector data = LogicOperations.asGateInput(context.readInput(0));
+        LogicVector data = context.readInput(0);
         LogicVector direction = LogicOperations.asGateInput(context.readInput(1));
         LogicState[] drive = new LogicState[width.bits()];
         for (int bit = 0; bit < drive.length; bit++) {
             drive[bit] = switch (direction.getBit(bit)) {
                 case ZERO -> LogicState.HIGH_IMPEDANCE;
                 case ONE -> data.getBit(bit);
-                default -> LogicState.UNKNOWN;
+                default -> data.getBit(bit) == LogicState.HIGH_IMPEDANCE
+                        ? LogicState.HIGH_IMPEDANCE : LogicState.UNKNOWN;
             };
         }
         context.driveOutput(0, LogicVector.ofLsbFirst(drive));
-        context.driveOutput(1, LogicOperations.asGateInput(context.readInput(2)));
+        context.driveOutput(1, context.readInput(2));
     }
 }

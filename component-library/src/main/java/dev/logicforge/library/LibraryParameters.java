@@ -71,6 +71,10 @@ public final class LibraryParameters {
     public static final ParameterSpec.IntegerParameter ADDRESS_WIDTH =
             new ParameterSpec.IntegerParameter("addressWidth", "Address Width", 8, 1, 16);
 
+    /** Whether an asynchronous SRAM package also requires an active-high second select. */
+    public static final ParameterSpec.BooleanParameter DUAL_CHIP_SELECT =
+            new ParameterSpec.BooleanParameter("dualChipSelect", "Second Chip Select", false);
+
     /** A ROM's contents: comma-separated hex words, one per address, MSB word first is not
      *  implied — index 0 is the first entry. Missing or unparsable entries default to 0. */
     public static final ParameterSpec.StringParameter ROM_CONTENTS =

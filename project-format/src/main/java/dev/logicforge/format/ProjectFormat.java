@@ -34,13 +34,14 @@ import java.util.UUID;
  * runtime — a project file survives any refactoring of the code that reads it.
  *
  * <p>Every file carries a {@code formatVersion}. Version 1 contains whole-port wires;
- * version 2 adds bit endpoints and port presentation; version 3 adds range endpoints.
+ * version 2 adds bit endpoints and port presentation; version 3 adds range endpoints;
+ * version 4 adds stable, non-display semantic component roles.
  * The reader accepts every version.
  */
 public final class ProjectFormat {
 
     /** The version this build writes. */
-    public static final int FORMAT_VERSION = 3;
+    public static final int FORMAT_VERSION = 4;
 
     /** File extension used by the file choosers. */
     public static final String EXTENSION = "logic";
@@ -106,6 +107,9 @@ public final class ProjectFormat {
         }
         if (!instance.label().isBlank()) {
             object.put("label", instance.label());
+        }
+        if (!instance.semanticRole().isBlank()) {
+            object.put("role", instance.semanticRole());
         }
         if (instance.portDisplayMode() == PortDisplayMode.EXPANDED) {
             object.put("portDisplay", "expanded");
@@ -241,7 +245,8 @@ public final class ProjectFormat {
                 ParameterValues.of(parameters),
                 object.string("label", ""),
                 "expanded".equalsIgnoreCase(object.string("portDisplay", "compact"))
-                        ? PortDisplayMode.EXPANDED : PortDisplayMode.COMPACT);
+                        ? PortDisplayMode.EXPANDED : PortDisplayMode.COMPACT,
+                object.string("role", ""));
     }
 
     private static Connection readConnection(JsonValue.JsonObject object, CircuitDocument circuit,

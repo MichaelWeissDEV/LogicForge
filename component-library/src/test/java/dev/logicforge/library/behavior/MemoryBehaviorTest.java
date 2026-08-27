@@ -195,8 +195,8 @@ class MemoryBehaviorTest {
     }
 
     @Test
-    void ramDoesNotWriteWhenAddressIsUnknown() {
-        // Write with address=X should not corrupt memory; a known address should read back intact.
+    void ramMergesEveryPossibleTargetWhenWriteAddressIsUnknown() {
+        // A write with address=X may target every word, so each word merges old and DATA.
         CompiledCircuit.Builder builder = CompiledCircuit.builder();
         int address = builder.addNet(ADDR4);
         int we = builder.addNet(BitWidth.ONE);
@@ -218,16 +218,16 @@ class MemoryBehaviorTest {
         simulation.setInput(dataSrc, LogicVector.fromUnsignedLong(0xAB, 8));
         simulation.setInput(weSrc, LogicVector.ONE);
 
-        // Attempt write with unknown (X) address — should be a no-op
+        // Attempt write with unknown (X) address — every address is a possible target.
         simulation.setInput(addrSrc, LogicVector.repeat(dev.logicforge.logic.LogicState.UNKNOWN, 4));
         simulation.setInput(dataSrc, LogicVector.fromUnsignedLong(0xFF, 8));
 
-        // Switch to read mode with the known good address — value must be undamaged
+        // Address 3 might have retained AB or received FF: equal bits survive, others are X.
         simulation.setInput(weSrc, LogicVector.ZERO);
         simulation.setInput(dataSrc, LogicVector.repeat(dev.logicforge.logic.LogicState.HIGH_IMPEDANCE, 8));
         simulation.setInput(oeSrc, LogicVector.ONE);
         simulation.setInput(addrSrc, LogicVector.fromUnsignedLong(3, 4));
 
-        assertEquals(LogicVector.fromUnsignedLong(0xAB, 8), simulation.readNet(data));
+        assertEquals(LogicVector.of("1X1X1X11"), simulation.readNet(data));
     }
 }
