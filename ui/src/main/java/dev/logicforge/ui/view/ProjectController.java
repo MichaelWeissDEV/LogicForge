@@ -5,6 +5,9 @@ import dev.logicforge.format.ProjectFormat;
 import dev.logicforge.format.ProjectFormatException;
 import dev.logicforge.ui.edit.CircuitEditor;
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
@@ -64,6 +67,26 @@ public final class ProjectController {
             statusMessage.accept("Opened " + file.getName());
         } catch (ProjectFormatException failure) {
             showError("Could not open the project", failure.getMessage());
+        }
+        updateTitle();
+    }
+
+    /** Opens a newly parsed copy of a read-only bundled example resource. */
+    public void openExample(String displayName, String resourcePath) {
+        if (!confirmDiscardingChanges()) {
+            return;
+        }
+        try (InputStream stream = ProjectController.class.getResourceAsStream(resourcePath)) {
+            if (stream == null) {
+                throw new IOException("Missing bundled resource " + resourcePath);
+            }
+            String json = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            CircuitProject project = ProjectFormat.fromJson(json, displayName);
+            currentFile = null;
+            editor.setProject(project, false);
+            statusMessage.accept("Opened example " + displayName);
+        } catch (IOException | ProjectFormatException failure) {
+            showError("Could not open the example", failure.getMessage());
         }
         updateTitle();
     }

@@ -1,26 +1,33 @@
 package dev.logicforge.structures;
 
+import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.document.CircuitProject;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-/** Metadata plus a fresh-project factory for one canonical structural implementation. */
-public record StructuralImplementation(
-        String targetComponentId,
+/** Describes one parameter-constrained structural implementation of a real component. */
+public record StructuralImplementationDescriptor(
+        String targetDefinitionId,
+        ImplementationLevel level,
+        ParameterMatcher matcher,
+        Supplier<CircuitProject> projectFactory,
         String name,
         String description,
-        ImplementationLevel level,
-        Supplier<CircuitProject> projectFactory,
         List<String> tags) {
 
-    public StructuralImplementation {
-        targetComponentId = requireText(targetComponentId, "targetComponentId");
+    public StructuralImplementationDescriptor {
+        targetDefinitionId = requireText(targetDefinitionId, "targetDefinitionId");
+        level = Objects.requireNonNull(level, "level");
+        matcher = Objects.requireNonNull(matcher, "matcher");
+        projectFactory = Objects.requireNonNull(projectFactory, "projectFactory");
         name = requireText(name, "name");
         description = Objects.requireNonNullElse(description, "");
-        level = Objects.requireNonNull(level, "level");
-        projectFactory = Objects.requireNonNull(projectFactory, "projectFactory");
         tags = tags == null ? List.of() : List.copyOf(tags);
+    }
+
+    public boolean supports(ParameterValues parameters) {
+        return matcher.matches(Objects.requireNonNull(parameters, "parameters"));
     }
 
     public CircuitProject createProject() {

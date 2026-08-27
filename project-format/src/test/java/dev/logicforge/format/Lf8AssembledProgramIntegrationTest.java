@@ -60,6 +60,26 @@ class Lf8AssembledProgramIntegrationTest {
     }
 
     @Test
+    void assembledProgramWritesTextThroughCharacterOutputMmio() {
+        String message = "Hello, LogicForge!";
+        StringBuilder source = new StringBuilder();
+        for (int index = 0; index < message.length(); index++) {
+            source.append("LDI R0, ").append((int) message.charAt(index)).append('\n');
+            source.append("STORE R0, ").append(Lf8MemoryMap.CHARACTER_OUTPUT).append('\n');
+        }
+        source.append("HLT\n");
+
+        CircuitProject project = Lf8ComputerFactory.create(Lf8Assembler.assemble(source.toString()));
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+        runToHalt(simulation, probe, 1_000);
+
+        int characterOutput = compiled.componentByLabel("CHARACTER_OUTPUT").orElseThrow();
+        assertEquals(message, simulation.debugSnapshot(characterOutput).textValues().get("TEXT"));
+    }
+
+    @Test
     void assembledSubroutineWithStackAndCallRunsOnTheRealCircuit() {
         int[] program = Lf8Assembler.assemble("""
                     LDI R0, 1
@@ -221,7 +241,8 @@ class Lf8AssembledProgramIntegrationTest {
                 """);
 
         for (Lf8ImplementationMode mode : new Lf8ImplementationMode[]{
-                Lf8ImplementationMode.FAST, Lf8ImplementationMode.STRUCTURAL}) {
+                Lf8ImplementationMode.FAST, Lf8ImplementationMode.STRUCTURAL,
+                Lf8ImplementationMode.GATE_LEVEL}) {
             CircuitProject project = Lf8ComputerFactory.create(mode, program);
             CompilationResult compiled = compileAndRoundTrip(project);
             Simulation simulation = new Simulation(compiled.circuit());
@@ -230,7 +251,7 @@ class Lf8AssembledProgramIntegrationTest {
             assertEquals(LogicVector.fromUnsignedLong(10, 8),
                     simulation.memoryPage(probe.ramId(), 2, 1).orElseThrow().wordAt(2),
                     mode + " must execute identical ISA/microcode behavior");
-            if (mode == Lf8ImplementationMode.STRUCTURAL) {
+            if (mode != Lf8ImplementationMode.FAST) {
                 assertTrue(project.circuit("STRUCT_ALU8").isPresent());
                 assertTrue(project.circuit("RIPPLE_ADDER8").isPresent());
                 assertTrue(project.circuit("STRUCT_FULL_ADDER").isPresent());
@@ -241,7 +262,93 @@ class Lf8AssembledProgramIntegrationTest {
                 assertTrue(project.circuit("STRUCT_D_LATCH").isPresent());
                 assertTrue(project.circuit("STRUCT_SR_LATCH_NOR").isPresent());
             }
+            if (mode == Lf8ImplementationMode.GATE_LEVEL) {
+                assertTrue(project.circuit("STRUCT_DFF_RESET").isPresent());
+                assertTrue(project.circuit("STRUCT_MODULO_COUNTER3").isPresent());
+                assertTrue(project.circuit("STRUCT_LOADABLE_COUNTER16").isPresent());
+            }
         }
+    }
+
+    @Test
+    void gateLevelModeRunsARealProgramThroughStructuralArchitecturalState() {
+        int[] program = Lf8Assembler.assemble("""
+                LDI R0, 5
+                LDI R1, 3
+                ADD R0, R1
+                STORE R0, 0x8000
+                HLT
+                """);
+        CircuitProject project = Lf8ComputerFactory.create(Lf8ImplementationMode.GATE_LEVEL,
+                program);
+        assertTrue(project.circuit("STRUCT_LOADABLE_COUNTER16").isPresent());
+        assertTrue(project.circuit("STRUCT_LOADABLE_COUNTER16_RESET_BFFF").isPresent());
+        assertTrue(project.circuit("STRUCT_MODULO_COUNTER3").isPresent());
+        assertTrue(project.circuit("STRUCT_DFF_RESET").isPresent());
+        assertFalse(project.circuit("LF8_DATAPATH").orElseThrow().components().stream()
+                .anyMatch(component -> component.definitionId().startsWith("sequential.")));
+        assertFalse(project.circuit("LF8_CONTROL").orElseThrow().components().stream()
+                .anyMatch(component -> component.definitionId().equals("sequential.modulo_counter")
+                        || component.definitionId().startsWith("sequential.register")));
+
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+        try {
+            runToHalt(simulation, probe, 500);
+        } catch (AssertionError failure) {
+            System.err.println("Gate PC=" + hierarchyValue(project, compiled, simulation,
+                    "CPU/DATAPATH/PC", "COUNT"));
+            System.err.println("Gate IR=" + hierarchyValue(project, compiled, simulation,
+                    "CPU/DATAPATH/IR", "Q"));
+            System.err.println("Gate microstep=" + hierarchyValue(project, compiled, simulation,
+                    "CPU/CONTROL/MICROSTEP", "COUNT"));
+            throw failure;
+        }
+        assertEquals(LogicVector.fromUnsignedLong(8, 8),
+                simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0));
+    }
+
+    @Test
+    void gateLevelIrqEntersHandlerAndIretReturnsWithBalancedStack() {
+        int[] program = Lf8Assembler.assemble("""
+                EI
+                NOP
+                HLT
+
+                .org 0x0010
+                handler:
+                    LDI R0, 0x5a
+                    STORE R0, 0x8000
+                    IRET
+                """);
+        CircuitProject project = Lf8ComputerFactory.createWithVectors(
+                Lf8ImplementationMode.GATE_LEVEL, program, 0x0010, 0, 0);
+        CompilationResult compiled = compileAndRoundTrip(project);
+        Simulation simulation = new Simulation(compiled.circuit());
+        CompiledProbe probe = probeOf(project.mainCircuit(), compiled);
+        int irq = compiled.componentByLabel("IRQ").orElseThrow();
+        simulation.setInput(probe.resetId(), LogicState.ONE);
+        simulation.setInput(probe.resetId(), LogicState.ZERO);
+        simulation.setInput(irq, LogicState.ONE);
+
+        int edges = 0;
+        while (simulation.memoryPage(probe.ramId(), 0, 1).orElseThrow().wordAt(0)
+                .toUnsignedLong().orElseThrow() != 0x5a && edges++ < 500) {
+            simulation.setInput(probe.clkId(), LogicState.ZERO);
+            simulation.setInput(probe.clkId(), LogicState.ONE);
+        }
+        assertTrue(edges < 500, "gate-level IRQ handler did not store its result");
+        simulation.setInput(irq, LogicState.ZERO);
+        int returnEdges = 0;
+        while (simulation.readNet(probe.haltedNet()).singleBit() != LogicState.ONE
+                && returnEdges++ < 300) {
+            simulation.setInput(probe.clkId(), LogicState.ZERO);
+            simulation.setInput(probe.clkId(), LogicState.ONE);
+        }
+        assertTrue(returnEdges < 300, "IRET did not resume the interrupted program");
+        assertEquals("1011111111111111", hierarchyValue(project, compiled, simulation,
+                "CPU/DATAPATH/SP", "COUNT"));
     }
 
     private CompilationResult compileAndRoundTrip(CircuitProject project) {
@@ -249,6 +356,24 @@ class Lf8AssembledProgramIntegrationTest {
         ProjectFormat.save(project, file);
         CircuitProject loaded = ProjectFormat.load(file);
         return new CircuitCompiler(ComponentRegistry.standard()).compile(loaded, "main");
+    }
+
+    private String hierarchyValue(CircuitProject project, CompilationResult compiled,
+                                  Simulation simulation, String labels, String port) {
+        CircuitDocument document = project.mainCircuit();
+        String path = "main";
+        for (String label : labels.split("/")) {
+            var instance = document.components().stream()
+                    .filter(component -> label.equals(component.label())).findFirst().orElseThrow();
+            path += "/" + instance.id();
+            if (dev.logicforge.circuit.document.SubcircuitSupport
+                    .isInstanceDefinition(instance.definitionId())) {
+                document = project.circuit(dev.logicforge.circuit.document.SubcircuitSupport
+                        .circuitName(instance.definitionId())).orElseThrow();
+            }
+        }
+        int net = compiled.hierarchySourceMap().netId(path + "." + port).orElseThrow();
+        return simulation.readNet(net).toBinaryString();
     }
 
     private CompiledProbe probeOf(CircuitDocument main, CompilationResult compiled) {

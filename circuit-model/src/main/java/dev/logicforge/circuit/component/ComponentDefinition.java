@@ -51,6 +51,11 @@ public interface ComponentDefinition {
         return List.of();
     }
 
+    /** Optional structured educational content for Study and other presentation layers. */
+    default ComponentDocumentation documentation() {
+        return ComponentDocumentation.EMPTY;
+    }
+
     /**
      * The interaction type for user-driven components.
      * Default is {@link InputInteraction#NONE} for non-interactive components.

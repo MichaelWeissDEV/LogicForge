@@ -118,6 +118,14 @@ public final class LibraryParameters {
     public static final ParameterSpec.StringParameter RESET_VALUE =
             new ParameterSpec.StringParameter("resetValue", "Reset Value (hex)", "0");
 
+    /** Maximum retained characters for the character-output debug buffer. */
+    public static final ParameterSpec.IntegerParameter BUFFER_CAPACITY =
+            new ParameterSpec.IntegerParameter("bufferCapacity", "Buffer Capacity", 256, 1, 65536);
+
+    /** Entry count of bounded FIFO and stack components. */
+    public static final ParameterSpec.IntegerParameter DEPTH =
+            new ParameterSpec.IntegerParameter("depth", "Depth", 16, 2, 4096);
+
     private LibraryParameters() {
     }
 }

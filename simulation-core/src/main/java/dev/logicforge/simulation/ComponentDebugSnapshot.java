@@ -17,15 +17,22 @@ public record ComponentDebugSnapshot(
         Map<String, LogicVector> namedValues,
         List<LogicVector> registers,
         MemoryInfo memory,
-        Map<String, Long> counters) {
+        Map<String, Long> counters,
+        Map<String, String> textValues) {
 
     public static final ComponentDebugSnapshot EMPTY =
-            new ComponentDebugSnapshot(Map.of(), List.of(), null, Map.of());
+            new ComponentDebugSnapshot(Map.of(), List.of(), null, Map.of(), Map.of());
+
+    public ComponentDebugSnapshot(Map<String, LogicVector> namedValues,
+            List<LogicVector> registers, MemoryInfo memory, Map<String, Long> counters) {
+        this(namedValues, registers, memory, counters, Map.of());
+    }
 
     public ComponentDebugSnapshot {
         namedValues = namedValues == null ? Map.of() : Map.copyOf(namedValues);
         registers = registers == null ? List.of() : List.copyOf(registers);
         counters = counters == null ? Map.of() : Map.copyOf(counters);
+        textValues = textValues == null ? Map.of() : Map.copyOf(textValues);
     }
 
     public Optional<MemoryInfo> memoryOptional() {
@@ -33,6 +40,7 @@ public record ComponentDebugSnapshot(
     }
 
     public boolean isEmpty() {
-        return namedValues.isEmpty() && registers.isEmpty() && memory == null && counters.isEmpty();
+        return namedValues.isEmpty() && registers.isEmpty() && memory == null
+                && counters.isEmpty() && textValues.isEmpty();
     }
 }

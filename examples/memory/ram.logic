@@ -1,0 +1,25 @@
+{
+  "formatVersion": 3,
+  "application": "LogicForge",
+  "name": "ram",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Interactive RAM component example",
+      "components": [
+        {
+          "id": "1673f9d1-dd64-4c5e-ae71-92b35734f3dd",
+          "type": "memory.ram",
+          "x": 280,
+          "y": 180,
+          "label": "RAM",
+          "parameters": {
+            "addressWidth": 4,
+            "width": 8
+          }
+        }
+      ],
+      "connections": []
+    }
+  ]
+}

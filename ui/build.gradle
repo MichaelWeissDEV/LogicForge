@@ -11,6 +11,8 @@ dependencies {
     api project(':logic-analyzer')
     api project(':project-format')
     implementation project(':processor-lf8')
+    implementation project(':component-structures')
+    testImplementation project(':lf8-tools')
 }
 
 javafx {

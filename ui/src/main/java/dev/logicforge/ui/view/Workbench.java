@@ -8,11 +8,16 @@ import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.edit.LogicAnalyzerController;
 import dev.logicforge.ui.study.StudyTarget;
 import dev.logicforge.ui.study.StudyWindow;
+import dev.logicforge.structures.ImplementationLevel;
+import dev.logicforge.structures.StructuralImplementationRegistry;
 import javafx.geometry.Orientation;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.Menu;
+import javafx.scene.control.MenuButton;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.input.KeyCode;
@@ -83,7 +88,8 @@ public final class Workbench extends BorderPane {
     private SplitPane buildContent() {
         VBox left = new VBox(new ProjectCircuitsView(editor), palette);
         VBox.setVgrow(palette, Priority.ALWAYS);
-        SplitPane split = new SplitPane(left, canvas, new InspectorView(editor));
+        SplitPane split = new SplitPane(left, canvas,
+                new InspectorView(editor, this::inspectInternals, this::studyImplementation));
         split.setOrientation(Orientation.HORIZONTAL);
         split.setDividerPositions(0.17, 0.80);
         SplitPane.setResizableWithParent(left, false);
@@ -124,6 +130,7 @@ public final class Workbench extends BorderPane {
         newButton.setOnAction(event -> projects.newProject());
         Button openButton = toolButton("Open");
         openButton.setOnAction(event -> projects.open());
+        MenuButton examplesButton = examplesMenu();
         Button saveButton = toolButton("Save");
         saveButton.setOnAction(event -> projects.save());
 
@@ -136,7 +143,7 @@ public final class Workbench extends BorderPane {
         stepTimeButton.setOnAction(event -> editor.stepTime());
         Button resetButton = toolButton("Reset");
         resetButton.setOnAction(event -> editor.resetSimulation());
-        Button studyButton = toolButton("Study");
+        Button studyButton = toolButton("Study This Circuit");
         studyButton.setOnAction(event -> new StudyWindow(StudyTarget.live(editor)).show());
 
         speedBox.setValue(SimulationPlaybackController.Speed.REALTIME);
@@ -157,7 +164,7 @@ public final class Workbench extends BorderPane {
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         HBox toolbar = new HBox(title,
-                newButton, openButton, saveButton, separator(),
+                newButton, openButton, examplesButton, saveButton, separator(),
                 undoButton, redoButton, separator(),
                 runButton, stepButton, stepTimeButton, resetButton, speedBox, studyButton, separator(),
                 analyzerToggle,
@@ -165,6 +172,45 @@ public final class Workbench extends BorderPane {
                 zoomOut, zoomIn, zoomFit);
         toolbar.getStyleClass().add("toolbar");
         return toolbar;
+    }
+
+    private MenuButton examplesMenu() {
+        MenuButton button = new MenuButton("Examples");
+        button.getStyleClass().add("tool-button");
+        button.getItems().addAll(
+                exampleCategory("Basic Logic", "logic",
+                        "gates", "mux", "decoder"),
+                exampleCategory("Sequential", "logic",
+                        "sr-latch", "d-latch", "dff"),
+                exampleCategory("Arithmetic", "arithmetic",
+                        "half-adder", "full-adder", "ripple-adder8", "alu8"),
+                exampleCategory("Memory", "memory",
+                        "register8", "register-file8x8", "ram", "rom"),
+                exampleCategory("Processors", "lf8",
+                        "lf8-fast", "lf8-structural", "lf8-gate-level"));
+        return button;
+    }
+
+    private Menu exampleCategory(String category, String directory, String... examples) {
+        Menu menu = new Menu(category);
+        for (String example : examples) {
+            MenuItem item = new MenuItem(example);
+            item.setOnAction(event -> projects.openExample(example,
+                    "/examples/" + directory + "/" + example + ".logic"));
+            menu.getItems().add(item);
+        }
+        return menu;
+    }
+
+    private void inspectInternals(ComponentInstance instance) {
+        new StudyWindow(StudyTarget.inspectInternals(editor, instance)).show();
+    }
+
+    private void studyImplementation(ComponentInstance instance) {
+        StructuralImplementationRegistry.standard()
+                .find(instance.definitionId(), instance.parameters(), ImplementationLevel.GATE)
+                .ifPresent(implementation ->
+                        new StudyWindow(StudyTarget.reference(implementation)).show());
     }
 
     private void toggleRunning() {

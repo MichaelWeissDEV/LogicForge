@@ -19,10 +19,12 @@ import javafx.scene.layout.VBox;
 public final class StudyInspectorView extends VBox {
 
     private final CircuitEditor editor;
+    private final StudyController controller;
     private final VBox body = new VBox(5);
 
-    public StudyInspectorView(CircuitEditor editor) {
-        this.editor = editor;
+    public StudyInspectorView(StudyController controller) {
+        this.controller = controller;
+        this.editor = controller.editor();
         setPadding(new Insets(8));
         setMinWidth(270);
         getChildren().add(new Label("STUDY INSPECTOR"));
@@ -31,7 +33,6 @@ public final class StudyInspectorView extends VBox {
         VBox.setVgrow(scroll, Priority.ALWAYS);
         getChildren().add(scroll);
         editor.selection().addListener(this::refresh);
-        editor.addChangeListener(this::refresh);
         refresh();
     }
 
@@ -61,11 +62,42 @@ public final class StudyInspectorView extends VBox {
             Label description = new Label(definition.description());
             description.setWrapText(true);
             body.getChildren().add(description);
+            showDocumentation(definition.documentation());
             definition.ports(instance.parameters()).forEach(port ->
                     editor.valueAt(new PortReference(instance.id(), port.name())).ifPresent(value ->
                             body.getChildren().add(row(port.name(), format(value)))));
             editor.debugSnapshot(instance.id()).ifPresent(this::showDebug);
         }));
+    }
+
+    private void showDocumentation(
+            dev.logicforge.circuit.component.ComponentDocumentation documentation) {
+        if (documentation.isEmpty()) {
+            return;
+        }
+        body.getChildren().add(section("Operation"));
+        if (!documentation.operation().isBlank()) {
+            body.getChildren().add(wrapped(documentation.operation()));
+        }
+        documentation.truthTable().ifPresent(table -> {
+            body.getChildren().add(section("Truth table"));
+            body.getChildren().add(row(String.join("  ", table.inputs()),
+                    String.join("  ", table.outputs())));
+            table.rows().forEach(values -> body.getChildren().add(row(
+                    String.join("  ", values.inputs()), String.join("  ", values.outputs()))));
+        });
+        if (!documentation.timingNotes().isBlank()) {
+            body.getChildren().add(row("Timing", documentation.timingNotes()));
+        }
+        if (!documentation.invalidStates().isBlank()) {
+            body.getChildren().add(row("Invalid states", documentation.invalidStates()));
+        }
+    }
+
+    private static Label wrapped(String text) {
+        Label label = new Label(text);
+        label.setWrapText(true);
+        return label;
     }
 
     private void showDebug(ComponentDebugSnapshot debug) {
@@ -77,34 +109,33 @@ public final class StudyInspectorView extends VBox {
         for (int register = 0; register < debug.registers().size(); register++) {
             body.getChildren().add(row("R" + register, format(debug.registers().get(register))));
         }
+        debug.textValues().forEach((name, value) -> body.getChildren().add(row(name, value)));
     }
 
     private void showLf8State() {
-        var compilation = editor.compilation().orElse(null);
-        Simulation simulation = editor.simulation().orElse(null);
-        if (compilation == null || simulation == null || compilation.componentByLabel("PC").isEmpty()) {
+        var probe = controller.lf8Probe().orElse(null);
+        if (probe == null) {
             return;
         }
         body.getChildren().add(section("LF-8 architectural state"));
-        addOutput(compilation, simulation, "PC", "PC", 0);
-        addOutput(compilation, simulation, "SP", "SP", 0);
-        addOutput(compilation, simulation, "IR", "IR", 0);
-        addOutput(compilation, simulation, "STATUS flags", "FLAGS_REGISTER", 0);
-        addOutput(compilation, simulation, "IE", "IE_REGISTER", 0);
-        addOutput(compilation, simulation, "Microstep", "MICROSTEP", 0);
-        addOutput(compilation, simulation, "IRQ", "IRQ", 0);
-        addOutput(compilation, simulation, "NMI", "NMI", 0);
-        addOutput(compilation, simulation, "HALT", "HALT_LATCH", 0);
+        addOutput(probe, "PC", "DATAPATH/PC", "COUNT");
+        addOutput(probe, "SP", "DATAPATH/SP", "COUNT");
+        addOutput(probe, "IR", "DATAPATH/IR", "Q");
+        addOutput(probe, "STATUS flags", "DATAPATH/FLAGS_REGISTER", "Q");
+        addOutput(probe, "IE", "DATAPATH/IE_REGISTER", "Q");
+        addOutput(probe, "Microstep", "CONTROL/MICROSTEP", "COUNT");
+        addOutput(probe, "IRQ", "CONTROL/IRQ_PROBE", "IN");
+        addOutput(probe, "NMI taken", "CONTROL/NMI_TAKEN_LATCH", "Q");
+        addOutput(probe, "HALT", "CONTROL/HALT_LATCH", "Q");
 
-        var registerFile = compilation.componentByLabel("REGISTER_FILE");
-        if (registerFile.isPresent()) {
-            var registers = simulation.debugSnapshot(registerFile.getAsInt()).registers();
+        probe.registerFile().ifPresent(snapshot -> {
+            var registers = snapshot.registers();
             for (int i = 0; i < registers.size(); i++) {
                 body.getChildren().add(row("R" + i, format(registers.get(i))));
             }
-        }
+        });
 
-        var ir = read(compilation, simulation, "IR", 0);
+        var ir = probe.ir();
         ir.ifPresent(value -> value.toUnsignedLong().ifPresent(opcode -> {
                     String decoded = Lf8Isa.byOpcode((int) opcode)
                             .map(instruction -> instruction.mnemonic() + " (0x"
@@ -113,37 +144,42 @@ public final class StudyInspectorView extends VBox {
                     body.getChildren().add(row("Instruction", decoded));
                 }));
 
-        read(compilation, simulation, "MICROCODE_ROM", 0).ifPresent(value ->
+        probe.value("CONTROL/MICROCODE_ROM", "DATA").ifPresent(value ->
                 value.toUnsignedLong().ifPresent(word -> {
                     body.getChildren().add(section("Microcode"));
+                    probe.value("CONTROL/MICROCODE_ROM", "ADDRESS").ifPresent(address ->
+                            body.getChildren().add(row("ROM address", format(address))));
                     body.getChildren().add(row("Raw control word", "0x"
                             + Long.toUnsignedString(word, 16).toUpperCase(Locale.ROOT)));
                     long alu = (word >>> Lf8ControlField.ALU_OP.lsb())
                             & ((1L << Lf8ControlField.ALU_OP.width()) - 1);
                     body.getChildren().add(row("ALU_OP", String.valueOf(alu)));
-                    String active = java.util.Arrays.stream(Lf8ControlSignal.values())
-                            .filter(signal -> (word & signal.mask()) != 0)
-                            .map(Enum::name)
-                            .collect(java.util.stream.Collectors.joining("\n"));
-                    Label controls = new Label(active.isBlank() ? "(no active controls)" : active);
-                    controls.setWrapText(true);
-                    body.getChildren().add(controls);
+                    showControlGroup(word, "Register File", "DESTINATION", "SOURCE_REGISTER",
+                            "REGISTER_FILE", "MOV_SOURCE", "ALTERNATE_SOURCE", "SOURCE_TO_DATA");
+                    showControlGroup(word, "PC", "PC_");
+                    showControlGroup(word, "Memory", "MEMORY_", "MAR_", "ADDRESS_FROM_MAR");
+                    showControlGroup(word, "Stack", "SP_", "ADDRESS_FROM_SP", "STATUS_TO_DATA");
+                    showControlGroup(word, "Flags", "FLAGS_", "IE_", "STATUS_FROM_DATA");
+                    showControlGroup(word, "Interrupt", "IRQ_", "VECTOR_", "RESET_",
+                            "ADDRESS_FROM_VECTOR");
+                    showControlGroup(word, "ALU", "ALU_");
+                    showControlGroup(word, "Instruction / flow", "IR_", "HALT");
                 }));
     }
 
-    private void addOutput(dev.logicforge.compiler.CompilationResult compilation,
-                           Simulation simulation, String display, String label, int output) {
-        read(compilation, simulation, label, output)
-                .ifPresent(value -> body.getChildren().add(row(display, format(value))));
+    private void showControlGroup(long word, String group, String... prefixes) {
+        String active = java.util.Arrays.stream(Lf8ControlSignal.values())
+                .filter(signal -> (word & signal.mask()) != 0)
+                .filter(signal -> java.util.Arrays.stream(prefixes)
+                        .anyMatch(prefix -> signal.name().startsWith(prefix)))
+                .map(Enum::name)
+                .collect(java.util.stream.Collectors.joining(", "));
+        body.getChildren().add(row(group, active.isBlank() ? "—" : active));
     }
 
-    private java.util.Optional<LogicVector> read(
-            dev.logicforge.compiler.CompilationResult compilation, Simulation simulation,
-            String label, int output) {
-        var component = compilation.componentByLabel(label);
-        return component.isPresent()
-                ? java.util.Optional.of(simulation.readOutput(component.getAsInt(), output))
-                : java.util.Optional.empty();
+    private void addOutput(Lf8RuntimeProbe probe, String display, String path, String port) {
+        probe.value(path, port)
+                .ifPresent(value -> body.getChildren().add(row(display, format(value))));
     }
 
     private static Label section(String text) {

@@ -22,6 +22,8 @@ public final class Lf8MemoryMap {
     public static final int VECTOR_RESERVED_END = 0xffff;
 
     public static final int OUTPUT_PORT = 0xc000;
+    /** Character sink mirrors writes to the output port and exposes a text debug buffer. */
+    public static final int CHARACTER_OUTPUT = OUTPUT_PORT;
     public static final int INPUT_PORT = 0xc001;
     public static final int TIMER_RELOAD_LOW = 0xc010;
     public static final int TIMER_RELOAD_HIGH = 0xc011;

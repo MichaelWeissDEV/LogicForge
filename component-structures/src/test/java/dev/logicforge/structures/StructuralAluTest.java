@@ -44,6 +44,30 @@ class StructuralAluTest {
         assertCase(harness, 7, 0x01, 0x00, 0x00, 1, 0, 1, 0);
     }
 
+    @Test
+    void structuralAluMatchesFastAluAcrossDeterministicExhaustiveSlicesAndUnknowns() {
+        Harness harness = compileHarness(StructuralCircuitFactory.alu8Project());
+        int[] bValues = {0x00, 0x01, 0x02, 0x7f, 0x80, 0xfe, 0xff};
+        for (int op = 0; op <= 4; op++) {
+            for (int a = 0; a <= 0xff; a++) {
+                for (int b : bValues) {
+                    assertFastEquivalent(harness, op, a, b);
+                }
+            }
+        }
+        for (int op = 5; op <= 7; op++) {
+            for (int a = 0; a <= 0xff; a++) {
+                assertFastEquivalent(harness, op, a, 0);
+            }
+        }
+        assertStructuralFourState(harness, 0, LogicVector.of("10XZ0001"),
+                LogicVector.fromUnsignedLong(1, 8), LogicVector.of("10XX0010"),
+                LogicState.ZERO, LogicState.ONE, LogicState.ZERO, LogicState.ZERO);
+        assertStructuralFourState(harness, 4, LogicVector.of("ZZZZZZZZ"),
+                LogicVector.fromUnsignedLong(0xaa, 8), LogicVector.of("XXXXXXXX"),
+                LogicState.UNKNOWN, LogicState.UNKNOWN, LogicState.ZERO, LogicState.ZERO);
+    }
+
     private static Harness compileHarness(CircuitProject source) {
         ComponentRegistry registry = ComponentRegistry.standard();
         CircuitProject project = new CircuitProject("alu-test");
@@ -54,7 +78,13 @@ class StructuralAluTest {
         ComponentInstance a = busInput(main, registry, "A", 8, -300, -140, one);
         ComponentInstance b = busInput(main, registry, "B", 8, -300, -60, one);
         ComponentInstance op = busInput(main, registry, "OP", 3, -300, 20, one);
+        ComponentInstance fastOp = busInput(main, registry, "FAST_OP", 4, -300, 100, one);
+        ComponentInstance cin = add(main, "source.toggle", "CIN", -300, 180,
+                ParameterValues.empty());
         ComponentInstance dut = sub(main, StructuralCircuitFactory.ALU8, "ALU8", 0, 0);
+        ComponentInstance fast = add(main, "arithmetic.alu", "FAST_ALU", 0, 200,
+                registry.require("arithmetic.alu").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 8));
         ComponentInstance result = add(main, "routing.bus_probe", "RESULT", 300, -100,
                 registry.require("routing.bus_probe").definition().defaultParameters()
                         .with(LibraryParameters.WIDTH, 8));
@@ -62,6 +92,17 @@ class StructuralAluTest {
         ComponentInstance n = add(main, "output.probe", "N", 300, 0, ParameterValues.empty());
         ComponentInstance c = add(main, "output.probe", "C", 300, 40, ParameterValues.empty());
         ComponentInstance v = add(main, "output.probe", "V", 300, 80, ParameterValues.empty());
+        ComponentInstance fastResult = add(main, "routing.bus_probe", "FAST_RESULT", 300, 180,
+                registry.require("routing.bus_probe").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 8));
+        ComponentInstance fastZ = add(main, "output.probe", "FAST_Z", 300, 240,
+                ParameterValues.empty());
+        ComponentInstance fastN = add(main, "output.probe", "FAST_N", 300, 280,
+                ParameterValues.empty());
+        ComponentInstance fastC = add(main, "output.probe", "FAST_C", 300, 320,
+                ParameterValues.empty());
+        ComponentInstance fastV = add(main, "output.probe", "FAST_V", 300, 360,
+                ParameterValues.empty());
         wire(main, a, "DATA", dut, "A");
         wire(main, b, "DATA", dut, "B");
         wire(main, op, "DATA", dut, "OP");
@@ -70,6 +111,15 @@ class StructuralAluTest {
         wire(main, dut, "N", n, "IN");
         wire(main, dut, "C", c, "IN");
         wire(main, dut, "V", v, "IN");
+        wire(main, a, "DATA", fast, "A");
+        wire(main, b, "DATA", fast, "B");
+        wire(main, fastOp, "DATA", fast, "OP");
+        wire(main, cin, "OUT", fast, "CIN");
+        wire(main, fast, "RESULT", fastResult, "IN");
+        wire(main, fast, "ZERO", fastZ, "IN");
+        wire(main, fast, "NEGATIVE", fastN, "IN");
+        wire(main, fast, "CARRY", fastC, "IN");
+        wire(main, fast, "OVERFLOW", fastV, "IN");
         project.putCircuit(main);
         var compiled = new CircuitCompiler(registry).compile(project, "main");
         Simulation simulation = new Simulation(compiled.circuit());
@@ -77,8 +127,12 @@ class StructuralAluTest {
                 compiled.sourceMap().componentId(a.id()).orElseThrow(),
                 compiled.sourceMap().componentId(b.id()).orElseThrow(),
                 compiled.sourceMap().componentId(op.id()).orElseThrow(),
+                compiled.sourceMap().componentId(fastOp.id()).orElseThrow(),
+                compiled.sourceMap().componentId(cin.id()).orElseThrow(),
                 net(compiled, result), net(compiled, z), net(compiled, n),
-                net(compiled, c), net(compiled, v));
+                net(compiled, c), net(compiled, v), net(compiled, fastResult),
+                net(compiled, fastZ), net(compiled, fastN), net(compiled, fastC),
+                net(compiled, fastV));
     }
 
     private static ComponentInstance busInput(CircuitDocument main, ComponentRegistry registry,
@@ -110,6 +164,45 @@ class StructuralAluTest {
         assertEquals(LogicState.of(v != 0), harness.simulation().readNet(harness.vNet()).singleBit());
     }
 
+    private static void assertFastEquivalent(Harness harness, int op, int a, int b) {
+        assertFastEquivalent(harness, op, LogicVector.fromUnsignedLong(a, 8),
+                LogicVector.fromUnsignedLong(b, 8));
+    }
+
+    private static void assertFastEquivalent(Harness harness, int op, LogicVector a,
+                                             LogicVector b) {
+        harness.simulation().setInput(harness.aId(), a);
+        harness.simulation().setInput(harness.bId(), b);
+        harness.simulation().setInput(harness.opId(), LogicVector.fromUnsignedLong(op, 3));
+        harness.simulation().setInput(harness.fastOpId(), LogicVector.fromUnsignedLong(op, 4));
+        harness.simulation().setInput(harness.cinId(), LogicState.of(op == 1));
+        String label = "op=" + op + " A=" + a + " B=" + b;
+        assertEquals(harness.simulation().readNet(harness.fastResultNet()),
+                harness.simulation().readNet(harness.resultNet()), label + " result");
+        assertEquals(harness.simulation().readNet(harness.fastZNet()),
+                harness.simulation().readNet(harness.zNet()), label + " Z");
+        assertEquals(harness.simulation().readNet(harness.fastNNet()),
+                harness.simulation().readNet(harness.nNet()), label + " N");
+        assertEquals(harness.simulation().readNet(harness.fastCNet()),
+                harness.simulation().readNet(harness.cNet()), label + " C");
+        assertEquals(harness.simulation().readNet(harness.fastVNet()),
+                harness.simulation().readNet(harness.vNet()), label + " V");
+    }
+
+    private static void assertStructuralFourState(Harness harness, int op, LogicVector a,
+                                                  LogicVector b, LogicVector result,
+                                                  LogicState z, LogicState n,
+                                                  LogicState c, LogicState v) {
+        harness.simulation().setInput(harness.aId(), a);
+        harness.simulation().setInput(harness.bId(), b);
+        harness.simulation().setInput(harness.opId(), LogicVector.fromUnsignedLong(op, 3));
+        assertEquals(result, harness.simulation().readNet(harness.resultNet()));
+        assertEquals(z, harness.simulation().readNet(harness.zNet()).singleBit());
+        assertEquals(n, harness.simulation().readNet(harness.nNet()).singleBit());
+        assertEquals(c, harness.simulation().readNet(harness.cNet()).singleBit());
+        assertEquals(v, harness.simulation().readNet(harness.vNet()).singleBit());
+    }
+
     private static ComponentInstance add(CircuitDocument document, String type, String label,
                                          double x, double y, ParameterValues parameters) {
         ComponentInstance component = ComponentInstance.create(type, new CircuitPoint(x, y), parameters)
@@ -132,7 +225,9 @@ class StructuralAluTest {
                 new PortReference(to.id(), toPort)));
     }
 
-    private record Harness(Simulation simulation, int aId, int bId, int opId,
-                           int resultNet, int zNet, int nNet, int cNet, int vNet) {
+    private record Harness(Simulation simulation, int aId, int bId, int opId, int fastOpId,
+                           int cinId, int resultNet, int zNet, int nNet, int cNet, int vNet,
+                           int fastResultNet, int fastZNet, int fastNNet, int fastCNet,
+                           int fastVNet) {
     }
 }

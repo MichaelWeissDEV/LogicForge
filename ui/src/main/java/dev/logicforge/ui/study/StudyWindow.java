@@ -17,10 +17,12 @@ import javafx.stage.Stage;
 /** Dedicated read-only live/reference hardware study stage. */
 public final class StudyWindow extends Stage {
 
+    private static final long MIN_REFRESH_NANOS = 1_000_000_000L / 30;
+
     private final StudyController controller;
     private final CircuitCanvasView canvas;
     private final StudyInspectorView inspector;
-    private final Label breadcrumb = new Label();
+    private final HBox breadcrumbs = new HBox(4);
     private final Label status = new Label();
     private final Button back = new Button("Back");
     private final Button forward = new Button("Forward");
@@ -29,11 +31,13 @@ public final class StudyWindow extends Stage {
     private final Button stepClock = new Button("Clock");
     private final Button stepInstruction = new Button("Instruction");
     private final AnimationTimer refresher;
+    private boolean dirty = true;
+    private long lastRefresh;
 
     public StudyWindow(StudyTarget target) {
         this.controller = new StudyController(target);
-        this.canvas = new CircuitCanvasView(controller.editor(), true);
-        this.inspector = new StudyInspectorView(controller.editor());
+        this.canvas = new CircuitCanvasView(controller.editor(), true, false);
+        this.inspector = new StudyInspectorView(controller);
         this.canvas.setHierarchyOpenListener(instance -> {
             controller.descend(instance);
             updateControls();
@@ -50,11 +54,16 @@ public final class StudyWindow extends Stage {
         setTitle("LogicForge Study — " + target.label());
         setScene(new Scene(root, 1220, 780));
 
-        controller.editor().addChangeListener(this::updateControls);
+        controller.editor().addChangeListener(() -> dirty = true);
         updateControls();
         this.refresher = new AnimationTimer() {
             @Override
             public void handle(long now) {
+                if (!dirty || now - lastRefresh < MIN_REFRESH_NANOS) {
+                    return;
+                }
+                dirty = false;
+                lastRefresh = now;
                 canvas.redraw();
                 inspector.refresh();
                 updateControls();
@@ -82,10 +91,11 @@ public final class StudyWindow extends Stage {
             canvas.zoomToFit();
             updateControls();
         });
-        Label targetMode = new Label(controller.isLive() ? "LIVE INSTANCE" : "REFERENCE");
-        HBox top = new HBox(8, back, forward, targetMode, breadcrumb);
+        Label targetMode = new Label(controller.isLive()
+                ? "LIVE INSTANCE" : "REFERENCE IMPLEMENTATION");
+        HBox top = new HBox(8, back, forward, targetMode, breadcrumbs);
         top.setStyle("-fx-padding: 8;");
-        HBox.setHgrow(breadcrumb, Priority.ALWAYS);
+        HBox.setHgrow(breadcrumbs, Priority.ALWAYS);
         return top;
     }
 
@@ -104,7 +114,7 @@ public final class StudyWindow extends Stage {
     }
 
     private void updateControls() {
-        breadcrumb.setText(String.join("  >  ", controller.editor().navigationLabels()));
+        rebuildBreadcrumbs();
         back.setDisable(!controller.canBack());
         forward.setDisable(!controller.canForward());
         boolean live = controller.isLive();
@@ -115,5 +125,25 @@ public final class StudyWindow extends Stage {
         stepEvent.setDisable(!live || running);
         stepClock.setDisable(!live || running);
         stepInstruction.setDisable(!live || running);
+    }
+
+    private void rebuildBreadcrumbs() {
+        var labels = controller.breadcrumbs();
+        breadcrumbs.getChildren().clear();
+        for (int index = 0; index < labels.size(); index++) {
+            if (index > 0) {
+                breadcrumbs.getChildren().add(new Label("›"));
+            }
+            Button crumb = new Button(labels.get(index));
+            crumb.setDisable(index == labels.size() - 1);
+            int targetIndex = index;
+            crumb.setOnAction(event -> {
+                controller.navigateToBreadcrumb(targetIndex);
+                canvas.zoomToFit();
+                dirty = true;
+                updateControls();
+            });
+            breadcrumbs.getChildren().add(crumb);
+        }
     }
 }

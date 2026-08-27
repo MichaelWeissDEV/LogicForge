@@ -7,6 +7,8 @@ import dev.logicforge.simulation.Simulation;
 import dev.logicforge.ui.edit.CircuitEditor;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Optional;
+import dev.logicforge.compiler.RuntimeInstancePath;
 
 /** Navigation and simulation controls for a Study window. */
 public final class StudyController {
@@ -20,7 +22,9 @@ public final class StudyController {
     public StudyController(StudyTarget target) {
         this.target = target;
         if (target instanceof StudyTarget.LiveInstance live) {
-            editor.attachRuntime(live.project(), live.compilation(), live.simulation());
+            editor.attachRuntime(live.project(), live.compilation(), live.simulation(),
+                    live.session(), live.initialCircuitName(), live.initialInstancePath(),
+                    live.selectedComponent());
         } else if (target instanceof StudyTarget.ReferenceImplementation reference) {
             editor.setProject(reference.project(), false);
             editor.openCircuit(reference.circuitName());
@@ -38,6 +42,43 @@ public final class StudyController {
 
     public boolean isLive() {
         return target instanceof StudyTarget.LiveInstance;
+    }
+
+    /** Probe for the concrete CPU containing (or selected in) the current Study context. */
+    public Optional<Lf8RuntimeProbe> lf8Probe() {
+        if (!(target instanceof StudyTarget.LiveInstance live)) {
+            return Optional.empty();
+        }
+        Optional<RuntimeInstancePath> cpuPath = editor.activeInstancePath()
+                .map(RuntimeInstancePath::parse)
+                .flatMap(path -> Lf8RuntimeProbe.findContainingCpu(live.project(), path));
+        if (cpuPath.isEmpty() && editor.activeInstancePath().isPresent()
+                && editor.selection().components().size() == 1) {
+            var selected = editor.document().component(
+                    editor.selection().components().iterator().next());
+            if (selected.isPresent()
+                    && selected.get().definitionId().equals(
+                    dev.logicforge.circuit.document.SubcircuitSupport.definitionId(
+                            dev.logicforge.processor.lf8.Lf8CircuitFactory.CPU_CIRCUIT))) {
+                cpuPath = Optional.of(RuntimeInstancePath.parse(
+                        editor.activeInstancePath().orElseThrow()).child(selected.get().id()));
+            }
+        }
+        if (cpuPath.isEmpty() && editor.activeInstancePath().isPresent()) {
+            // A circuit with exactly one CPU is unambiguous even when nothing is selected.
+            // Multiple CPUs deliberately produce no probe until the user selects/descends.
+            var cpus = editor.document().components().stream()
+                    .filter(component -> component.definitionId().equals(
+                            dev.logicforge.circuit.document.SubcircuitSupport.definitionId(
+                                    dev.logicforge.processor.lf8.Lf8CircuitFactory.CPU_CIRCUIT)))
+                    .toList();
+            if (cpus.size() == 1) {
+                cpuPath = Optional.of(RuntimeInstancePath.parse(
+                        editor.activeInstancePath().orElseThrow()).child(cpus.getFirst().id()));
+            }
+        }
+        return cpuPath.map(path -> new Lf8RuntimeProbe(live.project(), live.compilation(),
+                live.simulation(), path));
     }
 
     public void descend(ComponentInstance instance) {
@@ -70,6 +111,20 @@ public final class StudyController {
         return !forwardInstances.isEmpty();
     }
 
+    public java.util.List<String> breadcrumbs() {
+        return editor.navigationLabels();
+    }
+
+    public void navigateToBreadcrumb(int index) {
+        int current = breadcrumbs().size() - 1;
+        if (index < 0 || index > current) {
+            throw new IllegalArgumentException("Breadcrumb index is outside the current path");
+        }
+        for (int depth = current; depth > index; depth--) {
+            back();
+        }
+    }
+
     public void setRunning(boolean running) {
         editor.setRunning(running);
     }
@@ -81,12 +136,12 @@ public final class StudyController {
 
     public boolean stepClock() {
         editor.setRunning(false);
-        var compilation = editor.compilation().orElse(null);
         Simulation simulation = editor.simulation().orElse(null);
-        if (compilation == null || simulation == null) {
+        var probe = lf8Probe().orElse(null);
+        if (probe == null || simulation == null) {
             return false;
         }
-        var clock = compilation.componentByLabel("CLK");
+        var clock = probe.inputSource("CLK");
         if (clock.isEmpty()) {
             return false;
         }
@@ -94,27 +149,27 @@ public final class StudyController {
         simulation.runUntilStableAtCurrentTime();
         simulation.setInput(clock.getAsInt(), LogicState.ONE);
         simulation.runUntilStableAtCurrentTime();
-        editor.setRunning(false); // also publishes a view refresh
+        editor.simulationSession().ifPresent(
+                dev.logicforge.simulation.SimulationSession::simulationChanged);
         return true;
     }
 
     /** Advances only through real clock input changes until the next LF-8 boundary. */
     public boolean stepInstruction() {
         editor.setRunning(false);
-        var compilation = editor.compilation().orElse(null);
         Simulation simulation = editor.simulation().orElse(null);
-        if (compilation == null || simulation == null) {
+        var probe = lf8Probe().orElse(null);
+        if (probe == null || simulation == null) {
             return false;
         }
-        var microstep = compilation.componentByLabel("MICROSTEP");
-        if (microstep.isEmpty()) {
+        if (probe.microstep().isEmpty()) {
             return false;
         }
         for (int edge = 0; edge < MAX_INSTRUCTION_EDGES; edge++) {
             if (!stepClock()) {
                 return false;
             }
-            var value = simulation.readOutput(microstep.getAsInt(), 0).toUnsignedLong();
+            var value = probe.microstep().orElseThrow().toUnsignedLong();
             if (value.isPresent() && value.getAsLong() == 0) {
                 return true;
             }

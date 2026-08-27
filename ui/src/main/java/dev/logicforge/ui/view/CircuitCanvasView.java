@@ -95,11 +95,16 @@ public final class CircuitCanvasView extends Region {
     private Map<UUID, CircuitPoint> originalPositions = Map.of();
 
     public CircuitCanvasView(CircuitEditor editor) {
-        this(editor, false);
+        this(editor, false, true);
     }
 
     /** Creates a canvas that can retain navigation/selection while suppressing edits. */
     public CircuitCanvasView(CircuitEditor editor, boolean readOnly) {
+        this(editor, readOnly, true);
+    }
+
+    /** Allows a throttled owner (Study) to drive dynamic redraws explicitly. */
+    public CircuitCanvasView(CircuitEditor editor, boolean readOnly, boolean automaticRedraw) {
         this.editor = editor;
         this.readOnly = readOnly;
         this.renderer = new CircuitRenderer(editor, RendererRegistry.standard(), router);
@@ -108,7 +113,9 @@ public final class CircuitCanvasView extends Region {
 
         getChildren().add(canvas);
         setFocusTraversable(true);
-        editor.addChangeListener(this::redraw);
+        if (automaticRedraw) {
+            editor.addChangeListener(this::redraw);
+        }
         editor.selection().addListener(this::redraw);
         portTooltip.setShowDelay(javafx.util.Duration.millis(350));
         javafx.scene.control.Tooltip.install(this, portTooltip);

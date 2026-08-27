@@ -2,6 +2,7 @@ package dev.logicforge.structures;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.document.CircuitDocument;
@@ -135,6 +136,58 @@ class StructuralSequentialTest {
         simulation.setInput(dataId, LogicVector.fromUnsignedLong(0x5a, 8));
         simulation.setInput(clkId, LogicState.ONE);
         assertEquals(LogicVector.fromUnsignedLong(0xa5, 8), simulation.readNet(qNet));
+    }
+
+    @Test
+    void resettableDffCapturesHoldsAndResetsConservatively() {
+        CircuitProject project = copyChildren(StructuralCircuitFactory.resettableDFlipFlopProject());
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", "reset DFF harness"));
+        ComponentInstance d = add(main, "source.toggle", "D", -200, -60, ParameterValues.empty());
+        ComponentInstance clk = add(main, "source.toggle", "CLK", -200, 0, ParameterValues.empty());
+        ComponentInstance reset = add(main, "source.toggle", "RESET", -200, 60, ParameterValues.empty());
+        ComponentInstance dff = sub(main, StructuralCircuitFactory.DFF_RESET, "DFF", 0, 0);
+        ComponentInstance q = add(main, "output.probe", "Q", 200, 0, ParameterValues.empty());
+        wire(main, d, "OUT", dff, "D");
+        wire(main, clk, "OUT", dff, "CLK");
+        wire(main, reset, "OUT", dff, "RESET");
+        wire(main, dff, "Q", q, "IN");
+        project.putCircuit(main);
+        var compiled = new CircuitCompiler(ComponentRegistry.standard()).compile(project, "main");
+        Simulation simulation = new Simulation(compiled.circuit());
+        int dId = compiled.sourceMap().componentId(d.id()).orElseThrow();
+        int clkId = compiled.sourceMap().componentId(clk.id()).orElseThrow();
+        int resetId = compiled.sourceMap().componentId(reset.id()).orElseThrow();
+        int qNet = compiled.sourceMap().netOf(new PortReference(q.id(), "IN")).orElseThrow();
+
+        simulation.setInput(dId, LogicState.ONE);
+        simulation.setInput(clkId, LogicState.ONE);
+        assertEquals(LogicState.ONE, simulation.readNet(qNet).singleBit(), "capture");
+        simulation.setInput(dId, LogicState.ZERO);
+        assertEquals(LogicState.ONE, simulation.readNet(qNet).singleBit(), "hold while clock high");
+        simulation.setInput(resetId, LogicState.UNKNOWN);
+        assertEquals(LogicState.UNKNOWN, simulation.readNet(qNet).singleBit(), "unknown reset");
+        simulation.setInput(resetId, LogicState.ONE);
+        assertEquals(LogicState.ZERO, simulation.readNet(qNet).singleBit(), "asynchronous reset");
+        simulation.setInput(resetId, LogicState.ZERO);
+        simulation.setInput(clkId, LogicState.UNKNOWN);
+        assertTrue(simulation.readNet(qNet).singleBit() == LogicState.ZERO
+                || simulation.readNet(qNet).singleBit() == LogicState.UNKNOWN,
+                "unknown clock must never invent a captured one");
+    }
+
+    @Test
+    void parametricRegisterFamilyUsesOnlyStructuralDffs() {
+        for (int width : new int[]{1, 3, 4, 8, 16}) {
+            CircuitProject project = StructuralCircuitFactory.structuralRegister(width, true, 0);
+            String name = StructuralCircuitFactory.structuralRegisterName(width, true, 0);
+            CircuitDocument register = project.circuit(name).orElseThrow();
+            assertEquals(width, register.components().stream()
+                    .filter(component -> component.definitionId().equals(
+                            SubcircuitSupport.definitionId(StructuralCircuitFactory.DFF_RESET)))
+                    .count());
+            assertFalse(project.circuits().stream().flatMap(circuit -> circuit.components().stream())
+                    .anyMatch(component -> component.definitionId().startsWith("sequential.register")));
+        }
     }
 
     private static CircuitProject copyChildren(CircuitProject source) {

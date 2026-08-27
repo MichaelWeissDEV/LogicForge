@@ -25,9 +25,14 @@ public final class StructuralCircuitFactory {
     public static final String SR_LATCH_NOR = "STRUCT_SR_LATCH_NOR";
     public static final String D_LATCH = "STRUCT_D_LATCH";
     public static final String DFF = "STRUCT_DFF";
+    public static final String D_LATCH_RESET = "STRUCT_D_LATCH_RESET";
+    public static final String DFF_RESET = "STRUCT_DFF_RESET";
     public static final String REGISTER8 = "STRUCT_REGISTER8";
     public static final String REGISTER_FILE_8X8 = "STRUCT_REGISTER_FILE_8X8";
+    public static final String REGISTER_FILE_8X8_RESET = "STRUCT_REGISTER_FILE_8X8_RESET";
     public static final String ALU8 = "STRUCT_ALU8";
+    public static final String LOADABLE_COUNTER16 = "STRUCT_LOADABLE_COUNTER16";
+    public static final String MODULO_COUNTER3 = "STRUCT_MODULO_COUNTER3";
 
     private StructuralCircuitFactory() {
     }
@@ -74,11 +79,70 @@ public final class StructuralCircuitFactory {
         return project;
     }
 
+    public static CircuitProject resettableDFlipFlopProject() {
+        CircuitProject project = baseProject("struct-dff-reset");
+        project.putCircuit(srLatchNorCircuit());
+        project.putCircuit(resettableDLatchCircuit());
+        project.putCircuit(resettableDFlipFlopCircuit());
+        return project;
+    }
+
     public static CircuitProject register8Project() {
-        CircuitProject project = dFlipFlopProject();
-        project.setName("struct-register8");
+        return structuralRegister(8, false, 0);
+    }
+
+    /** Builds a supported-width register exclusively from structural mux and DFF cells. */
+    public static CircuitProject structuralRegister(int width, boolean resetSupport,
+                                                    long resetValue) {
+        requireRegisterWidth(width);
+        long mask = width == 64 ? -1L : (1L << width) - 1;
+        if (resetValue < 0 || (resetValue & ~mask) != 0) {
+            throw new IllegalArgumentException("Reset value does not fit Register" + width);
+        }
+        CircuitProject project = resetSupport
+                ? resettableDFlipFlopProject() : dFlipFlopProject();
+        project.setName("struct-register" + width);
         project.putCircuit(mux2Circuit());
-        project.putCircuit(register8Circuit());
+        project.putCircuit(registerCircuit(width, resetSupport, resetValue));
+        return project;
+    }
+
+    public static String structuralRegisterName(int width, boolean resetSupport, long resetValue) {
+        requireRegisterWidth(width);
+        if (!resetSupport && width == 8) {
+            return REGISTER8;
+        }
+        return "STRUCT_REGISTER" + width + (resetSupport
+                ? "_RESET_" + Long.toUnsignedString(resetValue, 16).toUpperCase() : "");
+    }
+
+    /** 16-bit structural loadable counter; RESET may initialize values such as BFFF. */
+    public static CircuitProject loadableCounter16Project(int resetValue) {
+        if ((resetValue & ~0xffff) != 0) {
+            throw new IllegalArgumentException("Counter reset value must fit 16 bits");
+        }
+        CircuitProject project = structuralRegister(16, true, resetValue);
+        mergeChildren(project, rippleAdderProject(16));
+        project.putCircuit(busMuxCircuit(16));
+        project.putCircuit(loadableCounter16Circuit(resetValue));
+        project.setName("struct-loadable-counter16");
+        return project;
+    }
+
+    public static String loadableCounter16Name(int resetValue) {
+        if ((resetValue & 0xffff) == 0) {
+            return LOADABLE_COUNTER16;
+        }
+        return LOADABLE_COUNTER16 + "_RESET_"
+                + Integer.toUnsignedString(resetValue & 0xffff, 16).toUpperCase();
+    }
+
+    public static CircuitProject moduloCounter3Project() {
+        CircuitProject project = structuralRegister(3, true, 0);
+        mergeChildren(project, rippleAdderProject(3));
+        project.putCircuit(busMuxCircuit(3));
+        project.putCircuit(moduloCounter3Circuit());
+        project.setName("struct-modulo-counter3");
         return project;
     }
 
@@ -95,7 +159,15 @@ public final class StructuralCircuitFactory {
         CircuitProject project = register8Project();
         project.setName("struct-register-file-8x8");
         project.putCircuit(decoder3To8Circuit());
-        project.putCircuit(registerFile8x8Circuit());
+        project.putCircuit(registerFile8x8Circuit(false));
+        return project;
+    }
+
+    public static CircuitProject resettableRegisterFile8x8Project() {
+        CircuitProject project = structuralRegister(8, true, 0);
+        project.setName("struct-register-file-8x8-reset");
+        project.putCircuit(decoder3To8Circuit());
+        project.putCircuit(registerFile8x8Circuit(true));
         return project;
     }
 
@@ -343,34 +415,221 @@ public final class StructuralCircuitFactory {
         return circuit;
     }
 
-    private static CircuitDocument register8Circuit() {
+    private static CircuitDocument resettableDLatchCircuit() {
         ComponentRegistry registry = ComponentRegistry.standard();
-        CircuitDocument circuit = document(REGISTER8,
-                "Eight structural D flip-flops, each fed by a structural load multiplexer");
-        ComponentInstance data = input(circuit, registry, -360, -80, "DATA", 8);
+        CircuitDocument circuit = document(D_LATCH_RESET,
+                "Structural D latch with asynchronous active-high reset");
+        ComponentInstance d = input(circuit, registry, -280, -80, "D", 1);
+        ComponentInstance enable = input(circuit, registry, -280, 0, "EN", 1);
+        ComponentInstance reset = input(circuit, registry, -280, 80, "RESET", 1);
+        ComponentInstance notD = component(circuit, registry, "logic.not", -200, -80, "NOT_D");
+        ComponentInstance notReset = component(circuit, registry, "logic.not", -200, 80,
+                "NOT_RESET");
+        ComponentInstance set = component(circuit, registry, "logic.and", -100, -60,
+                registry.require("logic.and").definition().defaultParameters()
+                        .with(LibraryParameters.INPUT_COUNT, 3), "SET_GATE");
+        ComponentInstance dataReset = component(circuit, registry, "logic.and", -100, 40,
+                "DATA_RESET_GATE");
+        ComponentInstance resetOr = component(circuit, registry, "logic.or", -20, 60,
+                "ASYNC_RESET_OR");
+        ComponentInstance latch = subcircuit(circuit, SR_LATCH_NOR, 80, 0, "SR_LATCH");
+        ComponentInstance q = output(circuit, registry, 260, -40, "Q", 1);
+        ComponentInstance qBar = output(circuit, registry, 260, 40, "Q_BAR", 1);
+        wire(circuit, d, "OUT", notD, "A");
+        wire(circuit, reset, "OUT", notReset, "A");
+        wire(circuit, d, "OUT", set, "IN0");
+        wire(circuit, enable, "OUT", set, "IN1");
+        wire(circuit, notReset, "Y", set, "IN2");
+        wire(circuit, notD, "Y", dataReset, "IN0");
+        wire(circuit, enable, "OUT", dataReset, "IN1");
+        wire(circuit, dataReset, "OUT", resetOr, "IN0");
+        wire(circuit, reset, "OUT", resetOr, "IN1");
+        wire(circuit, set, "OUT", latch, "S");
+        wire(circuit, resetOr, "OUT", latch, "R");
+        wire(circuit, latch, "Q", q, "IN");
+        wire(circuit, latch, "Q_BAR", qBar, "IN");
+        return circuit;
+    }
+
+    private static CircuitDocument resettableDFlipFlopCircuit() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument circuit = document(DFF_RESET,
+                "Resettable master-slave DFF built from resettable structural latches");
+        ComponentInstance d = input(circuit, registry, -280, -50, "D", 1);
+        ComponentInstance clk = input(circuit, registry, -280, 20, "CLK", 1);
+        ComponentInstance reset = input(circuit, registry, -280, 90, "RESET", 1);
+        ComponentInstance notClk = component(circuit, registry, "logic.not", -180, 40,
+                "NOT_CLK");
+        ComponentInstance master = subcircuit(circuit, D_LATCH_RESET, -60, 0,
+                "MASTER_LATCH");
+        ComponentInstance slave = subcircuit(circuit, D_LATCH_RESET, 100, 0,
+                "SLAVE_LATCH");
+        ComponentInstance q = output(circuit, registry, 280, -40, "Q", 1);
+        ComponentInstance qBar = output(circuit, registry, 280, 40, "Q_BAR", 1);
+        wire(circuit, clk, "OUT", notClk, "A");
+        wire(circuit, d, "OUT", master, "D");
+        wire(circuit, notClk, "Y", master, "EN");
+        wire(circuit, reset, "OUT", master, "RESET");
+        wire(circuit, master, "Q", slave, "D");
+        wire(circuit, clk, "OUT", slave, "EN");
+        wire(circuit, reset, "OUT", slave, "RESET");
+        wire(circuit, slave, "Q", q, "IN");
+        wire(circuit, slave, "Q_BAR", qBar, "IN");
+        return circuit;
+    }
+
+    private static CircuitDocument registerCircuit(int width, boolean resetSupport,
+                                                   long resetValue) {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        String name = structuralRegisterName(width, resetSupport, resetValue);
+        CircuitDocument circuit = document(name,
+                width + " structural D flip-flops, each fed by a structural load multiplexer");
+        ComponentInstance data = input(circuit, registry, -360, -80, "DATA", width);
         ComponentInstance load = input(circuit, registry, -360, 0, "LOAD", 1);
         ComponentInstance clk = input(circuit, registry, -360, 80, "CLK", 1);
-        ComponentInstance q = output(circuit, registry, 360, -80, "Q", 8);
+        ComponentInstance reset = resetSupport
+                ? input(circuit, registry, -360, 140, "RESET", 1) : null;
+        ComponentInstance q = output(circuit, registry, 360, -80, "Q", width);
         ComponentInstance dataBits = component(circuit, registry, "routing.splitter", -280, -80,
                 registry.require("routing.splitter").definition().defaultParameters()
-                        .with(LibraryParameters.WIDTH, 8), "DATA_BITS");
+                        .with(LibraryParameters.WIDTH, width), "DATA_BITS");
         ComponentInstance qBits = component(circuit, registry, "routing.joiner", 280, -80,
                 registry.require("routing.joiner").definition().defaultParameters()
-                        .with(LibraryParameters.WIDTH, 8), "Q_BITS");
+                        .with(LibraryParameters.WIDTH, width), "Q_BITS");
         wire(circuit, data, "OUT", dataBits, "BUS");
         wire(circuit, qBits, "BUS", q, "IN");
-        for (int bit = 0; bit < 8; bit++) {
+        for (int bit = 0; bit < width; bit++) {
             ComponentInstance mux = subcircuit(circuit, MUX2, -100 + bit * 40.0,
                     -20, "LOAD_MUX_" + bit);
-            ComponentInstance dff = subcircuit(circuit, DFF, -100 + bit * 40.0,
+            ComponentInstance dff = subcircuit(circuit, resetSupport ? DFF_RESET : DFF,
+                    -100 + bit * 40.0,
                     100, "DFF_" + bit);
-            wire(circuit, dff, "Q", mux, "A");
+            boolean resetOne = ((resetValue >>> bit) & 1) != 0;
+            String logicalQ = resetOne ? "Q_BAR" : "Q";
+            wire(circuit, dff, logicalQ, mux, "A");
             wire(circuit, dataBits, "BIT" + bit, mux, "B");
             wire(circuit, load, "OUT", mux, "S");
-            wire(circuit, mux, "Y", dff, "D");
+            if (resetOne) {
+                ComponentInstance invertStored = component(circuit, registry, "logic.not",
+                        -40 + bit * 40.0, 50, "RESET_ONE_STORED_NOT_" + bit);
+                wire(circuit, mux, "Y", invertStored, "A");
+                wire(circuit, invertStored, "Y", dff, "D");
+            } else {
+                wire(circuit, mux, "Y", dff, "D");
+            }
             wire(circuit, clk, "OUT", dff, "CLK");
-            wire(circuit, dff, "Q", qBits, "BIT" + bit);
+            if (resetSupport) {
+                wire(circuit, reset, "OUT", dff, "RESET");
+            }
+            wire(circuit, dff, logicalQ, qBits, "BIT" + bit);
         }
+        return circuit;
+    }
+
+    private static CircuitDocument busMuxCircuit(int width) {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        String name = "STRUCT_MUX" + width;
+        CircuitDocument circuit = document(name, width + "-bit mux made from scalar gate muxes");
+        ComponentInstance a = input(circuit, registry, -320, -80, "A", width);
+        ComponentInstance b = input(circuit, registry, -320, 0, "B", width);
+        ComponentInstance select = input(circuit, registry, -320, 80, "S", 1);
+        ComponentInstance y = output(circuit, registry, 320, -40, "Y", width);
+        ComponentInstance aBits = component(circuit, registry, "routing.splitter", -240, -80,
+                registry.require("routing.splitter").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, width), "A_BITS");
+        ComponentInstance bBits = component(circuit, registry, "routing.splitter", -240, 0,
+                registry.require("routing.splitter").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, width), "B_BITS");
+        ComponentInstance yBits = component(circuit, registry, "routing.joiner", 240, -40,
+                registry.require("routing.joiner").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, width), "Y_BITS");
+        wire(circuit, a, "OUT", aBits, "BUS");
+        wire(circuit, b, "OUT", bBits, "BUS");
+        wire(circuit, yBits, "BUS", y, "IN");
+        for (int bit = 0; bit < width; bit++) {
+            ComponentInstance mux = subcircuit(circuit, MUX2, -100 + bit * 35.0, 20,
+                    "MUX_" + bit);
+            wire(circuit, aBits, "BIT" + bit, mux, "A");
+            wire(circuit, bBits, "BIT" + bit, mux, "B");
+            wire(circuit, select, "OUT", mux, "S");
+            wire(circuit, mux, "Y", yBits, "BIT" + bit);
+        }
+        return circuit;
+    }
+
+    private static CircuitDocument loadableCounter16Circuit(int resetValue) {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument circuit = document(loadableCounter16Name(resetValue),
+                "16-bit loadable counter made from Register16, RippleAdder16 and muxes");
+        ComponentInstance clk = input(circuit, registry, -420, -160, "CLK", 1);
+        ComponentInstance reset = input(circuit, registry, -420, -100, "RESET", 1);
+        ComponentInstance load = input(circuit, registry, -420, -40, "LOAD", 1);
+        ComponentInstance enable = input(circuit, registry, -420, 20, "ENABLE", 1);
+        ComponentInstance data = input(circuit, registry, -420, 100, "DATA", 16);
+        ComponentInstance count = output(circuit, registry, 420, -80, "COUNT", 16);
+        String registerName = structuralRegisterName(16, true, resetValue);
+        ComponentInstance storage = subcircuit(circuit, registerName, 160, -80, "REGISTER16");
+        ComponentInstance adder = subcircuit(circuit, rippleAdderName(16), -160, -80,
+                "INCREMENTER16");
+        ComponentInstance enableMux = subcircuit(circuit, "STRUCT_MUX16", -20, -40,
+                "ENABLE_MUX");
+        ComponentInstance loadMux = subcircuit(circuit, "STRUCT_MUX16", 70, -40,
+                "LOAD_MUX");
+        ComponentInstance one = component(circuit, registry, "routing.bus_constant", -300, 0,
+                registry.require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 16)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, "1"), "ONE");
+        ComponentInstance zero = component(circuit, registry, "source.zero", -300, 60, "CIN_ZERO");
+        ComponentInstance loadTie = component(circuit, registry, "source.one", 80, 80,
+                "REGISTER_LOAD_TIE");
+        wire(circuit, storage, "Q", adder, "A");
+        wire(circuit, one, "OUT", adder, "B");
+        wire(circuit, zero, "OUT", adder, "CIN");
+        wire(circuit, storage, "Q", enableMux, "A");
+        wire(circuit, adder, "SUM", enableMux, "B");
+        wire(circuit, enable, "OUT", enableMux, "S");
+        wire(circuit, enableMux, "Y", loadMux, "A");
+        wire(circuit, data, "OUT", loadMux, "B");
+        wire(circuit, load, "OUT", loadMux, "S");
+        wire(circuit, loadMux, "Y", storage, "DATA");
+        wire(circuit, loadTie, "OUT", storage, "LOAD");
+        wire(circuit, clk, "OUT", storage, "CLK");
+        wire(circuit, reset, "OUT", storage, "RESET");
+        wire(circuit, storage, "Q", count, "IN");
+        return circuit;
+    }
+
+    private static CircuitDocument moduloCounter3Circuit() {
+        ComponentRegistry registry = ComponentRegistry.standard();
+        CircuitDocument circuit = document(MODULO_COUNTER3,
+                "Three-bit modulo-8 counter made from Register3 and RippleAdder3");
+        ComponentInstance clk = input(circuit, registry, -360, -100, "CLK", 1);
+        ComponentInstance reset = input(circuit, registry, -360, -40, "RESET", 1);
+        ComponentInstance enable = input(circuit, registry, -360, 20, "ENABLE", 1);
+        ComponentInstance count = output(circuit, registry, 360, -60, "COUNT", 3);
+        ComponentInstance storage = subcircuit(circuit,
+                structuralRegisterName(3, true, 0), 120, -60, "REGISTER3");
+        ComponentInstance adder = subcircuit(circuit, rippleAdderName(3), -140, -60,
+                "INCREMENTER3");
+        ComponentInstance mux = subcircuit(circuit, "STRUCT_MUX3", 0, -20, "ENABLE_MUX");
+        ComponentInstance one = component(circuit, registry, "routing.bus_constant", -280, 20,
+                registry.require("routing.bus_constant").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 3)
+                        .with(LibraryParameters.BUS_CONSTANT_VALUE, "1"), "ONE");
+        ComponentInstance zero = component(circuit, registry, "source.zero", -280, 70, "CIN_ZERO");
+        ComponentInstance loadTie = component(circuit, registry, "source.one", 40, 80,
+                "REGISTER_LOAD_TIE");
+        wire(circuit, storage, "Q", adder, "A");
+        wire(circuit, one, "OUT", adder, "B");
+        wire(circuit, zero, "OUT", adder, "CIN");
+        wire(circuit, storage, "Q", mux, "A");
+        wire(circuit, adder, "SUM", mux, "B");
+        wire(circuit, enable, "OUT", mux, "S");
+        wire(circuit, mux, "Y", storage, "DATA");
+        wire(circuit, loadTie, "OUT", storage, "LOAD");
+        wire(circuit, clk, "OUT", storage, "CLK");
+        wire(circuit, reset, "OUT", storage, "RESET");
+        wire(circuit, storage, "Q", count, "IN");
         return circuit;
     }
 
@@ -514,9 +773,10 @@ public final class StructuralCircuitFactory {
         return circuit;
     }
 
-    private static CircuitDocument registerFile8x8Circuit() {
+    private static CircuitDocument registerFile8x8Circuit(boolean resetSupport) {
         ComponentRegistry registry = ComponentRegistry.standard();
-        CircuitDocument circuit = document(REGISTER_FILE_8X8,
+        CircuitDocument circuit = document(resetSupport
+                        ? REGISTER_FILE_8X8_RESET : REGISTER_FILE_8X8,
                 "Eight structural Register8 children, a gate decoder and two read mux networks");
         ComponentInstance rdAddrA = input(circuit, registry, -520, -180, "RD_ADDR_A", 3);
         ComponentInstance rdAddrB = input(circuit, registry, -520, -120, "RD_ADDR_B", 3);
@@ -524,6 +784,8 @@ public final class StructuralCircuitFactory {
         ComponentInstance wrData = input(circuit, registry, -520, 0, "WR_DATA", 8);
         ComponentInstance wrEn = input(circuit, registry, -520, 60, "WR_EN", 1);
         ComponentInstance clk = input(circuit, registry, -520, 120, "CLK", 1);
+        ComponentInstance reset = resetSupport
+                ? input(circuit, registry, -520, 170, "RESET", 1) : null;
         ComponentInstance rdDataA = output(circuit, registry, 560, -100, "RD_DATA_A", 8);
         ComponentInstance rdDataB = output(circuit, registry, 560, 20, "RD_DATA_B", 8);
 
@@ -555,7 +817,8 @@ public final class StructuralCircuitFactory {
         for (int register = 0; register < 8; register++) {
             ComponentInstance load = component(circuit, registry, "logic.and", -240,
                     -160 + register * 45.0, "WRITE_ENABLE_" + register);
-            ComponentInstance storage = subcircuit(circuit, REGISTER8, -100,
+            ComponentInstance storage = subcircuit(circuit, resetSupport
+                            ? structuralRegisterName(8, true, 0) : REGISTER8, -100,
                     -160 + register * 45.0, "REGISTER_" + register);
             registerBits[register] = component(circuit, registry, "routing.splitter", 20,
                     -160 + register * 45.0,
@@ -566,6 +829,9 @@ public final class StructuralCircuitFactory {
             wire(circuit, wrData, "OUT", storage, "DATA");
             wire(circuit, load, "OUT", storage, "LOAD");
             wire(circuit, clk, "OUT", storage, "CLK");
+            if (resetSupport) {
+                wire(circuit, reset, "OUT", storage, "RESET");
+            }
             wire(circuit, storage, "Q", registerBits[register], "BUS");
         }
 
@@ -619,9 +885,21 @@ public final class StructuralCircuitFactory {
     }
 
     private static void requireRippleWidth(int width) {
-        if (width != 4 && width != 8 && width != 16) {
-            throw new IllegalArgumentException("Canonical ripple-adder width must be 4, 8 or 16");
+        if (width != 3 && width != 4 && width != 8 && width != 16) {
+            throw new IllegalArgumentException("Canonical ripple-adder width must be 3, 4, 8 or 16");
         }
+    }
+
+    private static void requireRegisterWidth(int width) {
+        if (width != 1 && width != 3 && width != 4 && width != 8 && width != 16) {
+            throw new IllegalArgumentException("Structural register width must be 1, 3, 4, 8 or 16");
+        }
+    }
+
+    private static void mergeChildren(CircuitProject target, CircuitProject source) {
+        source.circuits().stream()
+                .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(circuit.metadata().name()))
+                .forEach(target::putCircuit);
     }
 
     private static CircuitDocument document(String name, String description) {

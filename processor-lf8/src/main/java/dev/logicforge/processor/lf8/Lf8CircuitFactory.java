@@ -81,16 +81,12 @@ public final class Lf8CircuitFactory {
         if (mode == null) {
             throw new IllegalArgumentException("LF-8 implementation mode cannot be null");
         }
-        if (mode == Lf8ImplementationMode.GATE_LEVEL) {
-            throw new UnsupportedOperationException(
-                    "LF-8 GATE_LEVEL mode is reserved until the remaining datapath state is structural");
-        }
         requireAddress(irqVector, "IRQ vector");
         requireAddress(nmiVector, "NMI vector");
         requireAddress(resetVector, "RESET vector");
         ComponentRegistry registry = ComponentRegistry.standard();
         CircuitDocument datapath = createDatapath(registry, mode);
-        CircuitDocument control = createControl(registry);
+        CircuitDocument control = createControl(registry, mode);
         CircuitDocument cpu = createCpu(registry);
         CircuitDocument main = createMain(registry, program, irqVector, nmiVector, resetVector);
         CircuitProject project = CircuitProject.of("lf8", main);
@@ -106,7 +102,14 @@ public final class Lf8CircuitFactory {
             structuralRegisterFile.circuits().stream()
                     .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(circuit.metadata().name()))
                     .forEach(project::putCircuit);
+            var resettableRegisterFile = StructuralCircuitFactory.resettableRegisterFile8x8Project();
+            resettableRegisterFile.circuits().stream()
+                    .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(circuit.metadata().name()))
+                    .forEach(project::putCircuit);
             project.putCircuit(createStructuralAluAdapter(registry));
+        }
+        if (mode == Lf8ImplementationMode.GATE_LEVEL) {
+            addGateLevelStructures(project);
         }
         return project;
     }
@@ -137,25 +140,23 @@ public final class Lf8CircuitFactory {
             controlY += 35;
         }
 
-        ComponentInstance pc = add(document, registry, "sequential.loadable_counter", 180, 0,
-                defaults(registry, "sequential.loadable_counter")
-                        .with(LibraryParameters.WIDTH, 16), "PC");
-        ComponentInstance ir = register(document, registry, 260, 60, 8, "IR");
-        ComponentInstance destination = register(document, registry, 260, 120, 3, "DESTINATION");
-        ComponentInstance source = register(document, registry, 260, 180, 3, "SOURCE");
+        ComponentInstance pc = counter16(document, registry, mode, 180, 0, 0, "PC");
+        ComponentInstance ir = register(document, registry, mode, 260, 60, 8, "IR");
+        ComponentInstance destination = register(document, registry, mode, 260, 120, 3, "DESTINATION");
+        ComponentInstance source = register(document, registry, mode, 260, 180, 3, "SOURCE");
         ComponentInstance operandSlice = add(document, registry, "routing.bus_slice", 180, 150,
                 defaults(registry, "routing.bus_slice")
                         .with(LibraryParameters.INPUT_WIDTH, 8)
                         .with(LibraryParameters.OUTPUT_WIDTH, 3)
                         .with(LibraryParameters.SLICE_LSB, 0), "OPERAND_SLICE");
-        ComponentInstance marLow = register(document, registry, 260, 240, 8, "MAR_LO");
-        ComponentInstance marHigh = register(document, registry, 260, 300, 8, "MAR_HI");
+        ComponentInstance marLow = register(document, registry, mode, 260, 240, 8, "MAR_LO");
+        ComponentInstance marHigh = register(document, registry, mode, 260, 300, 8, "MAR_HI");
         ComponentInstance registers = mode == Lf8ImplementationMode.FAST
                 ? add(document, registry, "memory.register_file", 430, 110,
                         defaults(registry, "memory.register_file")
                                 .with(LibraryParameters.WIDTH, 8)
                                 .with(LibraryParameters.REGISTER_COUNT, 8), "REGISTER_FILE")
-                : subcircuit(document, StructuralCircuitFactory.REGISTER_FILE_8X8,
+                : subcircuit(document, StructuralCircuitFactory.REGISTER_FILE_8X8_RESET,
                         430, 110, "REGISTER_FILE");
         ComponentInstance alu = mode == Lf8ImplementationMode.FAST
                 ? add(document, registry, "arithmetic.alu", 570, 110,
@@ -174,10 +175,7 @@ public final class Lf8CircuitFactory {
                         .with(LibraryParameters.LOW_WIDTH, 8)
                         .with(LibraryParameters.HIGH_WIDTH, 8), "MAR_ADDRESS");
         ComponentInstance addressSource = mux(document, registry, 690, 270, 16, "ADDRESS_SOURCE");
-        ComponentInstance sp = add(document, registry, "sequential.loadable_counter", 480, 340,
-                defaults(registry, "sequential.loadable_counter")
-                        .with(LibraryParameters.WIDTH, 16)
-                        .with(LibraryParameters.RESET_VALUE, "bfff"), "SP");
+        ComponentInstance sp = counter16(document, registry, mode, 480, 340, 0xBFFF, "SP");
         ComponentInstance spDecrementer = add(document, registry, "arithmetic.decrementer", 400, 340,
                 defaults(registry, "arithmetic.decrementer").with(LibraryParameters.WIDTH, 16),
                 "SP_DECREMENTER");
@@ -221,12 +219,10 @@ public final class Lf8CircuitFactory {
         ComponentInstance writeDriver = add(document, registry, "routing.tristate_n", 850, 150,
                 defaults(registry, "routing.tristate_n").with(LibraryParameters.WIDTH, 8),
                 "DATA_WRITE_DRIVER");
-        ComponentInstance flags = add(document, registry, "sequential.register_reset", 820, 330,
-                defaults(registry, "sequential.register_reset")
-                        .with(LibraryParameters.WIDTH, 4), "FLAGS_REGISTER");
-        ComponentInstance ie = add(document, registry, "sequential.register_reset", 820, 420,
-                defaults(registry, "sequential.register_reset")
-                        .with(LibraryParameters.WIDTH, 1), "IE_REGISTER");
+        ComponentInstance flags = resetRegister(document, registry, mode, 820, 330, 4,
+                "FLAGS_REGISTER");
+        ComponentInstance ie = resetRegister(document, registry, mode, 820, 420, 1,
+                "IE_REGISTER");
         ComponentInstance storedCarry = bitSlice(document, registry, 650, 350, 4, 1,
                 "STORED_CARRY");
         ComponentInstance storedOverflow = bitSlice(document, registry, 650, 400, 4, 3,
@@ -271,6 +267,14 @@ public final class Lf8CircuitFactory {
         wire(document, reset, "OUT", sp, "RESET");
         wire(document, reset, "OUT", flags, "RESET");
         wire(document, reset, "OUT", ie, "RESET");
+        if (mode == Lf8ImplementationMode.GATE_LEVEL) {
+            for (ComponentInstance target : List.of(ir, destination, source, marLow, marHigh,
+                    registers)) {
+                wire(document, reset, "OUT", target, "RESET");
+            }
+        } else if (mode == Lf8ImplementationMode.STRUCTURAL) {
+            wire(document, reset, "OUT", registers, "RESET");
+        }
 
         wire(document, data, "BUS", ir, "DATA");
         wire(document, data, "BUS", operandSlice, "IN");
@@ -429,7 +433,8 @@ public final class Lf8CircuitFactory {
         return document;
     }
 
-    private static CircuitDocument createControl(ComponentRegistry registry) {
+    private static CircuitDocument createControl(ComponentRegistry registry,
+                                                 Lf8ImplementationMode mode) {
         CircuitDocument document = document(CONTROL_CIRCUIT, "LF-8 microcoded control unit");
         ComponentInstance clk = input(document, registry, 0, 0, "CLK", 1);
         ComponentInstance reset = input(document, registry, 0, 40, "RESET", 1);
@@ -439,10 +444,14 @@ public final class Lf8CircuitFactory {
         ComponentInstance flags = input(document, registry, 0, 200, "FLAGS", 4);
         ComponentInstance ie = input(document, registry, 0, 240, "IE", 1);
 
-        ComponentInstance microstep = add(document, registry, "sequential.modulo_counter", 250, 0,
-                defaults(registry, "sequential.modulo_counter")
-                        .with(LibraryParameters.WIDTH, 3)
-                        .with(LibraryParameters.MODULUS, Lf8Microcode.MICROSTEPS), "MICROSTEP");
+        ComponentInstance microstep = mode == Lf8ImplementationMode.GATE_LEVEL
+                ? subcircuit(document, StructuralCircuitFactory.MODULO_COUNTER3,
+                        250, 0, "MICROSTEP")
+                : add(document, registry, "sequential.modulo_counter", 250, 0,
+                        defaults(registry, "sequential.modulo_counter")
+                                .with(LibraryParameters.WIDTH, 3)
+                                .with(LibraryParameters.MODULUS, Lf8Microcode.MICROSTEPS),
+                        "MICROSTEP");
         ComponentInstance microcode = add(document, registry, "memory.rom", 480, 100,
                 defaults(registry, "memory.rom")
                         .with(LibraryParameters.ADDRESS_WIDTH, 16)
@@ -466,8 +475,7 @@ public final class Lf8CircuitFactory {
                 defaults(registry, "routing.bus_concat")
                         .with(LibraryParameters.LOW_WIDTH, 8)
                         .with(LibraryParameters.HIGH_WIDTH, 8), "MICROCODE_ADDRESS");
-        ComponentInstance haltLatch = add(document, registry, "sequential.register_reset", 690, 20,
-                defaults(registry, "sequential.register_reset").with(LibraryParameters.WIDTH, 1),
+        ComponentInstance haltLatch = resetRegister(document, registry, mode, 690, 20, 1,
                 "HALT_LATCH");
         ComponentInstance haltOr = add(document, registry, "logic.or", 620, 20,
                 ParameterValues.empty(), "HALT_OR");
@@ -480,9 +488,8 @@ public final class Lf8CircuitFactory {
         // RESET_COMPLETE asynchronously clears to zero whenever RESET is asserted. Its
         // inverse therefore remains high after RESET is released until the reset-vector
         // microsequence explicitly acknowledges completion on a clock edge.
-        ComponentInstance resetComplete = add(document, registry, "sequential.register_reset",
-                60, 260, defaults(registry, "sequential.register_reset")
-                        .with(LibraryParameters.WIDTH, 1), "RESET_COMPLETE");
+        ComponentInstance resetComplete = resetRegister(document, registry, mode, 60, 260, 1,
+                "RESET_COMPLETE");
         ComponentInstance resetCompleteOne = constant(document, registry, 0, 300, 1, 1,
                 "RESET_COMPLETE_ONE");
         ComponentInstance resetPending = add(document, registry, "logic.not", 130, 260,
@@ -534,9 +541,8 @@ public final class Lf8CircuitFactory {
         ComponentInstance irqAckClearZero = constant(document, registry, 60, 400, 1, 0,
                 "IRQ_ACK_CLEAR_ZERO");
         ComponentInstance irqLatchData = mux(document, registry, 130, 400, 1, "IRQ_LATCH_DATA");
-        ComponentInstance irqTakenLatch = add(document, registry, "sequential.register_reset",
-                190, 400, defaults(registry, "sequential.register_reset")
-                        .with(LibraryParameters.WIDTH, 1), "IRQ_TAKEN_LATCH");
+        ComponentInstance irqTakenLatch = resetRegister(document, registry, mode, 190, 400, 1,
+                "IRQ_TAKEN_LATCH");
         ComponentInstance nmiTakenNot = add(document, registry, "logic.not", 250, 360,
                 ParameterValues.empty(), "NMI_TAKEN_NOT");
         ComponentInstance nmiAutoLoad = add(document, registry, "logic.and", 310, 360,
@@ -544,9 +550,8 @@ public final class Lf8CircuitFactory {
         ComponentInstance nmiLatchLoad = add(document, registry, "logic.or", 370, 360,
                 ParameterValues.empty(), "NMI_LATCH_LOAD");
         ComponentInstance nmiLatchData = mux(document, registry, 310, 400, 1, "NMI_LATCH_DATA");
-        ComponentInstance nmiTakenLatch = add(document, registry, "sequential.register_reset",
-                370, 400, defaults(registry, "sequential.register_reset")
-                        .with(LibraryParameters.WIDTH, 1), "NMI_TAKEN_LATCH");
+        ComponentInstance nmiTakenLatch = resetRegister(document, registry, mode, 370, 400, 1,
+                "NMI_TAKEN_LATCH");
         ComponentInstance exceptionTaken = add(document, registry, "logic.or", 250, 440,
                 ParameterValues.empty(), "EXCEPTION_TAKEN");
 
@@ -708,6 +713,8 @@ public final class Lf8CircuitFactory {
         ComponentInstance outputPort = add(document, registry, "system.output_port", 680, 440,
                 defaults(registry, "system.output_port").with(LibraryParameters.WIDTH, 8),
                 "OUTPUT_PORT");
+        ComponentInstance characterOutput = add(document, registry, "system.character_output",
+                880, 440, defaults(registry, "system.character_output"), "CHARACTER_OUTPUT");
         ComponentInstance inputPort = add(document, registry, "system.input_port", 680, 540,
                 defaults(registry, "system.input_port").with(LibraryParameters.WIDTH, 8),
                 "INPUT_PORT");
@@ -744,9 +751,11 @@ public final class Lf8CircuitFactory {
 
         wire(document, clk, "OUT", cpu, "CLK");
         wire(document, clk, "OUT", outputPort, "CLK");
+        wire(document, clk, "OUT", characterOutput, "CLK");
         wire(document, clk, "OUT", timer, "CLK");
         wire(document, reset, "OUT", cpu, "RESET");
         wire(document, reset, "OUT", outputPort, "RESET");
+        wire(document, reset, "OUT", characterOutput, "RESET");
         wire(document, reset, "OUT", timer, "RESET");
         wire(document, irq, "OUT", irqRequests, "IN0");
         wire(document, timer, "IRQ", irqRequests, "IN1");
@@ -777,6 +786,9 @@ public final class Lf8CircuitFactory {
         wire(document, cpu, "DATA", outputPort, "DATA");
         wire(document, outputPortDecoder, "SELECT", outputPort, "SELECT");
         wire(document, cpu, "MEMORY_WRITE", outputPort, "WRITE");
+        wire(document, cpu, "DATA", characterOutput, "DATA");
+        wire(document, outputPortDecoder, "SELECT", characterOutput, "SELECT");
+        wire(document, cpu, "MEMORY_WRITE", characterOutput, "WRITE");
         wire(document, inputPortDecoder, "SELECT", inputPort, "SELECT");
         wire(document, cpu, "MEMORY_READ", inputPort, "READ");
         wire(document, timerDecoder, "SELECT", timer, "SELECT");
@@ -797,9 +809,58 @@ public final class Lf8CircuitFactory {
     }
 
     private static ComponentInstance register(CircuitDocument document, ComponentRegistry registry,
-                                              double x, double y, int width, String label) {
-        return add(document, registry, "sequential.register", x, y,
-                defaults(registry, "sequential.register").with(LibraryParameters.WIDTH, width), label);
+                                              Lf8ImplementationMode mode, double x, double y,
+                                              int width, String label) {
+        return mode == Lf8ImplementationMode.GATE_LEVEL
+                ? subcircuit(document,
+                        StructuralCircuitFactory.structuralRegisterName(width, true, 0),
+                        x, y, label)
+                : add(document, registry, "sequential.register", x, y,
+                        defaults(registry, "sequential.register")
+                                .with(LibraryParameters.WIDTH, width), label);
+    }
+
+    private static ComponentInstance resetRegister(CircuitDocument document,
+            ComponentRegistry registry, Lf8ImplementationMode mode, double x, double y,
+            int width, String label) {
+        return mode == Lf8ImplementationMode.GATE_LEVEL
+                ? subcircuit(document,
+                        StructuralCircuitFactory.structuralRegisterName(width, true, 0),
+                        x, y, label)
+                : add(document, registry, "sequential.register_reset", x, y,
+                        defaults(registry, "sequential.register_reset")
+                                .with(LibraryParameters.WIDTH, width), label);
+    }
+
+    private static ComponentInstance counter16(CircuitDocument document,
+            ComponentRegistry registry, Lf8ImplementationMode mode, double x, double y,
+            int resetValue, String label) {
+        return mode == Lf8ImplementationMode.GATE_LEVEL
+                ? subcircuit(document, StructuralCircuitFactory.loadableCounter16Name(resetValue),
+                        x, y, label)
+                : add(document, registry, "sequential.loadable_counter", x, y,
+                        defaults(registry, "sequential.loadable_counter")
+                                .with(LibraryParameters.WIDTH, 16)
+                                .with(LibraryParameters.RESET_VALUE,
+                                        Integer.toHexString(resetValue)), label);
+    }
+
+    private static void addGateLevelStructures(CircuitProject project) {
+        List<CircuitProject> families = List.of(
+                StructuralCircuitFactory.structuralRegister(1, true, 0),
+                StructuralCircuitFactory.structuralRegister(3, true, 0),
+                StructuralCircuitFactory.structuralRegister(4, true, 0),
+                StructuralCircuitFactory.structuralRegister(8, true, 0),
+                StructuralCircuitFactory.resettableRegisterFile8x8Project(),
+                StructuralCircuitFactory.loadableCounter16Project(0),
+                StructuralCircuitFactory.loadableCounter16Project(0xBFFF),
+                StructuralCircuitFactory.moduloCounter3Project());
+        for (CircuitProject family : families) {
+            family.circuits().stream()
+                    .filter(circuit -> !CircuitProject.MAIN_CIRCUIT.equals(
+                            circuit.metadata().name()))
+                    .forEach(project::putCircuit);
+        }
     }
 
     private static ComponentInstance mux(CircuitDocument document, ComponentRegistry registry,

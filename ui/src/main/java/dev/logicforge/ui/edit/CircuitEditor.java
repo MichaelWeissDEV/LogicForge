@@ -21,6 +21,7 @@ import dev.logicforge.simulation.InputSourceState;
 import dev.logicforge.simulation.Simulation;
 import dev.logicforge.simulation.SimulationOscillationException;
 import dev.logicforge.simulation.SimulationStatus;
+import dev.logicforge.simulation.SimulationSession;
 import dev.logicforge.ui.command.CircuitCommand;
 import dev.logicforge.ui.command.ChangeParameterCommand;
 import dev.logicforge.ui.command.UndoStack;
@@ -65,6 +66,8 @@ public final class CircuitEditor {
     private final Deque<CircuitViewContext> navigationStack = new ArrayDeque<>();
     private CompilationResult compilation;
     private Simulation simulation;
+    private SimulationSession simulationSession;
+    private final Runnable simulationSessionListener = this::onSessionChanged;
     private String compileError;
     private List<ValidationIssue> lastValidationIssues = List.of();
     private boolean dirty;
@@ -119,15 +122,34 @@ public final class CircuitEditor {
      */
     public void attachRuntime(CircuitProject liveProject, CompilationResult liveCompilation,
                               Simulation liveSimulation) {
+        attachRuntime(liveProject, liveCompilation, liveSimulation,
+                new SimulationSession(liveSimulation),
+                CircuitProject.MAIN_CIRCUIT, Optional.of(CircuitProject.MAIN_CIRCUIT),
+                Optional.empty());
+    }
+
+    /** Attaches a live runtime and restores the exact circuit/instance/selection context. */
+    public void attachRuntime(CircuitProject liveProject, CompilationResult liveCompilation,
+                              Simulation liveSimulation, SimulationSession liveSession,
+                              String initialCircuitName,
+                              Optional<String> initialInstancePath,
+                              Optional<UUID> selectedComponent) {
         if (liveProject == null || liveCompilation == null || liveSimulation == null) {
             throw new IllegalArgumentException("Live project, compilation and simulation are required");
         }
         setProject(liveProject, false);
         this.compilation = liveCompilation;
         this.simulation = liveSimulation;
+        bindSession(liveSession);
         this.compileError = null;
         this.lastValidationIssues = List.of();
         this.desiredRunning = liveSimulation.isRunning();
+        switchActiveCircuit(initialCircuitName,
+                initialInstancePath == null ? Optional.empty() : initialInstancePath, true);
+        if (selectedComponent != null) {
+            selectedComponent.filter(id -> document.component(id).isPresent())
+                    .ifPresent(selection::selectComponent);
+        }
         notifyChanged();
     }
 
@@ -347,6 +369,10 @@ public final class CircuitEditor {
         return Optional.ofNullable(simulation);
     }
 
+    public Optional<SimulationSession> simulationSession() {
+        return Optional.ofNullable(simulationSession);
+    }
+
     public Optional<CompilationResult> compilation() {
         return Optional.ofNullable(compilation);
     }
@@ -365,21 +391,19 @@ public final class CircuitEditor {
     }
 
     public boolean isRunning() {
-        return desiredRunning;
+        return simulationSession == null ? desiredRunning : simulationSession.isRunning();
     }
 
     public void setRunning(boolean running) {
         desiredRunning = running;
-        if (simulation != null) {
-            guarded(() -> simulation.setRunning(running));
+        if (simulationSession != null) {
+            guarded(() -> simulationSession.setRunning(running));
         }
-        notifyChanged();
     }
 
     public void step() {
-        if (simulation != null) {
-            guarded(simulation::step);
-            notifyChanged();
+        if (simulationSession != null) {
+            guarded(simulationSession::stepEvent);
         }
     }
 
@@ -389,9 +413,8 @@ public final class CircuitEditor {
      * intervening delta cycle.
      */
     public void stepTime() {
-        if (simulation != null) {
-            guarded(simulation::advanceToNextEvent);
-            notifyChanged();
+        if (simulationSession != null) {
+            guarded(simulationSession::stepTime);
         }
     }
 
@@ -413,15 +436,14 @@ public final class CircuitEditor {
     public void advancePlayback(long targetTime, int maxAdvances) {
         if (simulation != null) {
             guarded(() -> simulation.advanceBudgeted(targetTime, maxAdvances));
-            notifyChanged();
+            publishSimulationChange();
         }
     }
 
     /** Puts the simulation back into its initial state without touching the circuit. */
     public void resetSimulation() {
-        if (simulation != null) {
-            guarded(simulation::reset);
-            notifyChanged();
+        if (simulationSession != null) {
+            guarded(simulationSession::reset);
         }
     }
 
@@ -604,7 +626,7 @@ public final class CircuitEditor {
             return;
         }
         guarded(() -> simulation.setInput(runtimeId.getAsInt(), value));
-        notifyChanged();
+        publishSimulationChange();
     }
 
     public Optional<LogicState> inputValueOf(UUID componentId) {
@@ -660,6 +682,11 @@ public final class CircuitEditor {
             simulation.reevaluateAllAtCurrentTime();
             simulation.runUntilStableAtCurrentTime();
             simulation.setRunning(desiredRunning);
+            if (simulationSession == null) {
+                bindSession(new SimulationSession(simulation));
+            } else {
+                simulationSession.replaceSimulation(simulation);
+            }
         } catch (CircuitCompileException failure) {
             compilation = null;
             simulation = null;
@@ -901,7 +928,7 @@ public final class CircuitEditor {
                     .resolveComponent(componentId);
             if (runtimeId.isEmpty()) return;
             guarded(() -> simulation.writeMemoryWord(runtimeId.getAsInt(), address, value));
-            notifyChanged();
+            publishSimulationChange();
         });
     }
 
@@ -937,7 +964,7 @@ public final class CircuitEditor {
                         simulation.stateOf(id), address, words.get(address));
             }
             guarded(() -> simulation.reevaluateComponent(id));
-            notifyChanged();
+            publishSimulationChange();
         });
     }
 
@@ -970,6 +997,30 @@ public final class CircuitEditor {
 
     public void removeChangeListener(Runnable listener) {
         changeListeners.remove(listener);
+    }
+
+    private void bindSession(SimulationSession session) {
+        if (simulationSession != null) {
+            simulationSession.removeListener(simulationSessionListener);
+        }
+        simulationSession = java.util.Objects.requireNonNull(session, "session");
+        simulationSession.addListener(simulationSessionListener);
+        simulation = simulationSession.simulation();
+        desiredRunning = simulationSession.isRunning();
+    }
+
+    private void onSessionChanged() {
+        simulation = simulationSession.simulation();
+        desiredRunning = simulationSession.isRunning();
+        notifyChanged();
+    }
+
+    private void publishSimulationChange() {
+        if (simulationSession != null) {
+            simulationSession.simulationChanged();
+        } else {
+            notifyChanged();
+        }
     }
 
     private void notifyChanged() {

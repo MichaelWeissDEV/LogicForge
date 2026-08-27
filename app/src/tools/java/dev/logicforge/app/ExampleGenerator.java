@@ -8,9 +8,15 @@ import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.geometry.CircuitPoint;
+import dev.logicforge.compiler.CircuitCompiler;
 import dev.logicforge.format.ProjectFormat;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.library.LibraryParameters;
+import dev.logicforge.processor.lf8.Lf8ComputerFactory;
+import dev.logicforge.processor.lf8.Lf8ImplementationMode;
+import dev.logicforge.structures.StructuralCircuitFactory;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -29,17 +35,100 @@ public final class ExampleGenerator {
 
     public static void main(String[] args) {
         Path directory = Path.of(args.length > 0 ? args[0] : "examples");
-        write(directory, "NOT", inverter());
-        write(directory, "AND", twoInputGate("logic.and", "AND gate driven by two switches"));
-        write(directory, "XOR", twoInputGate("logic.xor", "XOR gate driven by two switches"));
-        write(directory, "Half-Adder", halfAdder());
-        write(directory, "Tri-State-Bus", triStateBus());
+        write(directory.resolve("logic"), "gates", twoInputGate("logic.and",
+                "Two switches demonstrate a basic two-input gate"));
+        write(directory.resolve("logic"), "mux", componentDemo("routing.mux2", "MUX",
+                defaults("routing.mux2").with(LibraryParameters.WIDTH, 1)));
+        write(directory.resolve("logic"), "decoder", promote(
+                StructuralCircuitFactory.decoder2To4Project(),
+                StructuralCircuitFactory.DECODER_2_TO_4));
+        write(directory.resolve("logic"), "sr-latch", promote(
+                StructuralCircuitFactory.dFlipFlopProject(),
+                StructuralCircuitFactory.SR_LATCH_NOR));
+        write(directory.resolve("logic"), "d-latch", promote(
+                StructuralCircuitFactory.dFlipFlopProject(), StructuralCircuitFactory.D_LATCH));
+        write(directory.resolve("logic"), "dff", promote(
+                StructuralCircuitFactory.dFlipFlopProject(), StructuralCircuitFactory.DFF));
+
+        write(directory.resolve("arithmetic"), "half-adder", promote(
+                StructuralCircuitFactory.halfAdderProject(), StructuralCircuitFactory.HALF_ADDER));
+        write(directory.resolve("arithmetic"), "full-adder", promote(
+                StructuralCircuitFactory.fullAdderProject(), StructuralCircuitFactory.FULL_ADDER));
+        write(directory.resolve("arithmetic"), "ripple-adder8", promote(
+                StructuralCircuitFactory.rippleAdderProject(8),
+                StructuralCircuitFactory.rippleAdderName(8)));
+        write(directory.resolve("arithmetic"), "alu8", promote(
+                StructuralCircuitFactory.alu8Project(), StructuralCircuitFactory.ALU8));
+
+        write(directory.resolve("memory"), "register8", promote(
+                StructuralCircuitFactory.register8Project(), StructuralCircuitFactory.REGISTER8));
+        write(directory.resolve("memory"), "register-file8x8", promote(
+                StructuralCircuitFactory.registerFile8x8Project(),
+                StructuralCircuitFactory.REGISTER_FILE_8X8));
+        write(directory.resolve("memory"), "ram", componentDemo("memory.ram", "RAM",
+                defaults("memory.ram").with(LibraryParameters.ADDRESS_WIDTH, 4)
+                        .with(LibraryParameters.WIDTH, 8)));
+        write(directory.resolve("memory"), "rom", componentDemo("memory.rom", "ROM",
+                defaults("memory.rom").with(LibraryParameters.ADDRESS_WIDTH, 4)
+                        .with(LibraryParameters.WIDTH, 8)
+                        .with(LibraryParameters.ROM_CONTENTS, "48 65 6c 6c 6f")));
+
+        int[] basicProgram = {0x01, 0, 5, 0x01, 1, 3, 0x03, 0, 1,
+                0x06, 0, 0x00, 0x80, 0xff};
+        write(directory.resolve("lf8"), "lf8-fast",
+                Lf8ComputerFactory.create(Lf8ImplementationMode.FAST, basicProgram));
+        write(directory.resolve("lf8"), "lf8-structural",
+                Lf8ComputerFactory.create(Lf8ImplementationMode.STRUCTURAL, basicProgram));
+        write(directory.resolve("lf8"), "lf8-gate-level",
+                Lf8ComputerFactory.create(Lf8ImplementationMode.GATE_LEVEL, basicProgram));
+    }
+
+    private static void write(Path directory, String name, CircuitProject project) {
+        createDirectories(directory);
+        Path file = directory.resolve(name + "." + ProjectFormat.EXTENSION);
+        ProjectFormat.save(project, file);
+        new CircuitCompiler(REGISTRY).compile(ProjectFormat.load(file), CircuitProject.MAIN_CIRCUIT);
+        System.out.println("Wrote " + file.toAbsolutePath());
     }
 
     private static void write(Path directory, String name, CircuitDocument circuit) {
-        Path file = directory.resolve(name + "." + ProjectFormat.EXTENSION);
-        ProjectFormat.save(CircuitProject.of(name, circuit), file);
-        System.out.println("Wrote " + file.toAbsolutePath());
+        write(directory, name, CircuitProject.of(name, circuit));
+    }
+
+    private static void createDirectories(Path directory) {
+        try {
+            Files.createDirectories(directory);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Could not create example directory " + directory,
+                    failure);
+        }
+    }
+
+    /** Makes a structural circuit the visible main page while retaining all of its children. */
+    private static CircuitProject promote(CircuitProject source, String circuitName) {
+        CircuitDocument sourceMain = source.circuit(circuitName).orElseThrow();
+        CircuitDocument main = new CircuitDocument(new CircuitMetadata(CircuitProject.MAIN_CIRCUIT,
+                sourceMain.metadata().description()));
+        sourceMain.components().forEach(main::addComponent);
+        sourceMain.connections().forEach(main::addConnection);
+        CircuitProject result = CircuitProject.of(source.name(), main);
+        source.circuits().stream()
+                .filter(circuit -> !circuit.metadata().name().equals(CircuitProject.MAIN_CIRCUIT))
+                .forEach(result::putCircuit);
+        return result;
+    }
+
+    private static CircuitDocument componentDemo(String definitionId, String label,
+                                                 ParameterValues parameters) {
+        CircuitDocument circuit = circuit("Interactive " + label + " component example");
+        ComponentInstance component = ComponentInstance.create(definitionId,
+                new CircuitPoint(280, 180), parameters).withLabel(label);
+        circuit.addComponent(component);
+        return circuit;
+    }
+
+    private static ParameterValues defaults(String definitionId) {
+        return REGISTRY.require(definitionId).definition().defaultParameters();
     }
 
     /** A switch, an inverter and an LED. */

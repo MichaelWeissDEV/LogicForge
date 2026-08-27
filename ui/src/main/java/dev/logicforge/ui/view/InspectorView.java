@@ -19,6 +19,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
+import dev.logicforge.structures.ImplementationLevel;
+import dev.logicforge.structures.StructuralImplementationRegistry;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -42,10 +45,21 @@ import javafx.scene.layout.VBox;
 public final class InspectorView extends VBox {
 
     private final CircuitEditor editor;
+    private final Consumer<ComponentInstance> inspectInternals;
+    private final Consumer<ComponentInstance> studyImplementation;
+    private final StructuralImplementationRegistry structuralImplementations =
+            StructuralImplementationRegistry.standard();
     private final VBox body = new VBox();
 
     public InspectorView(CircuitEditor editor) {
+        this(editor, instance -> editor.openSubcircuit(instance), instance -> { });
+    }
+
+    public InspectorView(CircuitEditor editor, Consumer<ComponentInstance> inspectInternals,
+                         Consumer<ComponentInstance> studyImplementation) {
         this.editor = editor;
+        this.inspectInternals = inspectInternals;
+        this.studyImplementation = studyImplementation;
         getStyleClass().add("side-panel");
 
         Label header = new Label("INSPECTOR");
@@ -118,8 +132,16 @@ public final class InspectorView extends VBox {
                             .orElse(segment + " (not instantiated)")));
             Button open = new Button("Open Internals");
             open.setOnAction(event -> editor.openSubcircuit(instance));
-            body.getChildren().add(open);
+            Button inspect = new Button("Inspect Internals");
+            inspect.setOnAction(event -> inspectInternals.accept(instance));
+            body.getChildren().addAll(open, inspect);
         }
+        structuralImplementations.find(component.id(), instance.parameters(),
+                ImplementationLevel.GATE).ifPresent(implementation -> {
+                    Button study = new Button("Study Implementation");
+                    study.setOnAction(event -> studyImplementation.accept(instance));
+                    body.getChildren().add(study);
+                });
         body.getChildren().add(spacer());
 
         body.getChildren().add(propertyLabel("Port display"));

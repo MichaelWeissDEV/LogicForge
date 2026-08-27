@@ -1,0 +1,24 @@
+{
+  "formatVersion": 3,
+  "application": "LogicForge",
+  "name": "mux",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Interactive MUX component example",
+      "components": [
+        {
+          "id": "8314803b-f345-4621-8977-15062d40ca8a",
+          "type": "routing.mux2",
+          "x": 280,
+          "y": 180,
+          "label": "MUX",
+          "parameters": {
+            "width": 1
+          }
+        }
+      ],
+      "connections": []
+    }
+  ]
+}

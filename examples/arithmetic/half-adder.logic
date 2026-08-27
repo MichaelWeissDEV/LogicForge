@@ -1,0 +1,283 @@
+{
+  "formatVersion": 3,
+  "application": "LogicForge",
+  "name": "struct-half-adder",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Gate-level half adder: XOR produces SUM and AND produces CARRY",
+      "components": [
+        {
+          "id": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+          "type": "hierarchy.input",
+          "x": -180,
+          "y": -30,
+          "label": "A_PORT",
+          "parameters": {
+            "name": "A",
+            "width": 1
+          }
+        },
+        {
+          "id": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+          "type": "hierarchy.input",
+          "x": -180,
+          "y": 50,
+          "label": "B_PORT",
+          "parameters": {
+            "name": "B",
+            "width": 1
+          }
+        },
+        {
+          "id": "719fce92-2f62-4f14-9fcc-e530c512db70",
+          "type": "logic.xor",
+          "x": -20,
+          "y": -40,
+          "label": "SUM_XOR",
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+          "type": "logic.and",
+          "x": -20,
+          "y": 60,
+          "label": "CARRY_AND",
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+          "type": "hierarchy.output",
+          "x": 160,
+          "y": -40,
+          "label": "SUM_PORT",
+          "parameters": {
+            "name": "SUM",
+            "width": 1
+          }
+        },
+        {
+          "id": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+          "type": "hierarchy.output",
+          "x": 160,
+          "y": 60,
+          "label": "CARRY_PORT",
+          "parameters": {
+            "name": "CARRY",
+            "width": 1
+          }
+        }
+      ],
+      "connections": [
+        {
+          "id": "8d18ac57-e6de-4799-ab91-46f4825cb672",
+          "from": {
+            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "e5b04549-d844-4f5d-a074-398fd45c61d4",
+          "from": {
+            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "84a356e3-8e2e-4694-bc2d-15cd50f2a57a",
+          "from": {
+            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "8dc227b8-08ce-4b2e-8d1f-b6e46ea55077",
+          "from": {
+            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "57dfb5a2-aed4-4d85-b95f-6a196cb4e0f9",
+          "from": {
+            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "349d097e-d6f7-4a60-a8e7-48ee75aa6789",
+          "from": {
+            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+            "port": "IN"
+          }
+        }
+      ]
+    },
+    {
+      "name": "STRUCT_HALF_ADDER",
+      "description": "Gate-level half adder: XOR produces SUM and AND produces CARRY",
+      "components": [
+        {
+          "id": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+          "type": "hierarchy.input",
+          "x": -180,
+          "y": -30,
+          "label": "A_PORT",
+          "parameters": {
+            "name": "A",
+            "width": 1
+          }
+        },
+        {
+          "id": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+          "type": "hierarchy.input",
+          "x": -180,
+          "y": 50,
+          "label": "B_PORT",
+          "parameters": {
+            "name": "B",
+            "width": 1
+          }
+        },
+        {
+          "id": "719fce92-2f62-4f14-9fcc-e530c512db70",
+          "type": "logic.xor",
+          "x": -20,
+          "y": -40,
+          "label": "SUM_XOR",
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+          "type": "logic.and",
+          "x": -20,
+          "y": 60,
+          "label": "CARRY_AND",
+          "parameters": {
+            "inputs": 2
+          }
+        },
+        {
+          "id": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+          "type": "hierarchy.output",
+          "x": 160,
+          "y": -40,
+          "label": "SUM_PORT",
+          "parameters": {
+            "name": "SUM",
+            "width": 1
+          }
+        },
+        {
+          "id": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+          "type": "hierarchy.output",
+          "x": 160,
+          "y": 60,
+          "label": "CARRY_PORT",
+          "parameters": {
+            "name": "CARRY",
+            "width": 1
+          }
+        }
+      ],
+      "connections": [
+        {
+          "id": "8d18ac57-e6de-4799-ab91-46f4825cb672",
+          "from": {
+            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "e5b04549-d844-4f5d-a074-398fd45c61d4",
+          "from": {
+            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "84a356e3-8e2e-4694-bc2d-15cd50f2a57a",
+          "from": {
+            "component": "f5789fe3-3e2e-4130-87f0-1dc5017c1a12",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "port": "IN0"
+          }
+        },
+        {
+          "id": "8dc227b8-08ce-4b2e-8d1f-b6e46ea55077",
+          "from": {
+            "component": "6b494137-8018-432d-a13c-f7a3b33c47f6",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "port": "IN1"
+          }
+        },
+        {
+          "id": "57dfb5a2-aed4-4d85-b95f-6a196cb4e0f9",
+          "from": {
+            "component": "719fce92-2f62-4f14-9fcc-e530c512db70",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "6b29c7fa-06be-46fb-a6b9-1dc135a9945b",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "349d097e-d6f7-4a60-a8e7-48ee75aa6789",
+          "from": {
+            "component": "ab227767-2f99-4b6e-aec4-52fc4c7d3063",
+            "port": "OUT"
+          },
+          "to": {
+            "component": "d353fccf-c5c1-4f5d-adf2-85b815f68fc5",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}

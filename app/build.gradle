@@ -20,6 +20,12 @@ application {
     applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics']
 }
 
+tasks.named('processResources') {
+    from(rootProject.file('examples')) {
+        into 'examples'
+    }
+}
+
 /*
  * Development tools that drive the real workbench (rendering a picture of it, replaying
  * interactions). They are not part of the application and not unit tests, so they live in
@@ -30,6 +36,11 @@ sourceSets {
         compileClasspath += sourceSets.main.output + configurations.runtimeClasspath
         runtimeClasspath += sourceSets.main.output + configurations.runtimeClasspath
     }
+}
+
+dependencies {
+    toolsImplementation project(':component-structures')
+    toolsImplementation project(':processor-lf8')
 }
 
 tasks.register('screenshot', JavaExec) {

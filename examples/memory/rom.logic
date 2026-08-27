@@ -1,0 +1,26 @@
+{
+  "formatVersion": 3,
+  "application": "LogicForge",
+  "name": "rom",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "Interactive ROM component example",
+      "components": [
+        {
+          "id": "c848544b-3884-4c90-8b66-b465625b88ea",
+          "type": "memory.rom",
+          "x": 280,
+          "y": 180,
+          "label": "ROM",
+          "parameters": {
+            "addressWidth": 4,
+            "contents": "48 65 6c 6c 6f",
+            "width": 8
+          }
+        }
+      ],
+      "connections": []
+    }
+  ]
+}

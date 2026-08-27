@@ -70,6 +70,16 @@ import dev.logicforge.library.behavior.UniversalShiftRegisterBehavior;
 import dev.logicforge.library.behavior.UserInputBehavior;
 import dev.logicforge.library.behavior.WideTriStateBehavior;
 import dev.logicforge.library.behavior.ZeroDetectorBehavior;
+import dev.logicforge.library.behavior.BusTransformBehavior;
+import dev.logicforge.library.behavior.BusTransceiverBehavior;
+import dev.logicforge.library.behavior.OpenDrainBehavior;
+import dev.logicforge.library.behavior.ByteLaneSplitterBehavior;
+import dev.logicforge.library.behavior.ArithmeticExpansionBehavior;
+import dev.logicforge.library.behavior.GpioBehavior;
+import dev.logicforge.library.behavior.CharacterOutputBehavior;
+import dev.logicforge.library.behavior.SynchronousRamBehavior;
+import dev.logicforge.library.behavior.DualPortRamBehavior;
+import dev.logicforge.library.behavior.QueueStorageBehavior;
 import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicOperation;
 import dev.logicforge.logic.LogicState;
@@ -762,6 +772,88 @@ final class StandardLibrary {
                         List.of("tristate", "buffer", "bus", "z")),
                 values -> new WideTriStateBehavior(busWidth(values), values.getBoolean(LibraryParameters.ACTIVE_LOW))));
 
+        registerBusTransform(registry, "routing.zero_extend", "Zero Extend",
+                "Widens a bus by filling new high bits with zero", BusTransformBehavior.Kind.ZERO_EXTEND,
+                List.of(LibraryParameters.INPUT_WIDTH, LibraryParameters.OUTPUT_WIDTH));
+        registerBusTransform(registry, "routing.sign_extend", "Sign Extend",
+                "Widens a two's-complement bus by copying its sign bit", BusTransformBehavior.Kind.SIGN_EXTEND,
+                List.of(LibraryParameters.INPUT_WIDTH, LibraryParameters.OUTPUT_WIDTH));
+        registerBusTransform(registry, "routing.truncate", "Truncate",
+                "Keeps the low outputWidth bits of a bus", BusTransformBehavior.Kind.TRUNCATE,
+                List.of(LibraryParameters.INPUT_WIDTH, LibraryParameters.OUTPUT_WIDTH));
+        registerBusTransform(registry, "routing.bit_reverse", "Bit Reverse",
+                "Reverses bit order across the bus", BusTransformBehavior.Kind.BIT_REVERSE,
+                List.of(LibraryParameters.WIDTH));
+        registerBusTransform(registry, "routing.byte_swap", "Byte Swap",
+                "Reverses the byte order while retaining bit order within each byte",
+                BusTransformBehavior.Kind.BYTE_SWAP, List.of(LibraryParameters.WIDTH));
+
+        registry.register(new ComponentType(
+                definition("routing.bus_transceiver", "Bus Transceiver", ROUTING,
+                        "Bidirectional tri-state transceiver: DIR=1 A→B, DIR=0 B→A; ENABLE=0 isolates",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBoxWithInout(
+                                List.of(PortLayouts.DynamicPortDef.fixed("DIR"),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE")),
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH)),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("transceiver", "bidirectional", "tristate", "245")),
+                values -> new BusTransceiverBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("routing.bus_isolator", "Bus Isolator", ROUTING,
+                        "Passes A to Y while ENABLE=1; otherwise Y is high impedance",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("ENABLE")),
+                                List.of(PortLayouts.DynamicPortDef.bus("Y", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("isolate", "tristate", "bus")),
+                values -> new WideTriStateBehavior(busWidth(values), false)));
+
+        registry.register(new ComponentType(
+                definition("routing.byte_lane_splitter", "Byte Lane Splitter", ROUTING,
+                        "Splits a bus into low-byte-first 8-bit lanes",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.variableBox(
+                                values -> List.of(PortLayouts.DynamicPortDef.bus("IN", LibraryParameters.WIDTH)),
+                                values -> java.util.stream.IntStream.range(0,
+                                                (values.getInt(LibraryParameters.WIDTH) + 7) / 8)
+                                        .mapToObj(index -> new PortLayouts.DynamicPortDef("BYTE" + index,
+                                                ignored -> BitWidth.of(8), "Byte lane " + index))
+                                        .toList(), REGISTER_WIDTH),
+                        List.of("byte", "lane", "split")),
+                values -> new ByteLaneSplitterBehavior(values.getInt(LibraryParameters.WIDTH))));
+
+        registry.register(new ComponentType(
+                definition("routing.open_drain", "Open Drain", ROUTING,
+                        "A zero pulls Y low; a one releases Y to high impedance",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH)),
+                                List.of(PortLayouts.DynamicPortDef.bus("Y", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("open drain", "wired and", "z")),
+                values -> new OpenDrainBehavior(busWidth(values))));
+        registry.register(new ComponentType(
+                definition("routing.pullup_bus", "Pull-up Bus", ROUTING,
+                        "Weak-model digital pull-up represented as a defined all-one driver",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(List.of(),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("pullup", "ones", "bus")),
+                values -> new ConstantVectorBehavior(LogicVector.repeat(LogicState.ONE,
+                        values.getInt(LibraryParameters.WIDTH)))));
+        registry.register(new ComponentType(
+                definition("routing.pulldown_bus", "Pull-down Bus", ROUTING,
+                        "Weak-model digital pull-down represented as a defined all-zero driver",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(List.of(),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("pulldown", "zeros", "bus")),
+                values -> new ConstantVectorBehavior(LogicVector.repeat(LogicState.ZERO,
+                        values.getInt(LibraryParameters.WIDTH)))));
+
         registry.register(new ComponentType(
                 definition("routing.bus_concat", "Bus Concat", ROUTING,
                         "Concatenates HIGH above LOW: OUT = {HIGH, LOW}",
@@ -904,6 +996,28 @@ final class StandardLibrary {
             ports.add(PortLayouts.DynamicPortDef.fixed("IN" + i, "Request input " + i));
         }
         return ports;
+    }
+
+    private static void registerBusTransform(ComponentRegistry registry, String id, String name,
+            String description, BusTransformBehavior.Kind kind, List<ParameterSpec<?>> parameters) {
+        boolean sameWidth = parameters.size() == 1;
+        registry.register(new ComponentType(
+                definition(id, name, ROUTING, description, parameters,
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("IN",
+                                        values -> BitWidth.of(values.getInt(sameWidth
+                                                ? LibraryParameters.WIDTH
+                                                : LibraryParameters.INPUT_WIDTH)), "Input bus")),
+                                List.of(new PortLayouts.DynamicPortDef("OUT",
+                                        values -> BitWidth.of(values.getInt(sameWidth
+                                                ? LibraryParameters.WIDTH
+                                                : LibraryParameters.OUTPUT_WIDTH)), "Transformed bus")),
+                                REGISTER_WIDTH), List.of("bus", "bits", "width")),
+                values -> new BusTransformBehavior(kind,
+                        values.getInt(sameWidth ? LibraryParameters.WIDTH
+                                : LibraryParameters.INPUT_WIDTH),
+                        values.getInt(sameWidth ? LibraryParameters.WIDTH
+                                : LibraryParameters.OUTPUT_WIDTH))));
     }
 
     private static BitWidth busWidth(dev.logicforge.circuit.component.ParameterValues values) {
@@ -1095,6 +1209,54 @@ final class StandardLibrary {
         registerBitCounter(registry, "arithmetic.population_count", "Population Count",
                 "How many bits of A are 1 (Hamming weight)",
                 BitCounterBehavior.Kind.POPULATION_COUNT);
+
+        registry.register(new ComponentType(
+                definition("arithmetic.barrel_shifter", "Barrel Shifter", ARITHMETIC,
+                        "Variable logical shift; RIGHT=0 shifts left and RIGHT=1 shifts right",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH),
+                                        new PortLayouts.DynamicPortDef("SHIFT",
+                                                values -> BitWidth.of(ShiftBehavior.shiftAmountWidth(
+                                                        values.getInt(LibraryParameters.WIDTH))),
+                                                "Shift distance"),
+                                        PortLayouts.DynamicPortDef.fixed("RIGHT")),
+                                List.of(PortLayouts.DynamicPortDef.bus("OUT", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("barrel", "shift", "variable")),
+                values -> new ArithmeticExpansionBehavior(
+                        ArithmeticExpansionBehavior.Kind.BARREL_SHIFT, busWidth(values))));
+        registry.register(new ComponentType(
+                definition("arithmetic.carry_lookahead_adder", "Carry Lookahead Adder", ARITHMETIC,
+                        "Fast N-bit unsigned addition with carry in/out",
+                        List.of(LibraryParameters.WIDTH),
+                        addSubLayout("SUM", "A + B + CIN", "COUT", "Carry out",
+                                "CIN", "Carry in"), List.of("adder", "carry lookahead", "cla")),
+                values -> new AdderBehavior(busWidth(values))));
+        registry.register(new ComponentType(
+                definition("arithmetic.multiplier_unsigned", "Unsigned Multiplier", ARITHMETIC,
+                        "Unsigned product with a double-width result (capped at 64 bits)",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.bus("B", LibraryParameters.WIDTH)),
+                                List.of(new PortLayouts.DynamicPortDef("PRODUCT",
+                                        values -> BitWidth.of(Math.min(64,
+                                                values.getInt(LibraryParameters.WIDTH) * 2)),
+                                        "Unsigned product")), REGISTER_WIDTH),
+                        List.of("multiply", "product", "unsigned")),
+                values -> new ArithmeticExpansionBehavior(
+                        ArithmeticExpansionBehavior.Kind.MULTIPLY_UNSIGNED, busWidth(values))));
+        registry.register(new ComponentType(
+                definition("arithmetic.absolute", "Absolute Value", ARITHMETIC,
+                        "Two's-complement absolute value; OVERFLOW marks the most-negative input",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("A", LibraryParameters.WIDTH)),
+                                List.of(PortLayouts.DynamicPortDef.bus("RESULT", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("OVERFLOW")),
+                                REGISTER_WIDTH), List.of("absolute", "abs", "magnitude")),
+                values -> new ArithmeticExpansionBehavior(
+                        ArithmeticExpansionBehavior.Kind.ABSOLUTE, busWidth(values))));
     }
 
     private static void registerBitCounter(ComponentRegistry registry, String id, String name, String description,
@@ -1139,6 +1301,51 @@ final class StandardLibrary {
 
     private static void registerMemory(ComponentRegistry registry) {
         registry.register(new ComponentType(
+                definition("memory.synchronous_ram", "Synchronous RAM", MEMORY,
+                        "Rising-edge read/write RAM; WE=1 writes, WE=0 captures DATA_OUT; RESET clears",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("ADDRESS",
+                                                values -> BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)),
+                                                "Word address"),
+                                        PortLayouts.DynamicPortDef.bus("DATA_IN", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("WE"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA_OUT", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("ram", "synchronous", "block ram")),
+                values -> new SynchronousRamBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("memory.dual_port_ram", "Dual-port RAM", MEMORY,
+                        "Two combinational read ports and rising-edge write ports; conflicting "
+                                + "same-address writes store X",
+                        List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("ADDRESS_A",
+                                                values -> BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), ""),
+                                        PortLayouts.DynamicPortDef.bus("DATA_IN_A", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("WE_A"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK_A"),
+                                        new PortLayouts.DynamicPortDef("ADDRESS_B",
+                                                values -> BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), ""),
+                                        PortLayouts.DynamicPortDef.bus("DATA_IN_B", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("WE_B"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK_B"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA_OUT_A", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.bus("DATA_OUT_B", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("ram", "dual port", "collision")),
+                values -> new DualPortRamBehavior(
+                        BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
+
+        registerQueueStorage(registry, "memory.fifo", "FIFO", QueueStorageBehavior.Kind.FIFO,
+                "WRITE appends and READ removes the oldest word; simultaneous operations read then write");
+        registerQueueStorage(registry, "memory.stack", "Stack", QueueStorageBehavior.Kind.STACK,
+                "PUSH appends and POP removes the newest word; simultaneous operations pop then push");
+
+        registry.register(new ComponentType(
                 definition("memory.rom", "ROM", MEMORY,
                         "Read-only memory: while ENABLE is 1, drives contents[ADDRESS] onto DATA",
                         List.of(LibraryParameters.ADDRESS_WIDTH, LibraryParameters.WIDTH,
@@ -1177,7 +1384,60 @@ final class StandardLibrary {
                         BitWidth.of(values.getInt(LibraryParameters.ADDRESS_WIDTH)), busWidth(values))));
     }
 
+    private static void registerQueueStorage(ComponentRegistry registry, String id, String name,
+            QueueStorageBehavior.Kind kind, String description) {
+        String put = kind == QueueStorageBehavior.Kind.FIFO ? "WRITE" : "PUSH";
+        String take = kind == QueueStorageBehavior.Kind.FIFO ? "READ" : "POP";
+        registry.register(new ComponentType(
+                definition(id, name, MEMORY, description,
+                        List.of(LibraryParameters.WIDTH, LibraryParameters.DEPTH),
+                        PortLayouts.dynamicBox(
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA_IN", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed(put),
+                                        PortLayouts.DynamicPortDef.fixed(take),
+                                        PortLayouts.DynamicPortDef.fixed("CLK"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET")),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA_OUT", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.fixed("EMPTY"),
+                                        PortLayouts.DynamicPortDef.fixed("FULL"),
+                                        new PortLayouts.DynamicPortDef("COUNT",
+                                                values -> BitWidth.of(Math.max(1, 32
+                                                        - Integer.numberOfLeadingZeros(
+                                                        values.getInt(LibraryParameters.DEPTH)))), "Stored words")),
+                                REGISTER_WIDTH), List.of("storage", "queue", "stack", "buffer")),
+                values -> new QueueStorageBehavior(kind, busWidth(values),
+                        values.getInt(LibraryParameters.DEPTH))));
+    }
+
     private static void registerSystem(ComponentRegistry registry) {
+        registry.register(new ComponentType(
+                definition("system.gpio", "GPIO", SYSTEM,
+                        "Digital GPIO bank: DIRECTION bit 1 drives DATA_OUT onto PINS; 0 releases it",
+                        List.of(LibraryParameters.WIDTH),
+                        PortLayouts.dynamicBoxWithInout(
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA_OUT", LibraryParameters.WIDTH),
+                                        PortLayouts.DynamicPortDef.bus("DIRECTION", LibraryParameters.WIDTH)),
+                                List.of(PortLayouts.DynamicPortDef.bus("PINS", LibraryParameters.WIDTH)),
+                                List.of(PortLayouts.DynamicPortDef.bus("DATA_IN", LibraryParameters.WIDTH)),
+                                REGISTER_WIDTH), List.of("gpio", "pins", "bidirectional")),
+                values -> new GpioBehavior(busWidth(values))));
+
+        registry.register(new ComponentType(
+                definition("system.character_output", "Character Output", SYSTEM,
+                        "Captures one byte per selected write into a bounded text buffer; not a UART",
+                        List.of(LibraryParameters.BUFFER_CAPACITY),
+                        PortLayouts.dynamicBox(
+                                List.of(new PortLayouts.DynamicPortDef("DATA", values -> BitWidth.of(8),
+                                                "Character byte"),
+                                        PortLayouts.DynamicPortDef.fixed("SELECT"),
+                                        PortLayouts.DynamicPortDef.fixed("WRITE"),
+                                        PortLayouts.DynamicPortDef.fixed("CLK"),
+                                        PortLayouts.DynamicPortDef.fixed("RESET")),
+                                List.of(), REGISTER_WIDTH),
+                        List.of("text", "character", "console", "mmio")),
+                values -> new CharacterOutputBehavior(
+                        values.getInt(LibraryParameters.BUFFER_CAPACITY))));
+
         registry.register(new ComponentType(
                 definition("system.output_port", "Output Port", SYSTEM,
                         "Captures DATA on a rising clock edge while SELECT and WRITE are high",
@@ -1311,12 +1571,14 @@ final class StandardLibrary {
     private static LibraryDefinition definition(String id, String displayName, ComponentCategory category,
                                                 String description, List<ParameterSpec<?>> parameters,
                                                 PortLayout layout, List<String> keywords) {
-        return new LibraryDefinition(id, displayName, category, description, parameters, layout, keywords, InputInteraction.NONE);
+        return new LibraryDefinition(id, displayName, category, description, parameters, layout,
+                keywords, InputInteraction.NONE, StandardDocumentation.forId(id, description));
     }
 
     private static LibraryDefinition definition(String id, String displayName, ComponentCategory category,
                                                 String description, List<ParameterSpec<?>> parameters,
                                                 PortLayout layout, List<String> keywords, InputInteraction inputInteraction) {
-        return new LibraryDefinition(id, displayName, category, description, parameters, layout, keywords, inputInteraction);
+        return new LibraryDefinition(id, displayName, category, description, parameters, layout,
+                keywords, inputInteraction, StandardDocumentation.forId(id, description));
     }
 }

@@ -26,8 +26,11 @@ class StructuralAdderTest {
     @Test
     void registryFindsCanonicalGateImplementations() {
         StructuralImplementationRegistry registry = StructuralImplementationRegistry.standard();
-        assertTrue(registry.find("arithmetic.full_adder", ImplementationLevel.GATE).isPresent());
-        assertTrue(registry.find("arithmetic.adder8", ImplementationLevel.GATE).isPresent());
+        assertTrue(registry.find("arithmetic.full_adder", ParameterValues.empty(),
+                ImplementationLevel.GATE).isPresent());
+        assertTrue(registry.find("arithmetic.adder",
+                ParameterValues.empty().with(LibraryParameters.WIDTH, 8),
+                ImplementationLevel.GATE).isPresent());
         assertTrue(registry.allFor("arithmetic.full_adder").getFirst().tags().contains("hierarchy"));
     }
 
