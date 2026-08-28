@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import dev.logicforge.circuit.chip.ChipInstance;
+import dev.logicforge.circuit.chip.ChipDisplayMode;
 
 class CircuitDocumentTest {
 
@@ -124,5 +126,66 @@ class CircuitDocumentTest {
         copy.removeComponent(gate.id());
         assertFalse(document.structurallyEquals(copy));
         assertEquals(1, document.componentCount());
+    }
+
+    @Test
+    void addAndRemoveChipFiresChanges() {
+        List<CircuitChange> changes = new ArrayList<>();
+        document.addListener((doc, change) -> changes.add(change));
+        ChipInstance chip = ChipInstance.create("74HC00", new CircuitPoint(0,0), "U1");
+        
+        document.addChip(chip);
+        assertEquals(1, document.chipCount());
+        assertEquals(CircuitChange.Kind.CHIP_ADDED, changes.get(0).kind());
+        
+        document.removeChip(chip.id());
+        assertEquals(0, document.chipCount());
+        assertEquals(CircuitChange.Kind.CHIP_REMOVED, changes.get(1).kind());
+    }
+
+    @Test
+    void requireChipThrowsForUnknownId() {
+        assertThrows(IllegalStateException.class, () -> document.requireChip(UUID.randomUUID()));
+    }
+
+    @Test
+    void replaceChipFiresCorrectChangeKinds() {
+        ChipInstance chip = ChipInstance.create("74HC00", new CircuitPoint(0,0), "U1");
+        document.addChip(chip);
+        
+        List<CircuitChange> changes = new ArrayList<>();
+        document.addListener((doc, change) -> changes.add(change));
+        
+        // Position change
+        document.replaceChip(chip.withPosition(new CircuitPoint(10, 10)));
+        assertEquals(CircuitChange.Kind.CHIP_MOVED, changes.get(0).kind());
+        
+        // Rotation change
+        chip = document.requireChip(chip.id());
+        document.replaceChip(chip.withRotation(Rotation.DEG_90));
+        assertEquals(CircuitChange.Kind.CHIP_ROTATED, changes.get(1).kind());
+        
+        // Display mode change
+        chip = document.requireChip(chip.id());
+        document.replaceChip(chip.withDisplayMode(ChipDisplayMode.PINS));
+        assertEquals(CircuitChange.Kind.CHIP_PRESENTATION, changes.get(2).kind());
+
+        // Designator change
+        chip = document.requireChip(chip.id());
+        document.replaceChip(chip.withReferenceDesignator("U2"));
+        assertEquals(CircuitChange.Kind.CHIP_RENAMED, changes.get(3).kind());
+    }
+
+    @Test
+    void chipCopyAndStructurallyEquals() {
+        ChipInstance chip = ChipInstance.create("74HC00", new CircuitPoint(0,0), "U1");
+        document.addChip(chip);
+        
+        CircuitDocument copy = document.copy();
+        assertTrue(document.structurallyEquals(copy));
+        assertEquals(1, copy.chipCount());
+        
+        copy.removeChip(chip.id());
+        assertFalse(document.structurallyEquals(copy));
     }
 }

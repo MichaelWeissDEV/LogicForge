@@ -44,6 +44,12 @@ public record Connection(UUID id, PortEndpoint from, PortEndpoint to, List<Circu
         return from.equals(endpoint) || to.equals(endpoint);
     }
 
+    /** True if this connection touches any endpoint belonging to a physical chip package. */
+    public boolean touchesChip(UUID chipId) {
+        // Will be implemented when ChipPinEndpoint is introduced
+        return false;
+    }
+
     public Connection withWaypoints(List<CircuitPoint> newWaypoints) {
         return new Connection(id, from, to, newWaypoints);
     }

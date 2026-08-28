@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import dev.logicforge.circuit.chip.ChipInstance;
 
 /**
  * The circuit the user edits: placed components, the wires between them, and a bit of
@@ -23,6 +24,7 @@ public final class CircuitDocument {
 
     private final Map<UUID, ComponentInstance> components = new LinkedHashMap<>();
     private final Map<UUID, Connection> connections = new LinkedHashMap<>();
+    private final Map<UUID, ChipInstance> chips = new LinkedHashMap<>();
     private final List<CircuitDocumentListener> listeners = new ArrayList<>();
 
     private CircuitMetadata metadata;
@@ -214,6 +216,88 @@ public final class CircuitDocument {
     }
 
     // ------------------------------------------------------------------
+    // Chips
+    // ------------------------------------------------------------------
+
+    public Collection<ChipInstance> chips() {
+        return Collections.unmodifiableCollection(chips.values());
+    }
+
+    public int chipCount() {
+        return chips.size();
+    }
+
+    public Optional<ChipInstance> chip(UUID id) {
+        return Optional.ofNullable(chips.get(id));
+    }
+
+    /** The chip with this id, or a failure if it is gone — for command code. */
+    public ChipInstance requireChip(UUID id) {
+        ChipInstance instance = chips.get(id);
+        if (instance == null) {
+            throw new IllegalStateException("No chip " + id + " in this circuit");
+        }
+        return instance;
+    }
+
+    public void addChip(ChipInstance instance) {
+        if (chips.putIfAbsent(instance.id(), instance) != null) {
+            throw new IllegalStateException("Chip " + instance.id() + " already exists");
+        }
+        notifyListeners(new CircuitChange(CircuitChange.Kind.CHIP_ADDED, instance.id()));
+    }
+
+    /**
+     * Removes a chip together with every wire attached to its physical pins, so no
+     * connection can ever refer to a chip that is no longer there.
+     *
+     * @return the connections that were removed, in their original order
+     */
+    public List<Connection> removeChip(UUID chipId) {
+        ChipInstance removed = chips.remove(chipId);
+        if (removed == null) {
+            throw new IllegalStateException("No chip " + chipId + " in this circuit");
+        }
+        List<Connection> detached = new ArrayList<>();
+        for (Connection connection : List.copyOf(connections.values())) {
+            if (connection.touchesChip(chipId)) {
+                connections.remove(connection.id());
+                detached.add(connection);
+            }
+        }
+        notifyListeners(new CircuitChange(CircuitChange.Kind.CHIP_REMOVED, chipId));
+        return detached;
+    }
+
+    /** Replaces a chip with an edited copy that has the same id. */
+    public void replaceChip(ChipInstance instance) {
+        ChipInstance previous = requireChip(instance.id());
+        if (previous.equals(instance)) {
+            return;
+        }
+        chips.put(instance.id(), instance);
+
+        boolean positionChanged = !previous.position().equals(instance.position());
+        boolean rotationChanged = previous.rotation() != instance.rotation();
+        boolean displayModeChanged = previous.displayMode() != instance.displayMode();
+        boolean designatorChanged = !previous.referenceDesignator().equals(instance.referenceDesignator());
+
+        CircuitChange.Kind kind;
+        if (displayModeChanged && !positionChanged && !rotationChanged && !designatorChanged) {
+            kind = CircuitChange.Kind.CHIP_PRESENTATION;
+        } else if (positionChanged && !rotationChanged) {
+            kind = CircuitChange.Kind.CHIP_MOVED;
+        } else if (!positionChanged && rotationChanged) {
+            kind = CircuitChange.Kind.CHIP_ROTATED;
+        } else if (designatorChanged && !positionChanged && !rotationChanged) {
+            kind = CircuitChange.Kind.CHIP_RENAMED;
+        } else {
+            kind = CircuitChange.Kind.CHIP_MOVED;
+        }
+        notifyListeners(new CircuitChange(kind, instance.id()));
+    }
+
+    // ------------------------------------------------------------------
     // Bulk operations, listeners
     // ------------------------------------------------------------------
 
@@ -221,6 +305,7 @@ public final class CircuitDocument {
     public CircuitDocument copy() {
         CircuitDocument copy = new CircuitDocument(metadata);
         copy.components.putAll(components);
+        copy.chips.putAll(chips);
         copy.connections.putAll(connections);
         return copy;
     }
@@ -232,6 +317,7 @@ public final class CircuitDocument {
     public boolean structurallyEquals(CircuitDocument other) {
         return metadata.equals(other.metadata)
                 && components.equals(other.components)
+                && chips.equals(other.chips)
                 && connections.equals(other.connections);
     }
 

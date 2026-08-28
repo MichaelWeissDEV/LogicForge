@@ -39,6 +39,10 @@ public record ChipInstance(UUID id, String chipDefinitionId, CircuitPoint positi
                 newMode);
     }
 
+    public ChipInstance withReferenceDesignator(String newDesignator) {
+        return new ChipInstance(id, chipDefinitionId, position, rotation, newDesignator, displayMode);
+    }
+
     private static String requireText(String value, String field) {
         String result = Objects.requireNonNull(value, field).strip();
         if (result.isEmpty()) {

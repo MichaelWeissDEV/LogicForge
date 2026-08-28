@@ -23,6 +23,12 @@ public record CircuitChange(Kind kind, UUID elementId) {
         CONNECTION_REMOVED(true),
         /** Only the wire's waypoints changed. */
         CONNECTION_ROUTED(false),
+        CHIP_ADDED(true),
+        CHIP_REMOVED(true),
+        CHIP_MOVED(false),
+        CHIP_ROTATED(false),
+        CHIP_PRESENTATION(false),
+        CHIP_RENAMED(false),
         METADATA(false);
 
         private final boolean affectsTopology;
