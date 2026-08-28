@@ -113,7 +113,7 @@ class CircuitDocumentTest {
         assertEquals(1, document.connection(wire.id()).orElseThrow().waypoints().size());
 
         Connection rewired = new Connection(wire.id(), wire.from(),
-                dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(sink.id(), "IN1")), List.of());
+                new ElectricalEndpoint.ComponentEndpoint(dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(sink.id(), "IN1"))), List.of());
         assertThrows(IllegalArgumentException.class, () -> document.replaceConnection(rewired));
     }
 
@@ -167,7 +167,7 @@ class CircuitDocumentTest {
         
         // Display mode change
         chip = document.requireChip(chip.id());
-        document.replaceChip(chip.withDisplayMode(ChipDisplayMode.PINS));
+        document.replaceChip(chip.withDisplayMode(ChipDisplayMode.SYMBOL));
         assertEquals(CircuitChange.Kind.CHIP_PRESENTATION, changes.get(2).kind());
 
         // Designator change

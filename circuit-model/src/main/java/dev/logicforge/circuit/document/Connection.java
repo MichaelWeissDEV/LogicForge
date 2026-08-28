@@ -2,6 +2,7 @@ package dev.logicforge.circuit.document;
 
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -12,7 +13,7 @@ import java.util.UUID;
  * are pure presentation: they let the user route a wire by hand without changing what the
  * circuit does.
  */
-public record Connection(UUID id, PortEndpoint from, PortEndpoint to, List<CircuitPoint> waypoints) {
+public record Connection(UUID id, ElectricalEndpoint from, ElectricalEndpoint to, List<CircuitPoint> waypoints) {
 
     public Connection {
         if (id == null || from == null || to == null) {
@@ -25,29 +26,42 @@ public record Connection(UUID id, PortEndpoint from, PortEndpoint to, List<Circu
     }
 
     public static Connection create(PortReference from, PortReference to) {
-        return new Connection(UUID.randomUUID(), PortEndpoint.whole(from), PortEndpoint.whole(to), List.of());
+        return new Connection(UUID.randomUUID(),
+            new ElectricalEndpoint.ComponentEndpoint(PortEndpoint.whole(from)),
+            new ElectricalEndpoint.ComponentEndpoint(PortEndpoint.whole(to)),
+            List.of());
     }
 
     public static Connection create(PortEndpoint from, PortEndpoint to) {
+        return new Connection(UUID.randomUUID(),
+            new ElectricalEndpoint.ComponentEndpoint(from),
+            new ElectricalEndpoint.ComponentEndpoint(to),
+            List.of());
+    }
+
+    public static Connection create(ElectricalEndpoint from, ElectricalEndpoint to) {
         return new Connection(UUID.randomUUID(), from, to, List.of());
     }
 
     public boolean touches(UUID componentId) {
-        return from.componentId().equals(componentId) || to.componentId().equals(componentId);
+        return (from instanceof ElectricalEndpoint.ComponentEndpoint ce && ce.port().componentId().equals(componentId))
+            || (to instanceof ElectricalEndpoint.ComponentEndpoint ce && ce.port().componentId().equals(componentId));
     }
 
     public boolean touches(PortReference port) {
-        return from.port().equals(port) || to.port().equals(port);
+        return (from instanceof ElectricalEndpoint.ComponentEndpoint ce && ce.port().port().equals(port))
+            || (to instanceof ElectricalEndpoint.ComponentEndpoint ce && ce.port().port().equals(port));
     }
 
     public boolean touchesEndpoint(PortEndpoint endpoint) {
-        return from.equals(endpoint) || to.equals(endpoint);
+        return (from instanceof ElectricalEndpoint.ComponentEndpoint ce && ce.port().equals(endpoint))
+            || (to instanceof ElectricalEndpoint.ComponentEndpoint ce && ce.port().equals(endpoint));
     }
 
     /** True if this connection touches any endpoint belonging to a physical chip package. */
     public boolean touchesChip(UUID chipId) {
-        // Will be implemented when ChipPinEndpoint is introduced
-        return false;
+        return (from instanceof ElectricalEndpoint.ChipPinEndpoint cp && cp.chipInstanceId().equals(chipId))
+            || (to instanceof ElectricalEndpoint.ChipPinEndpoint cp && cp.chipInstanceId().equals(chipId));
     }
 
     public Connection withWaypoints(List<CircuitPoint> newWaypoints) {
@@ -58,11 +72,11 @@ public record Connection(UUID id, PortEndpoint from, PortEndpoint to, List<Circu
         return new Connection(newId, from, to, waypoints);
     }
 
-    public PortReference fromPort() {
-        return from.port();
+    public Optional<PortReference> fromPort() {
+        return from instanceof ElectricalEndpoint.ComponentEndpoint ce ? Optional.of(ce.port().port()) : Optional.empty();
     }
 
-    public PortReference toPort() {
-        return to.port();
+    public Optional<PortReference> toPort() {
+        return to instanceof ElectricalEndpoint.ComponentEndpoint ce ? Optional.of(ce.port().port()) : Optional.empty();
     }
 }

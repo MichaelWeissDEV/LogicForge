@@ -150,14 +150,14 @@ public final class ComponentGeometry {
 
     private static boolean hasWholeConnection(CircuitDocument document, PortReference reference) {
         return document != null && document.connectionsAt(reference).stream().anyMatch(connection ->
-                (connection.fromPort().equals(reference) && connection.from().isWhole())
-                        || (connection.toPort().equals(reference) && connection.to().isWhole()));
+                (connection.from() instanceof ElectricalEndpoint.ComponentEndpoint ce1 && ce1.port().port().equals(reference) && ce1.port().isWhole())
+                        || (connection.to() instanceof ElectricalEndpoint.ComponentEndpoint ce2 && ce2.port().port().equals(reference) && ce2.port().isWhole()));
     }
 
     private static boolean hasPartialConnection(CircuitDocument document, PortReference reference) {
         return document != null && document.connectionsAt(reference).stream().anyMatch(connection ->
-                (connection.fromPort().equals(reference) && !connection.from().isWhole())
-                        || (connection.toPort().equals(reference) && !connection.to().isWhole()));
+                (connection.from() instanceof ElectricalEndpoint.ComponentEndpoint ce1 && ce1.port().port().equals(reference) && !ce1.port().isWhole())
+                        || (connection.to() instanceof ElectricalEndpoint.ComponentEndpoint ce2 && ce2.port().port().equals(reference) && !ce2.port().isWhole()));
     }
 
     private static int visibleCount(PortSpec spec) {

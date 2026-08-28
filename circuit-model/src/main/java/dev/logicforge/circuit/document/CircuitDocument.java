@@ -158,12 +158,20 @@ public final class CircuitDocument {
     }
 
     public void addConnection(Connection connection) {
-        requireComponent(connection.fromPort().componentId());
-        requireComponent(connection.toPort().componentId());
+        requireEndpointHost(connection.from());
+        requireEndpointHost(connection.to());
         if (connections.putIfAbsent(connection.id(), connection) != null) {
             throw new IllegalStateException("Connection " + connection.id() + " already exists");
         }
         notifyListeners(new CircuitChange(CircuitChange.Kind.CONNECTION_ADDED, connection.id()));
+    }
+
+    private void requireEndpointHost(ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint ce) {
+            requireComponent(ce.port().componentId());
+        } else if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint cp) {
+            requireChip(cp.chipInstanceId());
+        }
     }
 
     public void removeConnection(UUID connectionId) {
@@ -205,14 +213,20 @@ public final class CircuitDocument {
 
     public boolean isConnected(PortReference a, PortReference b) {
         return connections.values().stream()
-                .anyMatch(connection -> (connection.fromPort().equals(a) && connection.toPort().equals(b))
-                        || (connection.fromPort().equals(b) && connection.toPort().equals(a)));
+                .anyMatch(connection -> {
+                    var from = connection.fromPort().orElse(null);
+                    var to = connection.toPort().orElse(null);
+                    if (from == null || to == null) return false;
+                    return (from.equals(a) && to.equals(b)) || (from.equals(b) && to.equals(a));
+                });
     }
 
     public boolean isConnected(PortEndpoint a, PortEndpoint b) {
+        ElectricalEndpoint ea = new ElectricalEndpoint.ComponentEndpoint(a);
+        ElectricalEndpoint eb = new ElectricalEndpoint.ComponentEndpoint(b);
         return connections.values().stream()
-                .anyMatch(connection -> (connection.from().equals(a) && connection.to().equals(b))
-                        || (connection.from().equals(b) && connection.to().equals(a)));
+                .anyMatch(connection -> (connection.from().equals(ea) && connection.to().equals(eb))
+                        || (connection.from().equals(eb) && connection.to().equals(ea)));
     }
 
     // ------------------------------------------------------------------
