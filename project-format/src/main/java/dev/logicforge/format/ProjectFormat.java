@@ -41,7 +41,7 @@ import java.util.UUID;
 public final class ProjectFormat {
 
     /** The version this build writes. */
-    public static final int FORMAT_VERSION = 4;
+    public static final int FORMAT_VERSION = 5;
 
     /** File extension used by the file choosers. */
     public static final String EXTENSION = "logic";
@@ -88,11 +88,33 @@ public final class ProjectFormat {
         }
         object.put("components", components);
 
+        JsonValue.JsonArray chips = new JsonValue.JsonArray();
+        for (dev.logicforge.circuit.chip.ChipInstance chip : circuit.chips()) {
+            chips.add(writeChip(chip));
+        }
+        if (!chips.isEmpty()) {
+            object.put("chips", chips);
+        }
+
         JsonValue.JsonArray connections = new JsonValue.JsonArray();
         for (Connection connection : circuit.connections()) {
             connections.add(writeConnection(connection));
         }
         object.put("connections", connections);
+        return object;
+    }
+
+    private static JsonValue.JsonObject writeChip(dev.logicforge.circuit.chip.ChipInstance instance) {
+        JsonValue.JsonObject object = new JsonValue.JsonObject();
+        object.put("id", instance.id().toString());
+        object.put("type", instance.chipDefinitionId());
+        object.put("x", instance.position().x());
+        object.put("y", instance.position().y());
+        if (instance.rotation() != Rotation.DEG_0) {
+            object.put("rotation", instance.rotation().degrees());
+        }
+        object.put("ref", instance.referenceDesignator());
+        object.put("display", instance.displayMode().name());
         return object;
     }
 
@@ -139,7 +161,16 @@ public final class ProjectFormat {
         return object;
     }
 
-    private static JsonValue.JsonObject writeEndpoint(dev.logicforge.circuit.document.PortEndpoint endpoint) {
+    private static JsonValue.JsonObject writeEndpoint(dev.logicforge.circuit.document.ElectricalEndpoint electricalEndpoint) {
+        if (electricalEndpoint instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            return new JsonValue.JsonObject()
+                    .put("chip", chipPin.chipInstanceId().toString())
+                    .put("pin", chipPin.physicalPinNumber());
+        }
+        
+        dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint compEndpoint = (dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) electricalEndpoint;
+        dev.logicforge.circuit.document.PortEndpoint endpoint = compEndpoint.port();
+        
         JsonValue.JsonObject obj = new JsonValue.JsonObject()
                 .put("component", endpoint.componentId().toString())
                 .put("port", endpoint.portName());
@@ -219,12 +250,42 @@ public final class ProjectFormat {
                 circuit.addComponent(readComponent(component));
             }
         }
+        for (JsonValue element : object.array("chips")) {
+            if (element instanceof JsonValue.JsonObject chip) {
+                circuit.addChip(readChip(chip));
+            }
+        }
         for (JsonValue element : object.array("connections")) {
             if (element instanceof JsonValue.JsonObject connection) {
                 circuit.addConnection(readConnection(connection, circuit, version));
             }
         }
         return circuit;
+    }
+
+    private static dev.logicforge.circuit.chip.ChipInstance readChip(JsonValue.JsonObject object) {
+        String type = object.string("type", "");
+        if (type.isBlank()) {
+            throw new ProjectFormatException("A chip without a type id cannot be loaded");
+        }
+        
+        dev.logicforge.circuit.chip.ChipDisplayMode displayMode = dev.logicforge.circuit.chip.ChipDisplayMode.PACKAGE;
+        String displayStr = object.string("display", "");
+        if (!displayStr.isBlank()) {
+            try {
+                displayMode = dev.logicforge.circuit.chip.ChipDisplayMode.valueOf(displayStr);
+            } catch (IllegalArgumentException e) {
+                // Ignore invalid enum values and fallback to PACKAGE
+            }
+        }
+        
+        return new dev.logicforge.circuit.chip.ChipInstance(
+                readId(object, "chip"),
+                type,
+                new CircuitPoint(object.number("x", 0), object.number("y", 0)),
+                Rotation.ofDegrees(object.integer("rotation", 0)),
+                object.string("ref", ""),
+                displayMode);
     }
 
     private static ComponentInstance readComponent(JsonValue.JsonObject object) {
@@ -251,11 +312,13 @@ public final class ProjectFormat {
 
     private static Connection readConnection(JsonValue.JsonObject object, CircuitDocument circuit,
                                              int version) {
-        dev.logicforge.circuit.document.PortEndpoint from = readEndpoint(object.object("from"), version);
-        dev.logicforge.circuit.document.PortEndpoint to = readEndpoint(object.object("to"), version);
-        if (circuit.component(from.componentId()).isEmpty() || circuit.component(to.componentId()).isEmpty()) {
-            throw new ProjectFormatException("A wire refers to a component that is not in the file");
+        dev.logicforge.circuit.document.ElectricalEndpoint from = readEndpoint(object.object("from"), version);
+        dev.logicforge.circuit.document.ElectricalEndpoint to = readEndpoint(object.object("to"), version);
+        
+        if (!endpointTargetExists(from, circuit) || !endpointTargetExists(to, circuit)) {
+            throw new ProjectFormatException("A wire refers to a component or chip that is not in the file");
         }
+        
         List<CircuitPoint> waypoints = new ArrayList<>();
         for (JsonValue element : object.array("waypoints")) {
             if (element instanceof JsonValue.JsonObject point) {
@@ -264,37 +327,56 @@ public final class ProjectFormat {
         }
         return new Connection(readId(object, "wire"), from, to, waypoints);
     }
+    
+    private static boolean endpointTargetExists(dev.logicforge.circuit.document.ElectricalEndpoint endpoint, CircuitDocument circuit) {
+        if (endpoint instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint comp) {
+            return circuit.component(comp.port().componentId()).isPresent();
+        } else if (endpoint instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            return circuit.chip(chipPin.chipInstanceId()).isPresent();
+        }
+        return false;
+    }
 
-    private static dev.logicforge.circuit.document.PortEndpoint readEndpoint(
+    private static dev.logicforge.circuit.document.ElectricalEndpoint readEndpoint(
             JsonValue.JsonObject object, int version) {
+            
+        if (version >= 5 && object.members().containsKey("chip") && object.members().containsKey("pin")) {
+            return new dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint(
+                    parseUuid(object.string("chip", ""), "wire endpoint"),
+                    object.integer("pin", 0)
+            );
+        }
+            
         String component = object.string("component", "");
         String port = object.string("port", "");
         if (component.isBlank() || port.isBlank()) {
             throw new ProjectFormatException("A wire endpoint is missing its component or port");
         }
         PortReference ref = new PortReference(parseUuid(component, "wire endpoint"), port);
+        dev.logicforge.circuit.document.PortEndpoint portEndpoint;
         if (object.members().containsKey("bit")) {
             if (version < 2) {
                 throw new ProjectFormatException(
                         "Bit wire endpoints require formatVersion 2 or newer");
             }
-            return dev.logicforge.circuit.document.PortEndpoint.bit(ref, object.integer("bit", 0));
-        }
-        if (object.members().containsKey("range")) {
+            portEndpoint = dev.logicforge.circuit.document.PortEndpoint.bit(ref, object.integer("bit", 0));
+        } else if (object.members().containsKey("range")) {
             if (version < 3) {
                 throw new ProjectFormatException(
                         "Range wire endpoints require formatVersion 3 or newer");
             }
             JsonValue.JsonObject range = object.object("range");
             try {
-                return dev.logicforge.circuit.document.PortEndpoint.range(ref,
+                portEndpoint = dev.logicforge.circuit.document.PortEndpoint.range(ref,
                         range.integer("msb", -1), range.integer("lsb", -1));
             } catch (IllegalArgumentException invalid) {
                 throw new ProjectFormatException("Invalid range on " + port + ": "
                         + invalid.getMessage(), invalid);
             }
+        } else {
+            portEndpoint = dev.logicforge.circuit.document.PortEndpoint.whole(ref);
         }
-        return dev.logicforge.circuit.document.PortEndpoint.whole(ref);
+        return new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(portEndpoint);
     }
 
     private static UUID readId(JsonValue.JsonObject object, String what) {

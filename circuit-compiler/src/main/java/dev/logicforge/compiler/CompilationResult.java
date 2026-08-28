@@ -9,16 +9,23 @@ public record CompilationResult(
         CompiledCircuit circuit,
         CircuitSourceMap sourceMap,
         List<ValidationIssue> issues,
-        HierarchySourceMap hierarchySourceMap) {
+        HierarchySourceMap hierarchySourceMap,
+        ChipSourceMap chipSourceMap) {
 
     public CompilationResult {
         issues = List.copyOf(issues);
         hierarchySourceMap = hierarchySourceMap == null ? HierarchySourceMap.EMPTY : hierarchySourceMap;
+        chipSourceMap = chipSourceMap == null ? new ChipSourceMap(java.util.Map.of()) : chipSourceMap;
     }
 
     public CompilationResult(CompiledCircuit circuit, CircuitSourceMap sourceMap,
                              List<ValidationIssue> issues) {
-        this(circuit, sourceMap, issues, HierarchySourceMap.EMPTY);
+        this(circuit, sourceMap, issues, HierarchySourceMap.EMPTY, new ChipSourceMap(java.util.Map.of()));
+    }
+    
+    public CompilationResult(CompiledCircuit circuit, CircuitSourceMap sourceMap,
+                             List<ValidationIssue> issues, HierarchySourceMap hierarchySourceMap) {
+        this(circuit, sourceMap, issues, hierarchySourceMap, new ChipSourceMap(java.util.Map.of()));
     }
 
     /**

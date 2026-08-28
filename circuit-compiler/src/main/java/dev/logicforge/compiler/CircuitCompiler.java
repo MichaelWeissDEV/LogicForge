@@ -30,13 +30,16 @@ import java.util.UUID;
 public final class CircuitCompiler {
 
     private final ComponentRegistry registry;
+    private final dev.logicforge.circuit.chip.ChipRegistry chipRegistry;
 
-    public CircuitCompiler(ComponentRegistry registry) {
+    public CircuitCompiler(ComponentRegistry registry, dev.logicforge.circuit.chip.ChipRegistry chipRegistry) {
         this.registry = registry;
+        this.chipRegistry = chipRegistry;
     }
 
     public List<ValidationIssue> validate(CircuitDocument document) {
         Compilation compilation = new Compilation(document);
+        compilation.resolveChips();
         compilation.resolveComponents();
         if (!compilation.hasErrors()) {
             compilation.resolvePorts();
@@ -52,6 +55,7 @@ public final class CircuitCompiler {
 
     public CompilationResult compile(CircuitDocument document) {
         Compilation compilation = new Compilation(document);
+        compilation.resolveChips();
         compilation.resolveComponents();
         if (compilation.hasErrors()) {
             throw new CircuitCompileException(compilation.issues);
@@ -80,7 +84,7 @@ public final class CircuitCompiler {
                         child.metadata().name(), child);
                 projectRegistry.register(ComponentType.of(definition, context -> { }));
             }
-            CircuitCompiler projectValidator = new CircuitCompiler(projectRegistry);
+            CircuitCompiler projectValidator = new CircuitCompiler(projectRegistry, chipRegistry);
             List<ValidationIssue> projectIssues = new ArrayList<>();
             for (CircuitDocument child : project.circuits()) {
                 projectIssues.addAll(projectValidator.validate(child));
@@ -98,7 +102,7 @@ public final class CircuitCompiler {
             flattened.flattenedEndpointByPath().forEach((path, endpoint) ->
                     result.sourceMap().netOf(endpoint).ifPresent(id -> nets.put(path, id)));
             return new CompilationResult(result.circuit(), result.sourceMap(), result.issues(),
-                    new HierarchySourceMap(components, nets));
+                    new HierarchySourceMap(components, nets), result.chipSourceMap());
         } catch (CircuitCompileException failure) {
             throw failure;
         } catch (IllegalArgumentException failure) {
@@ -113,6 +117,8 @@ public final class CircuitCompiler {
         private final CircuitDocument document;
         private final List<ValidationIssue> issues = new ArrayList<>();
         private final List<ComponentInstance> instances = new ArrayList<>();
+        private final List<ChipInstanceExpander.ExpandedChip> expandedChips = new ArrayList<>();
+        private final List<Connection> logicalConnections = new ArrayList<>();
         private final List<ComponentType> types = new ArrayList<>();
         private final Map<PortReference, Integer> portIndex = new LinkedHashMap<>();
         private final List<PortReference> portsByIndex = new ArrayList<>();
@@ -135,8 +141,67 @@ public final class CircuitCompiler {
             return issues.stream().anyMatch(ValidationIssue::isError);
         }
 
+        private void resolveChips() {
+            ChipInstanceExpander expander = new ChipInstanceExpander();
+            for (dev.logicforge.circuit.chip.ChipInstance chip : document.chips()) {
+                Optional<dev.logicforge.circuit.chip.ChipDefinition> def = chipRegistry.find(chip.chipDefinitionId());
+                if (def.isEmpty()) {
+                    issues.add(ValidationIssue.error(
+                            "Unknown chip definition '" + chip.chipDefinitionId() + "'",
+                            chip.id(), null));
+                    continue;
+                }
+                ChipInstanceExpander.ExpandedChip expanded = expander.expand(chip, def.get());
+                
+                expandedChips.add(expanded);
+            }
+            
+            for (Connection conn : document.connections()) {
+                dev.logicforge.circuit.document.ElectricalEndpoint from = conn.from();
+                dev.logicforge.circuit.document.ElectricalEndpoint to = conn.to();
+                
+                boolean modified = false;
+                
+                if (from instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+                    PortEndpoint logical = mapChipPin(chipPin);
+                    if (logical != null) {
+                        from = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(logical);
+                        modified = true;
+                    }
+                }
+                
+                if (to instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+                    PortEndpoint logical = mapChipPin(chipPin);
+                    if (logical != null) {
+                        to = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(logical);
+                        modified = true;
+                    }
+                }
+                
+                if (modified) {
+                    logicalConnections.add(new Connection(conn.id(), from, to, conn.waypoints()));
+                } else {
+                    logicalConnections.add(conn);
+                }
+            }
+        }
+        
+        private PortEndpoint mapChipPin(dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            for (ChipInstanceExpander.ExpandedChip expanded : expandedChips) {
+                if (expanded.packageInstanceId().equals(chipPin.chipInstanceId())) {
+                    return expanded.signalPins().get(chipPin.physicalPinNumber());
+                }
+            }
+            return null;
+        }
+
         private void resolveComponents() {
-            for (ComponentInstance instance : document.components()) {
+            List<ComponentInstance> allComponents = new ArrayList<>(document.components());
+            for (ChipInstanceExpander.ExpandedChip expanded : expandedChips) {
+                allComponents.addAll(expanded.logicalUnits());
+            }
+            
+            for (ComponentInstance instance : allComponents) {
                 Optional<ComponentType> type = registry.find(instance.definitionId());
                 if (type.isEmpty()) {
                     issues.add(ValidationIssue.error(
@@ -168,9 +233,20 @@ public final class CircuitCompiler {
 
         private void resolveConnections() {
             Set<PortReference> mixedReported = new HashSet<>();
-            for (Connection connection : document.connections()) {
-                Integer from = portIndex.get(connection.fromPort());
-                Integer to = portIndex.get(connection.toPort());
+            for (Connection connection : logicalConnections) {
+                dev.logicforge.circuit.document.ElectricalEndpoint fromEE = connection.from();
+                dev.logicforge.circuit.document.ElectricalEndpoint toEE = connection.to();
+                
+                if (!(fromEE instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint fromComp) || 
+                    !(toEE instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint toComp)) {
+                    continue;
+                }
+                
+                PortEndpoint fromEndpoint = fromComp.port();
+                PortEndpoint toEndpoint = toComp.port();
+                
+                Integer from = portIndex.get(fromEndpoint.port());
+                Integer to = portIndex.get(toEndpoint.port());
                 if (from == null || to == null) {
                     issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.WARNING,
                             "Wire refers to a port that no longer exists and is ignored",
@@ -178,14 +254,14 @@ public final class CircuitCompiler {
                     continue;
                 }
 
-                boolean endpointsValid = validateEndpoint(connection.from(), from, mixedReported)
-                        & validateEndpoint(connection.to(), to, mixedReported);
+                boolean endpointsValid = validateEndpoint(fromEndpoint, from, mixedReported)
+                        & validateEndpoint(toEndpoint, to, mixedReported);
                 if (!endpointsValid) {
                     continue;
                 }
 
-                int fromWidth = effectiveWidth(connection.from(), portSpecs.get(from));
-                int toWidth = effectiveWidth(connection.to(), portSpecs.get(to));
+                int fromWidth = effectiveWidth(fromEndpoint, portSpecs.get(from));
+                int toWidth = effectiveWidth(toEndpoint, portSpecs.get(to));
                 if (fromWidth != toWidth) {
                     issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.ERROR,
                             "Connection endpoints are " + fromWidth + " and " + toWidth
@@ -200,9 +276,9 @@ public final class CircuitCompiler {
                             "Two outputs drive the same net; this is only meaningful with tri-state drivers",
                             connection.id()));
                 }
-                if (!connection.from().isWhole() || !connection.to().isWhole()) {
-                    bitMode.put(connection.fromPort(), true);
-                    bitMode.put(connection.toPort(), true);
+                if (!fromEndpoint.isWhole() || !toEndpoint.isWhole()) {
+                    bitMode.put(fromEndpoint.port(), true);
+                    bitMode.put(toEndpoint.port(), true);
                 }
                 mergedConnections.add(connection);
             }
@@ -263,9 +339,11 @@ public final class CircuitCompiler {
                 parent[atom] = atom;
             }
             for (Connection connection : mergedConnections) {
-                int width = selectedWidth(connection.from());
+                PortEndpoint fromEndpoint = ((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) connection.from()).port();
+                PortEndpoint toEndpoint = ((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) connection.to()).port();
+                int width = selectedWidth(fromEndpoint);
                 for (int offset = 0; offset < width; offset++) {
-                    union(atomFor(connection.from(), offset), atomFor(connection.to(), offset));
+                    union(atomFor(fromEndpoint, offset), atomFor(toEndpoint, offset));
                 }
             }
         }
@@ -407,14 +485,16 @@ public final class CircuitCompiler {
             }
             Map<UUID, Integer> netByConnection = new LinkedHashMap<>();
             for (Connection connection : mergedConnections) {
-                int firstAtom = atomFor(connection.from(), 0);
+                PortEndpoint fromEndpoint = ((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) connection.from()).port();
+                PortEndpoint toEndpoint = ((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) connection.to()).port();
+                int firstAtom = atomFor(fromEndpoint, 0);
                 int net = netByAtom[firstAtom];
                 netByConnection.put(connection.id(), net);
-                if (!isMultiBitAtomizedWhole(connection.from())) {
-                    netByEndpoint.put(connection.from(), net);
+                if (!isMultiBitAtomizedWhole(fromEndpoint)) {
+                    netByEndpoint.put(fromEndpoint, net);
                 }
-                if (!isMultiBitAtomizedWhole(connection.to())) {
-                    netByEndpoint.put(connection.to(), netByAtom[atomFor(connection.to(), 0)]);
+                if (!isMultiBitAtomizedWhole(toEndpoint)) {
+                    netByEndpoint.put(toEndpoint, netByAtom[atomFor(toEndpoint, 0)]);
                 }
             }
 
@@ -426,10 +506,27 @@ public final class CircuitCompiler {
                 portBitMode.put(reference, bitMode.getOrDefault(reference, false));
             }
 
+            Map<UUID, dev.logicforge.circuit.chip.ChipInstance> syntheticToPhysical = new LinkedHashMap<>();
+            for (ChipInstanceExpander.ExpandedChip expanded : expandedChips) {
+                dev.logicforge.circuit.chip.ChipInstance physical = null;
+                for (dev.logicforge.circuit.chip.ChipInstance chip : document.chips()) {
+                    if (chip.id().equals(expanded.packageInstanceId())) {
+                        physical = chip;
+                        break;
+                    }
+                }
+                if (physical != null) {
+                    for (ComponentInstance logical : expanded.logicalUnits()) {
+                        syntheticToPhysical.put(logical.id(), physical);
+                    }
+                }
+            }
+            ChipSourceMap chipSourceMap = new ChipSourceMap(syntheticToPhysical);
+
             CircuitSourceMap sourceMap = new CircuitSourceMap(componentIdByUuid, uuidByComponentId,
                     netByPort, portsByNet, netByConnection, netByEndpoint, endpointsByNet,
                     portWidth, portBitMode);
-            return new CompilationResult(builder.build(), sourceMap, issues);
+            return new CompilationResult(builder.build(), sourceMap, issues, HierarchySourceMap.EMPTY, chipSourceMap);
         }
 
         private boolean isMultiBitAtomizedWhole(PortEndpoint endpoint) {

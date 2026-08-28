@@ -50,7 +50,7 @@ public final class CircuitFlattener {
         private final Set<ComponentKey> interfaceComponents = new java.util.HashSet<>();
         private final Map<ComponentKey, InterfaceBinding> interfaceByComponent = new HashMap<>();
         private final Map<InterfaceBinding, List<EndpointTarget>> interfaceAdapters = new HashMap<>();
-        private final Map<Node, PortEndpoint> flatEndpointByNode = new LinkedHashMap<>();
+        private final Map<Node, dev.logicforge.circuit.document.ElectricalEndpoint> flatEndpointByNode = new LinkedHashMap<>();
         private final Map<UUID, Node> rootConnectionNode = new LinkedHashMap<>();
         private final Map<String, UUID> componentUuidByPath = new LinkedHashMap<>();
         private final Map<String, PortEndpoint> flatEndpointByPath = new LinkedHashMap<>();
@@ -113,12 +113,31 @@ public final class CircuitFlattener {
                     flat.addComponent(clone);
                 }
             }
+            
+            for (dev.logicforge.circuit.chip.ChipInstance chip : document.chips()) {
+                UUID flatId = root ? chip.id() : deterministicId(path, chip.id());
+                dev.logicforge.circuit.chip.ChipInstance clone = new dev.logicforge.circuit.chip.ChipInstance(
+                        flatId, chip.chipDefinitionId(), chip.position(), chip.rotation(),
+                        chip.referenceDesignator(), chip.displayMode()
+                );
+                // We should also store it in a map if we want to trace back, but the compiler does not trace back chips yet.
+                // Wait, componentUuidByPath is used for source mapping. Let's add it.
+                componentUuidByPath.put(path + "/" + chip.id(), flatId);
+                flat.addChip(clone);
+            }
 
             for (Connection connection : document.connections()) {
-                registerInterfaceAdapter(path, connection.from(), connection.to());
-                registerInterfaceAdapter(path, connection.to(), connection.from());
-                Node from = endpointNode(path, connection.from());
-                Node to = endpointNode(path, connection.to());
+                dev.logicforge.circuit.document.ElectricalEndpoint fromEE = connection.from();
+                dev.logicforge.circuit.document.ElectricalEndpoint toEE = connection.to();
+                
+                if (fromEE instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint fromComp &&
+                    toEE instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint toComp) {
+                    registerInterfaceAdapter(path, fromComp.port(), toComp.port());
+                    registerInterfaceAdapter(path, toComp.port(), fromComp.port());
+                }
+                
+                Node from = endpointNode(path, fromEE, root);
+                Node to = endpointNode(path, toEE, root);
                 union(from, to);
                 if (root) {
                     rootConnectionNode.put(connection.id(), from);
@@ -128,7 +147,16 @@ public final class CircuitFlattener {
             return interfaces;
         }
 
-        private Node endpointNode(String path, PortEndpoint endpoint) {
+        private Node endpointNode(String path, dev.logicforge.circuit.document.ElectricalEndpoint ee, boolean root) {
+            if (ee instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+                Node node = new Node(path, chipPin.chipInstanceId(), "pin_" + chipPin.physicalPinNumber(), PortSlice.Whole.INSTANCE);
+                parent.putIfAbsent(node, node);
+                UUID flatId = root ? chipPin.chipInstanceId() : deterministicId(path, chipPin.chipInstanceId());
+                flatEndpointByNode.putIfAbsent(node, new dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint(flatId, chipPin.physicalPinNumber()));
+                return node;
+            }
+            
+            PortEndpoint endpoint = ((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) ee).port();
             ComponentKey key = new ComponentKey(path, endpoint.componentId());
             if (interfaceComponents.contains(key)) {
                 return interfaceNode(interfaceByComponent.get(key), endpoint.slice());
@@ -149,8 +177,8 @@ public final class CircuitFlattener {
             ComponentInstance primitive = primitiveByKey.get(key);
             Node node = node(path, endpoint.componentId(), endpoint.portName(), endpoint.slice());
             if (primitive != null) {
-                flatEndpointByNode.putIfAbsent(node, new PortEndpoint(
-                        new PortReference(primitive.id(), endpoint.portName()), endpoint.slice()));
+                flatEndpointByNode.putIfAbsent(node, new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(new PortEndpoint(
+                        new PortReference(primitive.id(), endpoint.portName()), endpoint.slice())));
             }
             return node;
         }
@@ -177,7 +205,7 @@ public final class CircuitFlattener {
             if (!(slice instanceof PortSlice.Whole)) {
                 for (EndpointTarget target : interfaceAdapters.getOrDefault(binding, List.of())) {
                     PortEndpoint projected = new PortEndpoint(target.endpoint().port(), slice);
-                    union(result, endpointNode(target.path(), projected));
+                    union(result, endpointNode(target.path(), new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(projected), false));
                 }
             }
             return result;
@@ -196,7 +224,7 @@ public final class CircuitFlattener {
 
         private void emitConnections() {
             Map<Node, LinkedHashSet<PortEndpoint>> endpointsByGroup = new LinkedHashMap<>();
-            for (Map.Entry<Node, PortEndpoint> entry : flatEndpointByNode.entrySet()) {
+            for (Map.Entry<Node, dev.logicforge.circuit.document.ElectricalEndpoint> entry : flatEndpointByNode.entrySet()) {
                 endpointsByGroup.computeIfAbsent(find(entry.getKey()), ignored -> new LinkedHashSet<>())
                         .add(entry.getValue());
             }
@@ -220,13 +248,15 @@ public final class CircuitFlattener {
                 List<UUID> rootIds = rootIdsByGroup.getOrDefault(entry.getKey(), List.of());
                 UUID firstId = rootIds.isEmpty()
                         ? generatedConnectionId(groupIndex, 1) : rootIds.get(0);
-                flat.addConnection(new Connection(firstId, endpoints.get(0), endpoints.get(1), List.of()));
+                dev.logicforge.circuit.document.ElectricalEndpoint p0 = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(endpoints.get(0));
+                dev.logicforge.circuit.document.ElectricalEndpoint p1 = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(endpoints.get(1));
+                flat.addConnection(new Connection(firstId, p0, p1, List.of()));
                 for (int i = 1; i < rootIds.size(); i++) {
-                    flat.addConnection(new Connection(rootIds.get(i), endpoints.get(0), endpoints.get(1), List.of()));
+                    flat.addConnection(new Connection(rootIds.get(i), p0, p1, List.of()));
                 }
                 for (int i = 2; i < endpoints.size(); i++) {
                     flat.addConnection(new Connection(generatedConnectionId(groupIndex, i),
-                            endpoints.get(0), endpoints.get(i), List.of()));
+                            p0, new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(endpoints.get(i)), List.of()));
                 }
                 groupIndex++;
             }
