@@ -236,7 +236,7 @@ public final class CanvasInteractionCheck {
         fireRelease(canvas, buttonScreen.x(), buttonScreen.y());
         check("pressing push button does not make project dirty", !editor.isDirty());
 
-        runChipChecks(canvas, editor, viewport);
+        runChipChecks(workbench, canvas, editor, viewport);
 
         // 24-26: Inverted push button test - TODO: Fix parameter propagation to behavior
         // ComponentInstance invButton = place(canvas, editor, "source.button", -200, -300);
@@ -264,7 +264,7 @@ public final class CanvasInteractionCheck {
      * confirm it behaves like a NAND gate — end to end through the same canvas gestures
      * ordinary components use.
      */
-    private static void runChipChecks(CircuitCanvasView canvas, CircuitEditor editor,
+    private static void runChipChecks(Workbench workbench, CircuitCanvasView canvas, CircuitEditor editor,
                                       ViewportTransform viewport) throws Exception {
         int chipsBefore = editor.document().chipCount();
         int connectionsBefore = editor.document().connectionCount();
@@ -307,6 +307,19 @@ public final class CanvasInteractionCheck {
                 chipScreen.x() - 260, chipScreen.y() + 40);
         dragPortToChipPin(canvas, editor, switchA, "OUT", chip, 1);
         dragPortToChipPin(canvas, editor, switchB, "OUT", chip, 2);
+
+        // 5b: right-clicking a physical chip pin offers "Add to Logic Analyzer", the same as
+        // a component port; firing it must watch the pin and reflect its real runtime value.
+        double[] pin1Screen = chipPinScreenPosition(canvas, editor, chip, 1);
+        fireRightClick(canvas, pin1Screen[0], pin1Screen[1]);
+        fireContextMenuAction("Add to Logic Analyzer");
+        var pin1Endpoint = new dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint(chip.id(), 1);
+        check("right-clicking a chip pin and adding it watches the pin in the analyzer",
+                workbench.analyzerController().isWatching(pin1Endpoint));
+        check("the chip pin's analyzer trace reflects the switch driving it",
+                workbench.analyzerController().traceFor(pin1Endpoint).orElseThrow()
+                        .transitions().stream().reduce((first, second) -> second).orElseThrow()
+                        .value().equals(LogicVector.ZERO));
 
         // 6: wire the chip's output pin (pin 3 = 1Y) to an LED.
         ComponentInstance chipLed = place(canvas, editor, "output.led",
@@ -446,15 +459,41 @@ public final class CanvasInteractionCheck {
     // -------------------------------------------------------------------- events
 
     private static void firePress(CircuitCanvasView canvas, double x, double y) {
-        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_PRESSED, x, y));
+        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_PRESSED, MouseButton.PRIMARY, x, y));
     }
 
     private static void fireDrag(CircuitCanvasView canvas, double x, double y) {
-        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_DRAGGED, x, y));
+        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_DRAGGED, MouseButton.PRIMARY, x, y));
     }
 
     private static void fireRelease(CircuitCanvasView canvas, double x, double y) {
-        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_RELEASED, x, y));
+        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_RELEASED, MouseButton.PRIMARY, x, y));
+    }
+
+    private static void fireRightClick(CircuitCanvasView canvas, double x, double y) {
+        canvas.fireEvent(mouseEvent(canvas, MouseEvent.MOUSE_PRESSED, MouseButton.SECONDARY, x, y));
+    }
+
+    /**
+     * Fires the action of the item with the given text in whichever {@link
+     * javafx.scene.control.ContextMenu} is currently open — a {@code ContextMenu} is itself
+     * a {@link javafx.stage.Window}, so it shows up in {@code Window.getWindows()} exactly
+     * like the check's own stage does. Hides the menu afterwards so it does not linger over
+     * later gestures.
+     */
+    private static void fireContextMenuAction(String itemText) {
+        for (javafx.stage.Window window : javafx.stage.Window.getWindows()) {
+            if (window instanceof javafx.scene.control.ContextMenu menu) {
+                for (javafx.scene.control.MenuItem item : menu.getItems()) {
+                    if (itemText.equals(item.getText())) {
+                        item.fire();
+                        menu.hide();
+                        return;
+                    }
+                }
+            }
+        }
+        throw new IllegalStateException("No open context menu item found with text: " + itemText);
     }
 
     /**
@@ -464,11 +503,12 @@ public final class CanvasInteractionCheck {
      */
     private static MouseEvent mouseEvent(CircuitCanvasView canvas,
                                          javafx.event.EventType<MouseEvent> type,
-                                         double x, double y) {
+                                         MouseButton button, double x, double y) {
         javafx.geometry.Point2D scene = canvas.localToScene(x, y);
         return new MouseEvent(type, scene.getX(), scene.getY(), scene.getX(), scene.getY(),
-                MouseButton.PRIMARY, 1,
-                false, false, false, false, true, false, false, false, false, false, null);
+                button, 1,
+                false, false, false, false, button == MouseButton.PRIMARY, false,
+                button == MouseButton.SECONDARY, false, false, false, null);
     }
 
     private static void fireKey(CircuitCanvasView canvas, KeyCode code) {
