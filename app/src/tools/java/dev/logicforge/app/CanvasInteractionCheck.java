@@ -321,6 +321,21 @@ public final class CanvasInteractionCheck {
                         .transitions().stream().reduce((first, second) -> second).orElseThrow()
                         .value().equals(LogicVector.ZERO));
 
+        // 5c: a ground/power pin (7 = GND) never expands onto a logical net, so it must not
+        // offer "Add to Logic Analyzer" at all — offering it would add a watch that can
+        // never resolve to a trace.
+        int watchedBefore = workbench.analyzerController().watchedSignals().size();
+        double[] gndScreen = chipPinScreenPosition(canvas, editor, chip, 7);
+        fireRightClick(canvas, gndScreen[0], gndScreen[1]);
+        check("right-clicking the GND pin selects the chip, not a dangling analyzer watch",
+                editor.selection().containsChip(chip.id()));
+        boolean hasAnalyzerItemForGnd = hasContextMenuAction("Add to Logic Analyzer");
+        hideOpenContextMenu();
+        check("the GND pin offers no \"Add to Logic Analyzer\" action",
+                !hasAnalyzerItemForGnd);
+        check("right-clicking the GND pin added no watch",
+                workbench.analyzerController().watchedSignals().size() == watchedBefore);
+
         // 6: wire the chip's output pin (pin 3 = 1Y) to an LED.
         ComponentInstance chipLed = place(canvas, editor, "output.led",
                 chipScreen.x() + 260, chipScreen.y());
@@ -482,18 +497,47 @@ public final class CanvasInteractionCheck {
      * later gestures.
      */
     private static void fireContextMenuAction(String itemText) {
-        for (javafx.stage.Window window : javafx.stage.Window.getWindows()) {
-            if (window instanceof javafx.scene.control.ContextMenu menu) {
-                for (javafx.scene.control.MenuItem item : menu.getItems()) {
-                    if (itemText.equals(item.getText())) {
-                        item.fire();
-                        menu.hide();
-                        return;
-                    }
-                }
+        for (javafx.scene.control.MenuItem item : openContextMenuItems()) {
+            if (itemText.equals(item.getText())) {
+                item.fire();
+                hideOpenContextMenu();
+                return;
             }
         }
         throw new IllegalStateException("No open context menu item found with text: " + itemText);
+    }
+
+    /** {@code true} if whichever context menu is currently open offers an item with this text. */
+    private static boolean hasContextMenuAction(String itemText) {
+        for (javafx.scene.control.MenuItem item : openContextMenuItems()) {
+            if (itemText.equals(item.getText())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * A snapshot copy of the currently open {@link javafx.scene.control.ContextMenu}'s items
+     * — {@code Window.getWindows()} and a live menu's own item list can both be mutated by
+     * the toolkit while a popup opens or closes, so a plain live-list iteration here is prone
+     * to a spurious {@link IndexOutOfBoundsException} racing that teardown.
+     */
+    private static List<javafx.scene.control.MenuItem> openContextMenuItems() {
+        for (javafx.stage.Window window : List.copyOf(javafx.stage.Window.getWindows())) {
+            if (window instanceof javafx.scene.control.ContextMenu menu) {
+                return List.copyOf(menu.getItems());
+            }
+        }
+        return List.of();
+    }
+
+    private static void hideOpenContextMenu() {
+        for (javafx.stage.Window window : List.copyOf(javafx.stage.Window.getWindows())) {
+            if (window instanceof javafx.scene.control.ContextMenu menu) {
+                menu.hide();
+            }
+        }
     }
 
     /**

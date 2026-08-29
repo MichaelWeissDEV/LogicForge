@@ -837,7 +837,11 @@ public final class CircuitCanvasView extends Region {
 
     private void showContextMenu(MouseEvent event) {
         CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
-        Optional<PlacedElectricalEndpoint> endpoint = hitTester.endpointAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
+        Optional<PlacedElectricalEndpoint> hit = hitTester.endpointAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
+        // A ground/power chip pin (or any other non-connectable endpoint) has no net of its
+        // own to watch — it never expands onto a logical port — so it must not offer "Add to
+        // Logic Analyzer"; treat it like the chip/component body was clicked instead.
+        Optional<PlacedElectricalEndpoint> endpoint = hit.filter(PlacedElectricalEndpoint::connectable);
         Optional<ComponentInstance> component = endpoint.isEmpty() ? hitTester.componentAt(world) : Optional.empty();
         Optional<ChipInstance> chip = endpoint.isEmpty() && component.isEmpty()
                 ? hitTester.chipAt(world) : Optional.empty();
@@ -858,6 +862,16 @@ public final class CircuitCanvasView extends Region {
             }
             contextMenu.showForPort(this, event.getScreenX(), event.getScreenY(),
                     () -> analyzerListener.accept(electrical));
+        } else if (hit.isPresent()
+                && hit.get().endpoint() instanceof ElectricalEndpoint.ChipPinEndpoint nonConnectablePin) {
+            // Landed exactly on a non-connectable pin (e.g. GND/VCC): fall back to the chip
+            // body's own menu, the same as clicking anywhere else on the package.
+            editor.document().chip(nonConnectablePin.chipInstanceId()).ifPresent(instance -> {
+                if (!editor.selection().containsChip(instance.id())) {
+                    editor.selection().selectChip(instance.id());
+                }
+            });
+            contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (component.isPresent()) {
             if (!editor.selection().containsComponent(component.get().id())) {
                 editor.selection().selectComponent(component.get().id());
