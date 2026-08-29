@@ -3,10 +3,11 @@ package dev.logicforge.circuit.document;
 import dev.logicforge.circuit.component.PortSpec;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.PortSide;
+import dev.logicforge.circuit.geometry.RoutablePoint;
 
 /** A presentation-aware electrical endpoint resolved into world coordinates. */
 public record PlacedPort(PortEndpoint endpoint, PortSpec spec, CircuitPoint position, PortSide side,
-                         boolean connectable) {
+                         boolean connectable) implements RoutablePoint {
 
     public PortReference reference() {
         return endpoint.port();

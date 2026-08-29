@@ -1,0 +1,319 @@
+{
+  "formatVersion": 5,
+  "application": "LogicForge",
+  "name": "74hc283-adder",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "74HC283: 4-bit binary adder wired pin-for-pin",
+      "components": [
+        {
+          "id": "7ccaa5c7-e6e8-48a2-95df-1b5904e05eac",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 40,
+          "label": "A0",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "c06fe614-1407-4107-82a1-e1e221ba7327",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 80,
+          "label": "B0",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "0261f3d1-2f7a-4a16-a582-76bf5057e64c",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 140,
+          "label": "A1",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "da0d3ff3-b845-4d37-8b74-40400a9b97c5",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 180,
+          "label": "B1",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "085309bf-3aea-4899-8e62-7896c36c459d",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 240,
+          "label": "A2",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "0116f2cd-828a-4f99-94fd-1323d1e77497",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 280,
+          "label": "B2",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "4d1e25e6-a161-44b3-9e3b-d989191b4341",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 340,
+          "label": "A3",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "c8f9c0a1-8c5e-4f6e-a921-cd1b788cae59",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 380,
+          "label": "B3",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "c2d5fd83-dac4-497b-afb7-8c5b8ff96704",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 480,
+          "label": "CIN",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "fd3ffaf8-acd9-4a69-9f6e-7ff13b2e2ba9",
+          "type": "output.led",
+          "x": 760,
+          "y": 60,
+          "label": "SUM0",
+          "parameters": {
+            "color": "green"
+          }
+        },
+        {
+          "id": "734278df-d40c-4900-9239-3da167115ac1",
+          "type": "output.led",
+          "x": 760,
+          "y": 160,
+          "label": "SUM1",
+          "parameters": {
+            "color": "green"
+          }
+        },
+        {
+          "id": "be775273-fd21-49b3-9217-8abe8c1747b6",
+          "type": "output.led",
+          "x": 760,
+          "y": 260,
+          "label": "SUM2",
+          "parameters": {
+            "color": "green"
+          }
+        },
+        {
+          "id": "276dd58a-6682-4c4a-b489-f74335136a4e",
+          "type": "output.led",
+          "x": 760,
+          "y": 360,
+          "label": "SUM3",
+          "parameters": {
+            "color": "green"
+          }
+        },
+        {
+          "id": "fdaf208f-2181-4d83-bb00-e6b692abf31f",
+          "type": "output.led",
+          "x": 760,
+          "y": 480,
+          "label": "COUT",
+          "parameters": {
+            "color": "green"
+          }
+        }
+      ],
+      "chips": [
+        {
+          "id": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+          "type": "74HC283",
+          "x": 420,
+          "y": 260,
+          "ref": "U1",
+          "display": "PACKAGE"
+        }
+      ],
+      "connections": [
+        {
+          "id": "80c58465-ed92-4c14-bd36-6a3769bfe2ba",
+          "from": {
+            "component": "7ccaa5c7-e6e8-48a2-95df-1b5904e05eac",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 5
+          }
+        },
+        {
+          "id": "63c3233f-9e7c-4c0f-83a1-4d3b6a58a091",
+          "from": {
+            "component": "c06fe614-1407-4107-82a1-e1e221ba7327",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 6
+          }
+        },
+        {
+          "id": "28b3f904-4921-4492-871b-d0145b8418a8",
+          "from": {
+            "component": "0261f3d1-2f7a-4a16-a582-76bf5057e64c",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 3
+          }
+        },
+        {
+          "id": "d3ce46e4-f8ba-4ccc-9987-cb86a0bb57f0",
+          "from": {
+            "component": "da0d3ff3-b845-4d37-8b74-40400a9b97c5",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 2
+          }
+        },
+        {
+          "id": "897cd9c3-9ea8-49a2-a314-2b57adcb742b",
+          "from": {
+            "component": "085309bf-3aea-4899-8e62-7896c36c459d",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 14
+          }
+        },
+        {
+          "id": "0d56d358-f182-444c-8f52-2dca7b7b5d88",
+          "from": {
+            "component": "0116f2cd-828a-4f99-94fd-1323d1e77497",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 15
+          }
+        },
+        {
+          "id": "01d92e08-8807-40d8-930b-4d3fa6e19fca",
+          "from": {
+            "component": "4d1e25e6-a161-44b3-9e3b-d989191b4341",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 12
+          }
+        },
+        {
+          "id": "0faf4e75-2f7d-49c7-ab03-25fe6e6df7e9",
+          "from": {
+            "component": "c8f9c0a1-8c5e-4f6e-a921-cd1b788cae59",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 11
+          }
+        },
+        {
+          "id": "b793f05b-62e4-42c3-8349-880ef58d2f0c",
+          "from": {
+            "component": "c2d5fd83-dac4-497b-afb7-8c5b8ff96704",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 7
+          }
+        },
+        {
+          "id": "7cfbd07d-b602-468e-a407-e7afc129e3c0",
+          "from": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 4
+          },
+          "to": {
+            "component": "fd3ffaf8-acd9-4a69-9f6e-7ff13b2e2ba9",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "72de4235-3d42-4528-9e7a-ced951ea14e7",
+          "from": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 1
+          },
+          "to": {
+            "component": "734278df-d40c-4900-9239-3da167115ac1",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "4ac9cbc0-a85b-4c17-a673-a54472fa6c88",
+          "from": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 13
+          },
+          "to": {
+            "component": "be775273-fd21-49b3-9217-8abe8c1747b6",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "4fb14dd0-8103-4a76-adc2-974fcb7a03f0",
+          "from": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 10
+          },
+          "to": {
+            "component": "276dd58a-6682-4c4a-b489-f74335136a4e",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "7925cc15-2755-4041-aec9-c4b489f168cb",
+          "from": {
+            "chip": "0fc064a4-abfc-4eb4-a670-8f93bfaaf773",
+            "pin": 9
+          },
+          "to": {
+            "component": "fdaf208f-2181-4d83-bb00-e6b692abf31f",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}

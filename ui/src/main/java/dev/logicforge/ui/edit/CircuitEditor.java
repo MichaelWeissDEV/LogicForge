@@ -6,6 +6,7 @@ import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.CircuitDocumentListener;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.SubcircuitSupport;
@@ -366,8 +367,7 @@ public final class CircuitEditor {
     /** Runs an editing command through the undo history. */
     public void execute(CircuitCommand command) {
         undoStack.execute(command);
-        selection.retainExisting(document.components().stream().map(ComponentInstance::id).toList(),
-                document.connections().stream().map(connection -> connection.id()).toList());
+        retainExistingSelection();
         notifyChanged();
     }
 
@@ -382,9 +382,14 @@ public final class CircuitEditor {
     }
 
     private void afterHistoryChange() {
-        selection.retainExisting(document.components().stream().map(ComponentInstance::id).toList(),
-                document.connections().stream().map(connection -> connection.id()).toList());
+        retainExistingSelection();
         notifyChanged();
+    }
+
+    private void retainExistingSelection() {
+        selection.retainExisting(document.components().stream().map(ComponentInstance::id).toList(),
+                document.chips().stream().map(dev.logicforge.circuit.chip.ChipInstance::id).toList(),
+                document.connections().stream().map(connection -> connection.id()).toList());
     }
 
     public Optional<ComponentDefinition> definitionOf(ComponentInstance instance) {
@@ -396,6 +401,11 @@ public final class CircuitEditor {
     public Optional<ComponentDefinition> definition(String definitionId) {
         Optional<ComponentDefinition> builtIn = registry.definition(definitionId);
         return builtIn.isPresent() ? builtIn : SubcircuitSupport.definition(project, definitionId);
+    }
+
+    public Optional<dev.logicforge.circuit.chip.ChipDefinition> chipDefinitionOf(
+            dev.logicforge.circuit.chip.ChipInstance instance) {
+        return chipRegistry.find(instance.chipDefinitionId());
     }
 
     // ------------------------------------------------------------------
@@ -508,6 +518,45 @@ public final class CircuitEditor {
     }
 
     /**
+     * The runtime net(s) backing any electrical endpoint — a component port or a physical
+     * chip pin. A chip pin is resolved to the logical port it was expanded onto via the
+     * compiler's {@code ChipSourceMap} and then handled exactly like an ordinary port.
+     */
+    public Optional<dev.logicforge.compiler.ResolvedSignal> signalAt(ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            return signalAt(component.port());
+        }
+        if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            return logicalEndpointForChipPin(chipPin.chipInstanceId(), chipPin.physicalPinNumber())
+                    .flatMap(this::signalAt);
+        }
+        return Optional.empty();
+    }
+
+    /** The value on the net a chip's physical pin is attached to. */
+    public Optional<LogicVector> valueAt(ElectricalEndpoint endpoint) {
+        if (simulation == null) {
+            return Optional.empty();
+        }
+        return signalAt(endpoint).map(signal -> signal.read(simulation));
+    }
+
+    /**
+     * The logical port a physical chip pin was expanded onto during compilation, for the
+     * chip instance currently in the root of this editor's document — see
+     * {@link #chipSourceMap()} for the hierarchy-aware variant.
+     */
+    public Optional<PortEndpoint> logicalEndpointForChipPin(UUID chipInstanceId, int physicalPinNumber) {
+        return compilation == null ? Optional.empty()
+                : compilation.chipSourceMap().logicalEndpointForPin(chipInstanceId, physicalPinNumber);
+    }
+
+    /** The compiler's chip source map for the currently compiled project, if any. */
+    public Optional<dev.logicforge.compiler.ChipSourceMap> chipSourceMap() {
+        return compilation == null ? Optional.empty() : Optional.of(compilation.chipSourceMap());
+    }
+
+    /**
      * Resolves against an explicitly given hierarchy instance path rather than whatever
      * circuit the editor currently has open — see {@link #memorySnapshot(Optional, UUID)} for
      * why a long-lived watch (a logic analyzer trace) must capture its instance path instead
@@ -563,22 +612,39 @@ public final class CircuitEditor {
         }
         Optional<dev.logicforge.circuit.document.Connection> connection =
                 document.connection(connectionId);
-        return connection.flatMap(value -> dev.logicforge.circuit.document.ElectricalEndpoints
-                        .componentPort(value.from()))
-                .map(hierarchyContext()::resolveNet).orElse(OptionalInt.empty());
+        if (connection.isEmpty()) {
+            return OptionalInt.empty();
+        }
+        OptionalInt fromNet = resolveNet(connection.get().from());
+        return fromNet.isPresent() ? fromNet : resolveNet(connection.get().to());
+    }
+
+    private OptionalInt resolveNet(ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            return hierarchyContext().resolveNet(component.port());
+        }
+        if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            Optional<PortEndpoint> logical = logicalEndpointForChipPin(chipPin.chipInstanceId(),
+                    chipPin.physicalPinNumber());
+            return logical.map(hierarchyContext()::resolveNet).orElse(OptionalInt.empty());
+        }
+        return OptionalInt.empty();
     }
 
     /**
      * The runtime net(s) a wire belongs to, resolved through either of its endpoints (both
-     * name the same signal by construction). Correct for a RANGE connection regardless of
-     * whether it spans one net (a slice of a whole-mode bus) or several (a bit-mode port).
+     * name the same signal by construction) — a component port or a physical chip pin.
+     * Correct for a RANGE connection regardless of whether it spans one net (a slice of a
+     * whole-mode bus) or several (a bit-mode port).
      */
     public Optional<dev.logicforge.compiler.ResolvedSignal> signalOfConnection(UUID connectionId) {
         if (compilation == null) {
             return Optional.empty();
         }
-        return document.connection(connectionId).flatMap(connection -> dev.logicforge.circuit.document
-                .ElectricalEndpoints.componentPort(connection.from()).flatMap(this::signalAt));
+        return document.connection(connectionId).flatMap(connection -> {
+            Optional<dev.logicforge.compiler.ResolvedSignal> fromSignal = signalAt(connection.from());
+            return fromSignal.isPresent() ? fromSignal : signalAt(connection.to());
+        });
     }
 
     public boolean hasDriverConflict(int netId) {

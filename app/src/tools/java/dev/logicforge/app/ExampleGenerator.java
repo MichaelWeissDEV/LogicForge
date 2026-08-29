@@ -1,17 +1,21 @@
 package dev.logicforge.app;
 
+import dev.logicforge.circuit.chip.ChipInstance;
 import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.CircuitMetadata;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
+import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.compiler.CircuitCompiler;
 import dev.logicforge.format.ProjectFormat;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.library.LibraryParameters;
+import dev.logicforge.library.chip.StandardChipLibrary;
 import dev.logicforge.processor.lf8.Lf8ComputerFactory;
 import dev.logicforge.processor.lf8.Lf8ImplementationMode;
 import dev.logicforge.structures.StructuralCircuitFactory;
@@ -72,6 +76,10 @@ public final class ExampleGenerator {
                 defaults("memory.rom").with(LibraryParameters.ADDRESS_WIDTH, 4)
                         .with(LibraryParameters.WIDTH, 8)
                         .with(LibraryParameters.ROM_CONTENTS, "48 65 6c 6c 6f")));
+
+        write(directory.resolve("physical-ic"), "74hc-nand", nand74hc00());
+        write(directory.resolve("physical-ic"), "74hc-half-adder", halfAdder74hc());
+        write(directory.resolve("physical-ic"), "74hc283-adder", adder74hc283());
 
         int[] basicProgram = {0x01, 0, 5, 0x01, 1, 3, 0x03, 0, 1,
                 0x06, 0, 0x00, 0x80, 0xff};
@@ -214,5 +222,107 @@ public final class ExampleGenerator {
                              ComponentInstance to, String toPort) {
         circuit.addConnection(Connection.create(new PortReference(from.id(), fromPort),
                 new PortReference(to.id(), toPort)));
+    }
+
+    // ------------------------------------------------------- physical IC examples
+
+    private static ChipInstance addChip(CircuitDocument circuit, String partNumber, double x, double y,
+                                        String designator) {
+        ChipInstance instance = ChipInstance.create(partNumber, new CircuitPoint(x, y), designator);
+        circuit.addChip(instance);
+        return instance;
+    }
+
+    private static void wireToChip(CircuitDocument circuit, ComponentInstance from, String fromPort,
+                                   ChipInstance chip, int pinNumber) {
+        circuit.addConnection(Connection.create(
+                new ElectricalEndpoint.ComponentEndpoint(PortEndpoint.whole(new PortReference(from.id(), fromPort))),
+                new ElectricalEndpoint.ChipPinEndpoint(chip.id(), pinNumber)));
+    }
+
+    private static void wireFromChip(CircuitDocument circuit, ChipInstance chip, int pinNumber,
+                                     ComponentInstance to, String toPort) {
+        circuit.addConnection(Connection.create(
+                new ElectricalEndpoint.ChipPinEndpoint(chip.id(), pinNumber),
+                new ElectricalEndpoint.ComponentEndpoint(PortEndpoint.whole(new PortReference(to.id(), toPort)))));
+    }
+
+    /**
+     * One gate of a 74HC00 quad NAND, wired directly through its physical pins: pin 1 (1A)
+     * and pin 2 (1B) are the inputs, pin 3 (1Y) is the output — as simple a physical-pin
+     * demonstration as the chip pipeline allows.
+     */
+    private static CircuitDocument nand74hc00() {
+        CircuitDocument circuit = circuit("74HC00: one NAND gate wired through its physical pins");
+        ComponentInstance a = add(circuit, "source.toggle", 96, 112, "A");
+        ComponentInstance b = add(circuit, "source.toggle", 96, 224, "B");
+        ChipInstance chip = addChip(circuit, "74HC00", 360, 168, "U1");
+        ComponentInstance led = add(circuit, "output.led", 620, 168, "Y");
+        wireToChip(circuit, a, "OUT", chip, 1); // pin 1 = 1A
+        wireToChip(circuit, b, "OUT", chip, 2); // pin 2 = 1B
+        wireFromChip(circuit, chip, 3, led, "IN"); // pin 3 = 1Y
+        return circuit;
+    }
+
+    /**
+     * A half adder built from two real 74-series packages instead of behavioral gates:
+     * SUM from a 74HC86 (XOR) gate, CARRY from a 74HC08 (AND) gate, both driven by the same
+     * two switches through their own physical pins — a chip-to-chip-adjacent wiring pattern.
+     */
+    private static CircuitDocument halfAdder74hc() {
+        CircuitDocument circuit = circuit("74HC86 XOR + 74HC08 AND: a half adder from real packages");
+        ComponentInstance a = add(circuit, "source.toggle", 96, 96, "A");
+        ComponentInstance b = add(circuit, "source.toggle", 96, 320, "B");
+        ChipInstance xor = addChip(circuit, "74HC86", 380, 120, "U1");
+        ChipInstance and = addChip(circuit, "74HC08", 380, 320, "U2");
+        ComponentInstance sum = add(circuit, "output.led", 660, 120, "SUM");
+        ComponentInstance carry = add(circuit, "output.led", 660, 320, "CARRY");
+
+        wireToChip(circuit, a, "OUT", xor, 1); // U1 pin 1 = 1A
+        wireToChip(circuit, b, "OUT", xor, 2); // U1 pin 2 = 1B
+        wireFromChip(circuit, xor, 3, sum, "IN"); // U1 pin 3 = 1Y
+
+        wireToChip(circuit, a, "OUT", and, 1); // U2 pin 1 = 1A
+        wireToChip(circuit, b, "OUT", and, 2); // U2 pin 2 = 1B
+        wireFromChip(circuit, and, 3, carry, "IN"); // U2 pin 3 = 1Y
+        return circuit;
+    }
+
+    /**
+     * A 4-bit adder built entirely from one 74HC283 package: four A/B switch pairs, a carry
+     *-in switch, and five LEDs for SUM0..SUM3 and COUT — every one of them wired to a named
+     * physical pin, so the pinout is trivial to read straight off the schematic.
+     */
+    private static CircuitDocument adder74hc283() {
+        CircuitDocument circuit = circuit("74HC283: 4-bit binary adder wired pin-for-pin");
+        ChipInstance chip = addChip(circuit, "74HC283", 420, 260, "U1");
+
+        // Pin numbers from the 74HC283 pinout registered in StandardChipLibrary: bit 0 is
+        // A1/B1/S1 (pins 5/6/4), bit 1 is A2/B2/S2 (pins 3/2/1), bit 2 is A3/B3/S3
+        // (pins 14/15/13), bit 3 is A4/B4/S4 (pins 12/11/10); CIN is pin 7, COUT is pin 9.
+        int[] aPins = {5, 3, 14, 12};
+        int[] bPins = {6, 2, 15, 11};
+        int[] sumPins = {4, 1, 13, 10};
+
+        double leftX = 96;
+        for (int bit = 0; bit < 4; bit++) {
+            double y = 40 + bit * 100;
+            ComponentInstance switchA = add(circuit, "source.toggle", leftX, y, "A" + bit);
+            ComponentInstance switchB = add(circuit, "source.toggle", leftX, y + 40, "B" + bit);
+            wireToChip(circuit, switchA, "OUT", chip, aPins[bit]);
+            wireToChip(circuit, switchB, "OUT", chip, bPins[bit]);
+        }
+        ComponentInstance cin = add(circuit, "source.toggle", leftX, 480, "CIN");
+        wireToChip(circuit, cin, "OUT", chip, 7);
+
+        double rightX = 760;
+        for (int bit = 0; bit < 4; bit++) {
+            double y = 40 + bit * 100;
+            ComponentInstance sumLed = add(circuit, "output.led", rightX, y + 20, "SUM" + bit);
+            wireFromChip(circuit, chip, sumPins[bit], sumLed, "IN");
+        }
+        ComponentInstance cout = add(circuit, "output.led", rightX, 480, "COUT");
+        wireFromChip(circuit, chip, 9, cout, "IN");
+        return circuit;
     }
 }

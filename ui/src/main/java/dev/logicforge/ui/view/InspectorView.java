@@ -1,15 +1,23 @@
 package dev.logicforge.ui.view;
 
+import dev.logicforge.circuit.chip.ChipDefinition;
+import dev.logicforge.circuit.chip.ChipDisplayMode;
+import dev.logicforge.circuit.chip.ChipInstance;
+import dev.logicforge.circuit.chip.ElectricalPinType;
+import dev.logicforge.circuit.chip.PackagePin;
 import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.component.ParameterSpec;
 import dev.logicforge.circuit.component.PortSpec;
 import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortDisplayMode;
 import dev.logicforge.library.LibraryParameters;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.simulation.SimulationTime;
 import dev.logicforge.ui.command.ChangeParameterCommand;
+import dev.logicforge.ui.command.SetChipDisplayModeCommand;
+import dev.logicforge.ui.command.SetChipReferenceDesignatorCommand;
 import dev.logicforge.ui.command.SetLabelCommand;
 import dev.logicforge.ui.command.SetPortDisplayModeCommand;
 import dev.logicforge.ui.edit.CircuitEditor;
@@ -78,14 +86,19 @@ public final class InspectorView extends VBox {
 
     private void refresh() {
         body.getChildren().clear();
-        int selected = editor.selection().components().size();
-        if (selected == 0) {
+        int components = editor.selection().components().size();
+        int chips = editor.selection().chips().size();
+        int total = components + chips;
+        if (total == 0) {
             showCircuitProperties();
-        } else if (selected == 1) {
+        } else if (total == 1 && components == 1) {
             UUID id = editor.selection().components().iterator().next();
             editor.document().component(id).ifPresentOrElse(this::showComponent, this::showCircuitProperties);
+        } else if (total == 1) {
+            UUID id = editor.selection().chips().iterator().next();
+            editor.document().chip(id).ifPresentOrElse(this::showChip, this::showCircuitProperties);
         } else {
-            showMultiSelection(selected);
+            showMultiSelection(components, chips);
         }
     }
 
@@ -105,9 +118,111 @@ public final class InspectorView extends VBox {
         });
     }
 
-    private void showMultiSelection(int count) {
-        body.getChildren().add(title(count + " components"));
+    private void showMultiSelection(int components, int chips) {
+        StringBuilder label = new StringBuilder();
+        if (components > 0) {
+            label.append(components).append(components == 1 ? " component" : " components");
+        }
+        if (components > 0 && chips > 0) {
+            label.append(" + ");
+        }
+        if (chips > 0) {
+            label.append(chips).append(chips == 1 ? " chip" : " chips");
+        }
+        body.getChildren().add(title(label.toString()));
         body.getChildren().add(subtitle("Move, rotate or delete them together."));
+    }
+
+    // ---------------------------------------------------------------- chips
+
+    private void showChip(ChipInstance instance) {
+        Optional<ChipDefinition> definition = editor.chipDefinitionOf(instance);
+        if (definition.isEmpty()) {
+            body.getChildren().add(title("Unknown chip"));
+            body.getChildren().add(subtitle(instance.chipDefinitionId()));
+            return;
+        }
+        ChipDefinition chip = definition.get();
+        body.getChildren().add(title(chip.metadata().partNumber()));
+        body.getChildren().add(readOnly("Family", chip.metadata().family()));
+        body.getChildren().add(subtitle(chip.metadata().summary()));
+        body.getChildren().add(readOnly("Package", chip.packageDefinition().type().name()));
+        body.getChildren().add(readOnly("Pin count", String.valueOf(chip.packageDefinition().pins().size())));
+        body.getChildren().add(subtitle(
+                "Digital function model, implicitly powered — no analog supply or transistor-level simulation."));
+        body.getChildren().add(spacer());
+
+        body.getChildren().add(propertyLabel("Reference designator"));
+        TextField designator = new TextField(instance.referenceDesignator());
+        designator.setOnAction(event -> commitDesignator(instance, designator.getText()));
+        designator.focusedProperty().addListener((observable, was, focused) -> {
+            if (!focused) {
+                commitDesignator(instance, designator.getText());
+            }
+        });
+        body.getChildren().add(designator);
+
+        body.getChildren().add(spacer());
+        body.getChildren().add(propertyLabel("Display mode"));
+        ComboBox<ChipDisplayMode> displayMode = new ComboBox<>();
+        displayMode.getItems().setAll(ChipDisplayMode.PACKAGE, ChipDisplayMode.SYMBOL);
+        displayMode.setValue(instance.displayMode() == ChipDisplayMode.STRUCTURAL
+                ? ChipDisplayMode.PACKAGE : instance.displayMode());
+        displayMode.setMaxWidth(Double.MAX_VALUE);
+        displayMode.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(ChipDisplayMode mode) {
+                return mode == ChipDisplayMode.SYMBOL ? "Symbol" : "Package";
+            }
+            @Override public ChipDisplayMode fromString(String value) {
+                return "Symbol".equals(value) ? ChipDisplayMode.SYMBOL : ChipDisplayMode.PACKAGE;
+            }
+        });
+        displayMode.valueProperty().addListener((observable, oldMode, newMode) -> {
+            if (newMode != null && newMode != oldMode) {
+                editor.document().chip(instance.id()).ifPresent(current ->
+                        editor.execute(new SetChipDisplayModeCommand(editor.document(), current, newMode)));
+            }
+        });
+        body.getChildren().add(displayMode);
+
+        body.getChildren().add(spacer());
+        body.getChildren().add(sectionHeader("PINS"));
+        for (PackagePin pin : chip.packageDefinition().pins()) {
+            body.getChildren().add(chipPinRow(instance, chip, pin));
+        }
+
+        body.getChildren().add(spacer());
+        body.getChildren().add(sectionHeader("PLACEMENT"));
+        body.getChildren().add(readOnly("Rotation", instance.rotation().degrees() + "°"));
+        body.getChildren().add(readOnly("Position",
+                (int) instance.position().x() + ", " + (int) instance.position().y()));
+    }
+
+    /** One physical pin: number, name, electrical role, its logical mapping and live value. */
+    private javafx.scene.Node chipPinRow(ChipInstance instance, ChipDefinition chip, PackagePin pin) {
+        String mapping = chip.logicalMapping(pin.number())
+                .map(m -> m.unitName() + "." + m.portName() + (m.bitIndex() >= 0 ? "[" + m.bitIndex() + "]" : ""))
+                .orElse("—");
+        String value = pin.electricalType() == ElectricalPinType.SIGNAL
+                ? editor.valueAt(new ElectricalEndpoint.ChipPinEndpoint(instance.id(), pin.number()))
+                        .map(this::formatState).orElse("–")
+                : "—";
+        Label heading = new Label(pin.number() + "  " + pin.name() + "   " + pin.electricalType()
+                + "   " + mapping + "   " + value);
+        heading.getStyleClass().add("property-label");
+        heading.setWrapText(true);
+        VBox row = new VBox(heading);
+        VBox.setMargin(row, new Insets(2, 0, 0, 0));
+        return row;
+    }
+
+    private void commitDesignator(ChipInstance instance, String designator) {
+        editor.document().chip(instance.id()).ifPresent(current -> {
+            String trimmed = designator.strip();
+            if (!trimmed.isEmpty() && !current.referenceDesignator().equals(trimmed)) {
+                editor.execute(new SetChipReferenceDesignatorCommand(editor.document(), current, trimmed));
+            }
+        });
     }
 
     private void showComponent(ComponentInstance instance) {

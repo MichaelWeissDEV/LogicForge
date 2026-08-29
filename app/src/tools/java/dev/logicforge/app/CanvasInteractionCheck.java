@@ -236,6 +236,8 @@ public final class CanvasInteractionCheck {
         fireRelease(canvas, buttonScreen.x(), buttonScreen.y());
         check("pressing push button does not make project dirty", !editor.isDirty());
 
+        runChipChecks(canvas, editor, viewport);
+
         // 24-26: Inverted push button test - TODO: Fix parameter propagation to behavior
         // ComponentInstance invButton = place(canvas, editor, "source.button", -200, -300);
         // var invButtonDef = editor.definitionOf(invButton).orElseThrow();
@@ -256,11 +258,99 @@ public final class CanvasInteractionCheck {
         //         value(editor, invLed).equals(LogicVector.ONE));
     }
 
+    /**
+     * The physical-chip counterpart of the checks above: place a 74HC00 from the palette,
+     * select/move/rotate it, wire a switch and an LED to two of its real physical pins, and
+     * confirm it behaves like a NAND gate — end to end through the same canvas gestures
+     * ordinary components use.
+     */
+    private static void runChipChecks(CircuitCanvasView canvas, CircuitEditor editor,
+                                      ViewportTransform viewport) throws Exception {
+        int chipsBefore = editor.document().chipCount();
+        int connectionsBefore = editor.document().connectionCount();
+
+        // 1: place a 74HC00 from the palette.
+        canvas.setPendingPlacement(new dev.logicforge.ui.edit.PlacementRequest.Chip("74HC00"));
+        firePress(canvas, -600, -600);
+        fireRelease(canvas, -600, -600);
+        check("74HC00 placed from the palette", editor.document().chipCount() == chipsBefore + 1);
+        dev.logicforge.circuit.chip.ChipInstance chip = editor.document().chips().stream()
+                .reduce((first, second) -> second).orElseThrow();
+
+        // 2: select the chip with a click.
+        var chipScreen = viewport.worldToScreen(chip.position());
+        firePress(canvas, chipScreen.x(), chipScreen.y());
+        fireRelease(canvas, chipScreen.x(), chipScreen.y());
+        check("chip selected by clicking its body", editor.selection().containsChip(chip.id()));
+
+        // 3: drag-move the chip; the pins move with it.
+        CircuitPoint chipBefore = editor.document().requireChip(chip.id()).position();
+        dragChip(canvas, viewport, chip, 0, 120);
+        CircuitPoint chipAfter = editor.document().requireChip(chip.id()).position();
+        check("dragging moved the chip",
+                Math.abs(chipAfter.y() - chipBefore.y() - 120 / viewport.scale()) < 12);
+
+        // 4: rotate the chip from the keyboard, back to its original orientation.
+        fireKey(canvas, KeyCode.R);
+        check("R rotates the selected chip",
+                editor.document().requireChip(chip.id()).rotation() == Rotation.DEG_90);
+        fireKey(canvas, KeyCode.R);
+        fireKey(canvas, KeyCode.R);
+        fireKey(canvas, KeyCode.R);
+        check("four turns bring the chip back to its original orientation",
+                editor.document().requireChip(chip.id()).rotation() == Rotation.DEG_0);
+
+        // 5: wire a normal switch to a chip pin (pin 1 = 1A, pin 2 = 1B on the 74HC00).
+        ComponentInstance switchA = place(canvas, editor, "source.toggle",
+                chipScreen.x() - 260, chipScreen.y() - 40);
+        ComponentInstance switchB = place(canvas, editor, "source.toggle",
+                chipScreen.x() - 260, chipScreen.y() + 40);
+        dragPortToChipPin(canvas, editor, switchA, "OUT", chip, 1);
+        dragPortToChipPin(canvas, editor, switchB, "OUT", chip, 2);
+
+        // 6: wire the chip's output pin (pin 3 = 1Y) to an LED.
+        ComponentInstance chipLed = place(canvas, editor, "output.led",
+                chipScreen.x() + 260, chipScreen.y());
+        dragChipPinToPort(canvas, editor, chip, 3, chipLed, "IN");
+        check("switches and LED wired to the chip's physical pins",
+                editor.document().connectionCount() == connectionsBefore + 3);
+
+        // 7-8: toggling the inputs drives the chip, and the LED shows the real NAND result.
+        clickComponent(canvas, viewport, switchA);
+        clickComponent(canvas, viewport, switchB);
+        check("both inputs high through the chip pins gives a NAND low",
+                value(editor, chipLed).equals(LogicVector.ZERO));
+        clickComponent(canvas, viewport, switchB);
+        check("one input low through the chip pins gives a NAND high",
+                value(editor, chipLed).equals(LogicVector.ONE));
+        check("the simulation is still stable with a physical chip in the circuit",
+                editor.status() == dev.logicforge.simulation.SimulationStatus.STABLE);
+
+        // Undo/redo covers the whole chip: placement, move, rotation and the three wires.
+        int chipsNow = editor.document().chipCount();
+        int connectionsNow = editor.document().connectionCount();
+        editor.undo();
+        check("undo removes the chip-to-LED wire", editor.document().connectionCount() == connectionsNow - 1);
+        editor.redo();
+        check("redo restores the chip-to-LED wire", editor.document().connectionCount() == connectionsNow);
+
+        // Save and reload: the chip, its rotation, designator and physical-pin wires survive.
+        Path file = Files.createTempFile("logicforge-chip-check", ".logic");
+        ProjectFormat.save(editor.project(), file);
+        CircuitProject reloaded = ProjectFormat.load(file);
+        check("a saved project with a chip loads back identically",
+                editor.document().structurallyEquals(reloaded.mainCircuit()));
+        check("the chip and its pin wires are still present after reload",
+                reloaded.mainCircuit().chipCount() == chipsNow
+                        && reloaded.mainCircuit().connectionCount() == connectionsNow);
+        Files.deleteIfExists(file);
+    }
+
     // ------------------------------------------------------------------ gestures
 
     private static ComponentInstance place(CircuitCanvasView canvas, CircuitEditor editor,
                                            String definitionId, double screenX, double screenY) {
-        canvas.setPendingPlacement(definitionId);
+        canvas.setPendingPlacement(new dev.logicforge.ui.edit.PlacementRequest.Component(definitionId));
         firePress(canvas, screenX, screenY);
         fireRelease(canvas, screenX, screenY);
         List<ComponentInstance> components = new ArrayList<>(editor.document().components());
@@ -310,6 +400,47 @@ public final class CanvasInteractionCheck {
                 .orElseThrow().position();
         var screen = canvas.viewport().worldToScreen(world);
         return new double[]{screen.x(), screen.y()};
+    }
+
+    private static void dragChip(CircuitCanvasView canvas, ViewportTransform viewport,
+                                 dev.logicforge.circuit.chip.ChipInstance instance, double dx, double dy) {
+        var screen = viewport.worldToScreen(instance.position());
+        firePress(canvas, screen.x(), screen.y());
+        fireDrag(canvas, screen.x() + dx / 2, screen.y() + dy / 2);
+        fireDrag(canvas, screen.x() + dx, screen.y() + dy);
+        fireRelease(canvas, screen.x() + dx, screen.y() + dy);
+    }
+
+    private static double[] chipPinScreenPosition(CircuitCanvasView canvas, CircuitEditor editor,
+                                                  dev.logicforge.circuit.chip.ChipInstance instance,
+                                                  int pinNumber) {
+        dev.logicforge.circuit.chip.ChipInstance current = editor.document().requireChip(instance.id());
+        var packageType = editor.chipDefinitionOf(current).orElseThrow().packageDefinition().type();
+        CircuitPoint world = dev.logicforge.circuit.chip.ChipGeometry.pinTip(current, packageType, pinNumber);
+        var screen = canvas.viewport().worldToScreen(world);
+        return new double[]{screen.x(), screen.y()};
+    }
+
+    private static void dragPortToChipPin(CircuitCanvasView canvas, CircuitEditor editor,
+                                          ComponentInstance from, String fromPort,
+                                          dev.logicforge.circuit.chip.ChipInstance chip, int pinNumber) {
+        double[] start = portScreenPosition(canvas, editor, from, fromPort);
+        double[] end = chipPinScreenPosition(canvas, editor, chip, pinNumber);
+        firePress(canvas, start[0], start[1]);
+        fireDrag(canvas, (start[0] + end[0]) / 2, (start[1] + end[1]) / 2);
+        fireDrag(canvas, end[0], end[1]);
+        fireRelease(canvas, end[0], end[1]);
+    }
+
+    private static void dragChipPinToPort(CircuitCanvasView canvas, CircuitEditor editor,
+                                          dev.logicforge.circuit.chip.ChipInstance chip, int pinNumber,
+                                          ComponentInstance to, String toPort) {
+        double[] start = chipPinScreenPosition(canvas, editor, chip, pinNumber);
+        double[] end = portScreenPosition(canvas, editor, to, toPort);
+        firePress(canvas, start[0], start[1]);
+        fireDrag(canvas, (start[0] + end[0]) / 2, (start[1] + end[1]) / 2);
+        fireDrag(canvas, end[0], end[1]);
+        fireRelease(canvas, end[0], end[1]);
     }
 
     // -------------------------------------------------------------------- events

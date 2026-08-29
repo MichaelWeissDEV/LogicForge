@@ -1,8 +1,8 @@
 package dev.logicforge.ui.wiring;
 
-import dev.logicforge.circuit.document.PlacedPort;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.PortSide;
+import dev.logicforge.circuit.geometry.RoutablePoint;
 import dev.logicforge.ui.viewport.Grid;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +28,7 @@ public final class OrthogonalWireRouter implements WireRouter {
     private static final int CORRIDOR_LANES = 4;
 
     @Override
-    public WireRoute route(PlacedPort from, PlacedPort to, List<CircuitPoint> waypoints) {
+    public WireRoute route(RoutablePoint from, RoutablePoint to, List<CircuitPoint> waypoints) {
         List<CircuitPoint> points = new ArrayList<>();
         points.add(from.position());
         CircuitPoint start = from.stubEnd(LEAD_OUT);
@@ -52,7 +52,7 @@ public final class OrthogonalWireRouter implements WireRouter {
     }
 
     @Override
-    public WireRoute routeToPoint(PlacedPort from, CircuitPoint target) {
+    public WireRoute routeToPoint(RoutablePoint from, CircuitPoint target) {
         List<CircuitPoint> points = new ArrayList<>();
         points.add(from.position());
         CircuitPoint start = from.stubEnd(LEAD_OUT);

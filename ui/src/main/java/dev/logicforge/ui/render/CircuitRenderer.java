@@ -1,10 +1,16 @@
 package dev.logicforge.ui.render;
 
+import dev.logicforge.circuit.chip.ChipDefinition;
+import dev.logicforge.circuit.chip.ChipGeometry;
+import dev.logicforge.circuit.chip.ChipInstance;
 import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.ComponentGeometry;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
+import dev.logicforge.circuit.document.ElectricalEndpointGeometry;
+import dev.logicforge.circuit.document.PlacedElectricalEndpoint;
 import dev.logicforge.circuit.document.PlacedPort;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
@@ -40,6 +46,8 @@ public final class CircuitRenderer {
     private final CircuitEditor editor;
     private final RendererRegistry renderers;
     private final WireRouter router;
+    private final ChipPackageRenderer chipPackageRenderer = new ChipPackageRenderer();
+    private final ChipSymbolRenderer chipSymbolRenderer = new ChipSymbolRenderer();
 
     public CircuitRenderer(CircuitEditor editor, RendererRegistry renderers, WireRouter router) {
         this.editor = editor;
@@ -61,6 +69,7 @@ public final class CircuitRenderer {
 
         drawWires(graphics, visible);
         drawComponents(graphics, visible, viewport, overlay);
+        drawChips(graphics, visible, viewport, overlay);
         drawOverlay(graphics, overlay, viewport);
 
         graphics.restore();
@@ -122,10 +131,8 @@ public final class CircuitRenderer {
         graphics.setLineWidth(Theme.WIRE_STROKE);
 
         for (Connection connection : document.connections()) {
-            Optional<PlacedPort> from = dev.logicforge.circuit.document.ElectricalEndpoints
-                    .componentPort(connection.from()).flatMap(this::endpoint);
-            Optional<PlacedPort> to = dev.logicforge.circuit.document.ElectricalEndpoints
-                    .componentPort(connection.to()).flatMap(this::endpoint);
+            Optional<PlacedElectricalEndpoint> from = resolveEndpoint(connection.from());
+            Optional<PlacedElectricalEndpoint> to = resolveEndpoint(connection.to());
             if (from.isEmpty() || to.isEmpty()) {
                 continue;
             }
@@ -454,6 +461,10 @@ public final class CircuitRenderer {
             editor.definitionOf(overlay.ghost()).ifPresent(definition ->
                     drawComponent(graphics, overlay.ghost(), definition, viewport, CanvasOverlay.EMPTY, 0.45));
         }
+        if (overlay.chipGhost() != null) {
+            editor.chipDefinitionOf(overlay.chipGhost()).ifPresent(definition ->
+                    drawChip(graphics, overlay.chipGhost(), definition, CanvasOverlay.EMPTY, 0.45));
+        }
         if (overlay.selectionRectangle() != null) {
             CircuitBounds rectangle = overlay.selectionRectangle();
             graphics.setFill(Theme.SELECTION_FILL);
@@ -464,12 +475,83 @@ public final class CircuitRenderer {
         }
     }
 
+    // ------------------------------------------------------------------ chips
+
+    private void drawChips(GraphicsContext graphics, CircuitBounds visible, ViewportTransform viewport,
+                           CanvasOverlay overlay) {
+        for (ChipInstance instance : editor.document().chips()) {
+            Optional<ChipDefinition> definition = editor.chipDefinitionOf(instance);
+            if (definition.isEmpty()) {
+                continue;
+            }
+            CircuitBounds bounds = ChipGeometry.bodyBounds(instance, definition.get().packageDefinition().type());
+            if (!visible.grownBy(96).intersects(bounds)) {
+                continue; // outside the viewport
+            }
+            drawChip(graphics, instance, definition.get(), overlay, 1.0);
+        }
+    }
+
+    /** Draws one physical chip package: its body, its pins with live colors, and its label. */
+    public void drawChip(GraphicsContext graphics, ChipInstance instance, ChipDefinition definition,
+                         CanvasOverlay overlay, double opacity) {
+        CircuitPoint effectivePosition = overlay.movingChipPositions().getOrDefault(instance.id(), instance.position());
+        boolean selected = editor.selection().containsChip(instance.id());
+        int hoveredPin = instance.id().equals(overlay.hoveredChip())
+                ? overlay.hoveredChipPinOption()
+                        .filter(pin -> pin.endpoint() instanceof ElectricalEndpoint.ChipPinEndpoint)
+                        .map(pin -> ((ElectricalEndpoint.ChipPinEndpoint) pin.endpoint()).physicalPinNumber())
+                        .orElse(-1)
+                : -1;
+
+        graphics.save();
+        graphics.setGlobalAlpha(opacity);
+        if (instance.displayMode() == dev.logicforge.circuit.chip.ChipDisplayMode.SYMBOL) {
+            chipSymbolRenderer.draw(graphics, definition, instance.referenceDesignator(), effectivePosition,
+                    instance.rotation(), pinNumber -> chipPinColor(instance, definition, pinNumber), hoveredPin,
+                    this::unitDisplayName);
+        } else {
+            chipPackageRenderer.draw(graphics, definition, instance.referenceDesignator(), effectivePosition,
+                    instance.rotation(), pinNumber -> chipPinColor(instance, definition, pinNumber), hoveredPin);
+        }
+        graphics.restore();
+
+        if (selected) {
+            drawSelectionOutline(graphics, ChipGeometry.bodyBounds(instance.withPosition(effectivePosition),
+                    definition.packageDefinition().type()));
+        }
+    }
+
+    private String unitDisplayName(String componentDefinitionId) {
+        return editor.definition(componentDefinitionId)
+                .map(ComponentDefinition::displayName)
+                .orElseGet(() -> {
+                    int dot = componentDefinitionId.lastIndexOf('.');
+                    return dot < 0 ? componentDefinitionId : componentDefinitionId.substring(dot + 1);
+                });
+    }
+
+    private Color chipPinColor(ChipInstance instance, ChipDefinition definition, int pinNumber) {
+        Optional<dev.logicforge.circuit.chip.PackagePin> pin = definition.packageDefinition().pin(pinNumber);
+        if (pin.isEmpty() || pin.get().electricalType() != dev.logicforge.circuit.chip.ElectricalPinType.SIGNAL) {
+            return Theme.TEXT_MUTED;
+        }
+        ElectricalEndpoint endpoint = new ElectricalEndpoint.ChipPinEndpoint(instance.id(), pinNumber);
+        Optional<dev.logicforge.compiler.ResolvedSignal> signal = editor.signalAt(endpoint);
+        if (signal.isPresent() && editor.hasDriverConflict(signal.get())) {
+            return Theme.SIGNAL_CONFLICT;
+        }
+        return editor.valueAt(endpoint)
+                .map(value -> value.width() == 1 ? Theme.signalColor(value.getBit(0)) : Theme.busColor(value))
+                .orElse(Theme.WIRE_UNPOWERED);
+    }
+
     // --------------------------------------------------------------- helpers
 
-    private Optional<PlacedPort> endpoint(PortEndpoint endpoint) {
-        return editor.document().component(endpoint.componentId()).flatMap(instance ->
-                editor.definitionOf(instance).flatMap(definition ->
-                        ComponentGeometry.endpoint(instance, definition, endpoint, editor.document())));
+    /** Resolves any electrical endpoint — a component port or a physical chip pin. */
+    private Optional<PlacedElectricalEndpoint> resolveEndpoint(ElectricalEndpoint endpoint) {
+        return ElectricalEndpointGeometry.resolve(editor.document(), endpoint, editor::definition,
+                id -> editor.chipRegistry().find(id));
     }
 
     private Color signalColorOf(PortEndpoint endpoint) {

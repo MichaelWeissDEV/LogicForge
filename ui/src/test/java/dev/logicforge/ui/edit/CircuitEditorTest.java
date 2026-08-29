@@ -429,12 +429,12 @@ class CircuitEditorTest {
         connect(gate, "OUT", led, "IN");
 
         CircuitClipboard.Fragment copied = editor.clipboard()
-                .copy(editor.document(), List.of(switchA.id(), gate.id()));
+                .copy(editor.document(), List.of(switchA.id(), gate.id()), List.of());
 
         assertEquals(2, copied.components().size());
         assertEquals(1, copied.connections().size(), "only the wire between the copied parts");
 
-        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(64, 64);
+        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(editor.document(), 64, 64);
         editor.execute(new PasteCommand(editor.document(), pasted.components(), pasted.connections()));
 
         assertEquals(5, editor.document().componentCount());
@@ -453,8 +453,8 @@ class CircuitEditorTest {
         connect(switchA, "OUT", led, "IN");
         editor.toggleInput(switchA.id());
 
-        editor.clipboard().copy(editor.document(), List.of(switchA.id(), led.id()));
-        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(0, 200);
+        editor.clipboard().copy(editor.document(), List.of(switchA.id(), led.id()), List.of());
+        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(editor.document(), 0, 200);
         editor.execute(new PasteCommand(editor.document(), pasted.components(), pasted.connections()));
 
         ComponentInstance copiedLed = pasted.components().get(1);
@@ -470,8 +470,8 @@ class CircuitEditorTest {
                 .with(LibraryParameters.INITIALLY_HIGH, true);
         ComponentInstance clock = add("source.clock", 0, 0, timing);
 
-        editor.clipboard().copy(editor.document(), List.of(clock.id()));
-        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(0, 100);
+        editor.clipboard().copy(editor.document(), List.of(clock.id()), List.of());
+        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(editor.document(), 0, 100);
         editor.execute(new PasteCommand(editor.document(), pasted.components(), pasted.connections()));
         ComponentInstance copiedClock = pasted.components().getFirst();
 

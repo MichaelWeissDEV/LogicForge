@@ -222,11 +222,19 @@ public final class CircuitDocument {
     }
 
     public boolean isConnected(PortEndpoint a, PortEndpoint b) {
-        ElectricalEndpoint ea = new ElectricalEndpoint.ComponentEndpoint(a);
-        ElectricalEndpoint eb = new ElectricalEndpoint.ComponentEndpoint(b);
+        return isConnected(new ElectricalEndpoint.ComponentEndpoint(a), new ElectricalEndpoint.ComponentEndpoint(b));
+    }
+
+    /** True if a wire already runs directly between these two endpoints, in either order. */
+    public boolean isConnected(ElectricalEndpoint a, ElectricalEndpoint b) {
         return connections.values().stream()
-                .anyMatch(connection -> (connection.from().equals(ea) && connection.to().equals(eb))
-                        || (connection.from().equals(eb) && connection.to().equals(ea)));
+                .anyMatch(connection -> (connection.from().equals(a) && connection.to().equals(b))
+                        || (connection.from().equals(b) && connection.to().equals(a)));
+    }
+
+    /** Every wire attached to any physical pin of the given chip. */
+    public List<Connection> connectionsOfChip(UUID chipId) {
+        return connections.values().stream().filter(connection -> connection.touchesChip(chipId)).toList();
     }
 
     // ------------------------------------------------------------------

@@ -1,8 +1,11 @@
 package dev.logicforge.ui.view;
 
+import dev.logicforge.circuit.chip.ChipInstance;
 import dev.logicforge.circuit.component.ComponentDefinition;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
+import dev.logicforge.circuit.document.PlacedElectricalEndpoint;
 import dev.logicforge.circuit.document.PlacedPort;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
@@ -10,15 +13,21 @@ import dev.logicforge.circuit.geometry.CircuitBounds;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.logic.LogicState;
+import dev.logicforge.ui.command.AddChipCommand;
 import dev.logicforge.ui.command.AddComponentCommand;
+import dev.logicforge.ui.command.CircuitCommand;
+import dev.logicforge.ui.command.CompositeCommand;
 import dev.logicforge.ui.command.ConnectCommand;
+import dev.logicforge.ui.command.MoveChipsCommand;
 import dev.logicforge.ui.command.MoveComponentsCommand;
 import dev.logicforge.ui.command.PasteCommand;
 import dev.logicforge.ui.command.RemoveElementsCommand;
+import dev.logicforge.ui.command.RotateChipsCommand;
 import dev.logicforge.ui.command.RotateComponentsCommand;
 import dev.logicforge.ui.edit.CircuitClipboard;
 import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.edit.HitTester;
+import dev.logicforge.ui.edit.PlacementRequest;
 import dev.logicforge.ui.render.CanvasOverlay;
 import dev.logicforge.ui.render.CircuitRenderer;
 import dev.logicforge.ui.render.RendererRegistry;
@@ -48,11 +57,14 @@ import javafx.scene.layout.Region;
  * <p>The view owns only view state — the viewport, what the mouse is over, what is being
  * dragged. Every change to the circuit itself goes through a command on the
  * {@link CircuitEditor}, which is what makes undo work uniformly and keeps this class an
- * event translator rather than a second model.
+ * event translator rather than a second model. Components and physical chips go through the
+ * same gestures throughout: click/shift-click/rubber-band selection, drag-move, rotate,
+ * delete, copy/paste/duplicate and wiring all operate on whichever combination of the two is
+ * selected.
  */
 public final class CircuitCanvasView extends Region {
 
-    /** How close to a port the cursor has to be, in pixels, to grab it. */
+    /** How close to a port or chip pin the cursor has to be, in pixels, to grab it. */
     private static final double PORT_TOLERANCE_PIXELS = 12;
     private static final double WIRE_TOLERANCE_PIXELS = 6;
     private static final double DRAG_THRESHOLD_PIXELS = 3;
@@ -71,7 +83,7 @@ public final class CircuitCanvasView extends Region {
     private final HitTester hitTester;
     private final CanvasContextMenu contextMenu = new CanvasContextMenu(this);
     private final javafx.scene.control.Tooltip portTooltip = new javafx.scene.control.Tooltip();
-    private final ComponentDropTarget dropTarget;
+    private final DropTarget dropTarget;
 
     private CanvasOverlay overlay = CanvasOverlay.EMPTY;
     private Mode mode = Mode.IDLE;
@@ -80,19 +92,17 @@ public final class CircuitCanvasView extends Region {
     private double lastScreenY;
     private boolean dragExceededThreshold;
     private List<ComponentInstance> movedComponentsBefore = List.of();
-    private String pendingPlacement;
+    private List<ChipInstance> movedChipsBefore = List.of();
+    private PlacementRequest pendingPlacement;
     private Runnable statusListener = () -> {
     };
     private java.util.function.Consumer<PortEndpoint> analyzerListener = endpoint -> {
     };
     private java.util.function.Consumer<ComponentInstance> hierarchyOpenListener = instance -> {
     };
-    
+
     // For momentary button handling: track which component is being pressed
     private UUID pressedComponentId = null;
-    
-    // For transient move preview: store original positions of components being moved
-    private Map<UUID, CircuitPoint> originalPositions = Map.of();
 
     public CircuitCanvasView(CircuitEditor editor) {
         this(editor, false, true);
@@ -108,8 +118,9 @@ public final class CircuitCanvasView extends Region {
         this.editor = editor;
         this.readOnly = readOnly;
         this.renderer = new CircuitRenderer(editor, RendererRegistry.standard(), router);
-        this.hitTester = new HitTester(editor::document, editor::definition, router);
-        this.dropTarget = new ComponentDropTarget(editor, viewport);
+        this.hitTester = new HitTester(editor::document, editor::definition,
+                id -> editor.chipRegistry().find(id), router);
+        this.dropTarget = new DropTarget(editor, viewport);
 
         getChildren().add(canvas);
         setFocusTraversable(true);
@@ -145,10 +156,10 @@ public final class CircuitCanvasView extends Region {
         this.hierarchyOpenListener = listener;
     }
 
-    /** Arms click-to-place: the next click on the canvas drops this component. */
-    public void setPendingPlacement(String definitionId) {
-        this.pendingPlacement = definitionId;
-        setCursor(definitionId == null ? Cursor.DEFAULT : Cursor.CROSSHAIR);
+    /** Arms click-to-place: the next click on the canvas drops this component or chip. */
+    public void setPendingPlacement(PlacementRequest request) {
+        this.pendingPlacement = request;
+        setCursor(request == null ? Cursor.DEFAULT : Cursor.CROSSHAIR);
     }
 
     @Override
@@ -204,6 +215,15 @@ public final class CircuitCanvasView extends Region {
                     .bodyBounds(instance, definition.get());
             bounds = bounds == null ? body : bounds.union(body);
         }
+        for (ChipInstance instance : editor.document().chips()) {
+            Optional<dev.logicforge.circuit.chip.ChipDefinition> definition = editor.chipDefinitionOf(instance);
+            if (definition.isEmpty()) {
+                continue;
+            }
+            CircuitBounds body = dev.logicforge.circuit.chip.ChipGeometry
+                    .bodyBounds(instance, definition.get().packageDefinition().type());
+            bounds = bounds == null ? body : bounds.union(body);
+        }
         return bounds;
     }
 
@@ -254,19 +274,24 @@ public final class CircuitCanvasView extends Region {
             return;
         }
         if (!readOnly && pendingPlacement != null) {
-            place(dropTarget.instanceAt(pendingPlacement, Grid.snap(dragStartWorld)));
+            CircuitPoint snapped = Grid.snap(dragStartWorld);
+            switch (pendingPlacement) {
+                case PlacementRequest.Component request -> place(dropTarget.componentAt(request.definitionId(), snapped));
+                case PlacementRequest.Chip request -> placeChip(dropTarget.chipAt(request.chipDefinitionId(), snapped));
+            }
             setPendingPlacement(null);
             return;
         }
 
-        Optional<PlacedPort> port = hitTester.portAt(dragStartWorld, worldTolerance(PORT_TOLERANCE_PIXELS));
-        if (port.isPresent() && port.get().connectable()) {
+        Optional<PlacedElectricalEndpoint> endpoint =
+                hitTester.endpointAt(dragStartWorld, worldTolerance(PORT_TOLERANCE_PIXELS));
+        if (endpoint.isPresent() && endpoint.get().connectable()) {
             if (readOnly) {
                 return;
             }
             mode = Mode.WIRING;
-            overlay = overlay.withPreviewWire(port.get(),
-                    router.routeToPoint(port.get(), Grid.snap(dragStartWorld)));
+            overlay = overlay.withPreviewWire(endpoint.get(),
+                    router.routeToPoint(endpoint.get(), Grid.snap(dragStartWorld)));
             redraw();
             return;
         }
@@ -300,6 +325,22 @@ public final class CircuitCanvasView extends Region {
             return;
         }
 
+        Optional<ChipInstance> chip = hitTester.chipAt(dragStartWorld);
+        if (chip.isPresent()) {
+            if (readOnly) {
+                if (isMultiSelect(event)) {
+                    editor.selection().toggleChip(chip.get().id());
+                } else {
+                    editor.selection().selectChip(chip.get().id());
+                }
+                mode = Mode.IDLE;
+                redraw();
+                return;
+            }
+            beginChipInteraction(chip.get(), event);
+            return;
+        }
+
         Optional<Connection> wire = hitTester.connectionAt(dragStartWorld,
                 worldTolerance(WIRE_TOLERANCE_PIXELS));
         if (wire.isPresent()) {
@@ -325,23 +366,32 @@ public final class CircuitCanvasView extends Region {
         } else if (!editor.selection().containsComponent(component.id())) {
             editor.selection().selectComponent(component.id());
         }
-        
+
         // For momentary buttons, don't start a drag - they are handled by press/release
         var interaction = editor.inputInteraction(component.id());
         if (interaction == dev.logicforge.circuit.component.InputInteraction.MOMENTARY) {
-            mode = Mode.IDLE;  // Don't enter MOVING mode for momentary buttons
+            mode = Mode.IDLE; // Don't enter MOVING mode for momentary buttons
             movedComponentsBefore = List.of();
+            movedChipsBefore = List.of();
             return;
         }
-        
+        beginMove();
+    }
+
+    private void beginChipInteraction(ChipInstance chip, MouseEvent event) {
+        if (isMultiSelect(event)) {
+            editor.selection().toggleChip(chip.id());
+        } else if (!editor.selection().containsChip(chip.id())) {
+            editor.selection().selectChip(chip.id());
+        }
+        beginMove();
+    }
+
+    /** Captures the whole current selection — components and chips — as the drag's before-state. */
+    private void beginMove() {
         mode = Mode.MOVING;
         movedComponentsBefore = selectedComponents();
-        
-        // Capture original positions for transient preview
-        originalPositions = new java.util.LinkedHashMap<>();
-        for (ComponentInstance instance : movedComponentsBefore) {
-            originalPositions.put(instance.id(), instance.position());
-        }
+        movedChipsBefore = selectedChips();
     }
 
     private void onMouseDragged(MouseEvent event) {
@@ -374,11 +424,12 @@ public final class CircuitCanvasView extends Region {
             }
             case MOVING -> dragSelection(world);
             case WIRING -> {
-                PlacedPort origin = overlay.wireOrigin();
-                Optional<PlacedPort> target = hitTester.portAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
-                CircuitPoint end = target.map(PlacedPort::position).orElseGet(() -> Grid.snap(world));
-                overlay = overlay.withPreviewWire(origin, router.routeToPoint(origin, end))
-                        .withHover(overlay.hoveredComponent(), target.orElse(null));
+                PlacedElectricalEndpoint origin = overlay.wireOrigin();
+                Optional<PlacedElectricalEndpoint> target =
+                        hitTester.endpointAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
+                CircuitPoint end = target.map(PlacedElectricalEndpoint::position).orElseGet(() -> Grid.snap(world));
+                overlay = overlay.withPreviewWire(origin, router.routeToPoint(origin, end));
+                overlay = withHoverFor(target);
                 redraw();
             }
             default -> {
@@ -390,16 +441,19 @@ public final class CircuitCanvasView extends Region {
 
     /** Updates the transient preview positions during drag. Does NOT modify the document. */
     private void dragSelection(CircuitPoint world) {
-        if (movedComponentsBefore.isEmpty()) {
+        if (movedComponentsBefore.isEmpty() && movedChipsBefore.isEmpty()) {
             return;
         }
         CircuitPoint offset = world.minus(dragStartWorld);
-        Map<UUID, CircuitPoint> newPositions = new java.util.LinkedHashMap<>();
+        Map<UUID, CircuitPoint> newComponentPositions = new LinkedHashMap<>();
         for (ComponentInstance before : movedComponentsBefore) {
-            CircuitPoint target = Grid.snap(before.position().plus(offset));
-            newPositions.put(before.id(), target);
+            newComponentPositions.put(before.id(), Grid.snap(before.position().plus(offset)));
         }
-        overlay = overlay.withMovingComponents(newPositions);
+        Map<UUID, CircuitPoint> newChipPositions = new LinkedHashMap<>();
+        for (ChipInstance before : movedChipsBefore) {
+            newChipPositions.put(before.id(), Grid.snap(before.position().plus(offset)));
+        }
+        overlay = overlay.withMovingComponents(newComponentPositions).withMovingChips(newChipPositions);
         redraw();
     }
 
@@ -412,13 +466,13 @@ public final class CircuitCanvasView extends Region {
             default -> {
             }
         }
-        
+
         // Release momentary button if it was pressed
         if (pressedComponentId != null) {
             editor.handleInputInteraction(pressedComponentId, false);
             pressedComponentId = null;
         }
-        
+
         mode = Mode.IDLE;
         overlay = overlay.withSelectionRectangle(null).withPreviewWire(null, null);
         setCursor(pendingPlacement == null ? Cursor.DEFAULT : Cursor.CROSSHAIR);
@@ -427,55 +481,78 @@ public final class CircuitCanvasView extends Region {
 
     private void finishRubberBand(CircuitPoint world) {
         CircuitBounds area = CircuitBounds.between(dragStartWorld, world);
-        editor.selection().addAll(hitTester.componentsIn(area), hitTester.connectionsIn(area));
+        editor.selection().addAll(hitTester.componentsIn(area), hitTester.chipsIn(area),
+                hitTester.connectionsIn(area));
     }
 
     /**
      * Turns the whole drag into a single undoable command — or, if the pointer never
-     * really moved, into a click on the component.
+     * really moved, into a click on the component. Components and chips move together as
+     * one undo step.
      */
     private void finishMove(MouseEvent event) {
         if (!dragExceededThreshold) {
             // No actual movement - this is a click, not a drag
-            // Don't restore positions (they were never changed in the document)
             handleClick(event);
             movedComponentsBefore = List.of();
-            originalPositions = Map.of();
-            overlay = overlay.withMovingComponents(Map.of());
+            movedChipsBefore = List.of();
+            overlay = overlay.withMovingComponents(Map.of()).withMovingChips(Map.of());
             return;
         }
-        
-        // Build the final positions from the preview overlay
-        Map<UUID, CircuitPoint> finalPositions = overlay.movingComponentPositions();
-        if (finalPositions.isEmpty()) {
+
+        Map<UUID, CircuitPoint> finalComponentPositions = overlay.movingComponentPositions();
+        Map<UUID, CircuitPoint> finalChipPositions = overlay.movingChipPositions();
+        if (finalComponentPositions.isEmpty() && finalChipPositions.isEmpty()) {
             // Fallback: use drag position
             CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
             CircuitPoint offset = world.minus(dragStartWorld);
-            finalPositions = new java.util.LinkedHashMap<>();
+            finalComponentPositions = new LinkedHashMap<>();
             for (ComponentInstance before : movedComponentsBefore) {
-                CircuitPoint target = Grid.snap(before.position().plus(offset));
-                finalPositions.put(before.id(), target);
+                finalComponentPositions.put(before.id(), Grid.snap(before.position().plus(offset)));
+            }
+            finalChipPositions = new LinkedHashMap<>();
+            for (ChipInstance before : movedChipsBefore) {
+                finalChipPositions.put(before.id(), Grid.snap(before.position().plus(offset)));
             }
         }
-        
-        // Create the after instances with new positions
-        List<ComponentInstance> after = new ArrayList<>();
-        for (ComponentInstance before : movedComponentsBefore) {
-            CircuitPoint newPosition = finalPositions.getOrDefault(before.id(), before.position());
-            after.add(before.withPosition(newPosition));
+
+        List<CircuitCommand> commands = new ArrayList<>();
+        if (!movedComponentsBefore.isEmpty()) {
+            Map<UUID, CircuitPoint> positions = finalComponentPositions;
+            List<ComponentInstance> after = movedComponentsBefore.stream()
+                    .map(before -> before.withPosition(positions.getOrDefault(before.id(), before.position())))
+                    .toList();
+            commands.add(new MoveComponentsCommand(editor.document(), movedComponentsBefore, after));
         }
-        
-        // Execute ONE command for the entire move
-        editor.execute(new MoveComponentsCommand(editor.document(), movedComponentsBefore, after));
+        if (!movedChipsBefore.isEmpty()) {
+            Map<UUID, CircuitPoint> positions = finalChipPositions;
+            List<ChipInstance> after = movedChipsBefore.stream()
+                    .map(before -> before.withPosition(positions.getOrDefault(before.id(), before.position())))
+                    .toList();
+            commands.add(new MoveChipsCommand(editor.document(), movedChipsBefore, after));
+        }
+        executeCombined(commands.size() == 1 ? commands.get(0).name() : "Move selection", commands);
+
         movedComponentsBefore = List.of();
-        originalPositions = Map.of();
-        overlay = overlay.withMovingComponents(Map.of());
+        movedChipsBefore = List.of();
+        overlay = overlay.withMovingComponents(Map.of()).withMovingChips(Map.of());
     }
 
-    /** Puts the components back where the drag started, so the command owns the change. */
+    /** Runs one or more commands as a single undo step. */
+    private void executeCombined(String name, List<CircuitCommand> commands) {
+        if (commands.isEmpty()) {
+            return;
+        }
+        editor.execute(commands.size() == 1 ? commands.get(0) : new CompositeCommand(name, commands));
+    }
+
+    /** Puts the components/chips back where the drag started, so the command owns the change. */
     private void restorePositions() {
         for (ComponentInstance before : movedComponentsBefore) {
             editor.document().replaceComponent(before);
+        }
+        for (ChipInstance before : movedChipsBefore) {
+            editor.document().replaceChip(before);
         }
     }
 
@@ -494,11 +571,11 @@ public final class CircuitCanvasView extends Region {
     }
 
     private void finishWiring(CircuitPoint world) {
-        PlacedPort origin = overlay.wireOrigin();
+        PlacedElectricalEndpoint origin = overlay.wireOrigin();
         if (origin == null) {
             return;
         }
-        hitTester.portAt(world, worldTolerance(PORT_TOLERANCE_PIXELS)).ifPresent(target -> {
+        hitTester.endpointAt(world, worldTolerance(PORT_TOLERANCE_PIXELS)).ifPresent(target -> {
             if (!target.connectable() || target.endpoint().equals(origin.endpoint())
                     || editor.document().isConnected(origin.endpoint(), target.endpoint())) {
                 return;
@@ -510,40 +587,72 @@ public final class CircuitCanvasView extends Region {
 
     private void onMouseMoved(MouseEvent event) {
         CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
-        Optional<PlacedPort> port = hitTester.portAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
+        Optional<PlacedElectricalEndpoint> endpoint = hitTester.endpointAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
         Optional<ComponentInstance> component = hitTester.componentAt(world);
+        Optional<ChipInstance> chip = component.isEmpty() ? hitTester.chipAt(world) : Optional.empty();
 
-        overlay = overlay.withHover(component.map(ComponentInstance::id).orElse(null), port.orElse(null));
-        setCursor(cursorFor(port.map(PlacedPort::connectable).orElse(false), component));
-        updateTooltip(port);
+        overlay = withHoverFor(endpoint)
+                .withHover(component.map(ComponentInstance::id).orElse(null), overlay.hoveredPort())
+                .withChipHover(chip.map(ChipInstance::id).orElse(null), overlay.hoveredChipPin());
+        setCursor(cursorFor(endpoint.map(PlacedElectricalEndpoint::connectable).orElse(false), component, chip));
+        updateTooltip(endpoint);
         redraw();
     }
 
-    private Cursor cursorFor(boolean overPort, Optional<ComponentInstance> component) {
+    /** Splits a unified endpoint hit into the component-port and chip-pin overlay fields. */
+    private CanvasOverlay withHoverFor(Optional<PlacedElectricalEndpoint> endpoint) {
+        if (endpoint.isEmpty()) {
+            return overlay.withHover(overlay.hoveredComponent(), null).withChipHover(overlay.hoveredChip(), null);
+        }
+        PlacedElectricalEndpoint placed = endpoint.get();
+        if (placed.endpoint() instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            PlacedPort port = hitTester.endpoint(component.port()).orElse(null);
+            return overlay.withHover(overlay.hoveredComponent(), port).withChipHover(overlay.hoveredChip(), null);
+        }
+        return overlay.withHover(overlay.hoveredComponent(), null).withChipHover(overlay.hoveredChip(), placed);
+    }
+
+    private Cursor cursorFor(boolean overEndpoint, Optional<ComponentInstance> component,
+                             Optional<ChipInstance> chip) {
         if (readOnly) {
-            return component.isPresent() ? Cursor.HAND : Cursor.DEFAULT;
+            return component.isPresent() || chip.isPresent() ? Cursor.HAND : Cursor.DEFAULT;
         }
         if (pendingPlacement != null) {
             return Cursor.CROSSHAIR;
         }
-        if (overPort) {
+        if (overEndpoint) {
             return Cursor.CROSSHAIR;
         }
         if (component.map(instance -> editor.isUserInput(instance.id())).orElse(false)) {
             return Cursor.HAND;
         }
-        return component.isPresent() ? Cursor.OPEN_HAND : Cursor.DEFAULT;
+        return component.isPresent() || chip.isPresent() ? Cursor.OPEN_HAND : Cursor.DEFAULT;
     }
 
     /**
-     * A compact port description: name, direction, width and the value on it. The tooltip
-     * is one long-lived object whose text is updated — a new one per mouse move would
-     * restart its show delay on every pixel of movement.
+     * A compact description of the endpoint under the cursor: name, direction, width and
+     * the value on it — for a component port; part designator, pin name and electrical role
+     * — for a chip pin. The tooltip is one long-lived object whose text is updated — a new
+     * one per mouse move would restart its show delay on every pixel of movement.
      */
-    private void updateTooltip(Optional<PlacedPort> port) {
-        if (port.isEmpty()) {
+    private void updateTooltip(Optional<PlacedElectricalEndpoint> endpoint) {
+        if (endpoint.isEmpty()) {
             portTooltip.hide();
             portTooltip.setText("");
+            return;
+        }
+        ElectricalEndpoint raw = endpoint.get().endpoint();
+        if (raw instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            updatePortTooltip(component.port());
+        } else if (raw instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            updateChipPinTooltip(chipPin);
+        }
+    }
+
+    private void updatePortTooltip(PortEndpoint portEndpoint) {
+        Optional<PlacedPort> port = hitTester.endpoint(portEndpoint);
+        if (port.isEmpty()) {
+            portTooltip.hide();
             return;
         }
         PlacedPort placed = port.get();
@@ -551,6 +660,26 @@ public final class CircuitCanvasView extends Region {
         String availability = placed.connectable() ? "" : "\nLocked by existing bus wiring";
         portTooltip.setText(placed.displayName() + "\n" + describe(placed)
                 + "\nCurrent: " + value + availability);
+    }
+
+    private void updateChipPinTooltip(ElectricalEndpoint.ChipPinEndpoint chipPin) {
+        Optional<ChipInstance> chip = editor.document().chip(chipPin.chipInstanceId());
+        Optional<dev.logicforge.circuit.chip.ChipDefinition> definition = chip.flatMap(editor::chipDefinitionOf);
+        if (chip.isEmpty() || definition.isEmpty()) {
+            portTooltip.hide();
+            return;
+        }
+        Optional<dev.logicforge.circuit.chip.PackagePin> pin =
+                definition.get().packageDefinition().pin(chipPin.physicalPinNumber());
+        if (pin.isEmpty()) {
+            portTooltip.hide();
+            return;
+        }
+        String value = editor.valueAt((ElectricalEndpoint) chipPin).map(Object::toString).orElse("–");
+        portTooltip.setText(chip.get().referenceDesignator() + "." + pin.get().name()
+                + "  (pin " + pin.get().number() + ")"
+                + "\n" + pin.get().electricalType()
+                + "\nCurrent: " + value);
     }
 
     private String describe(PlacedPort placed) {
@@ -589,15 +718,27 @@ public final class CircuitCanvasView extends Region {
         });
     }
 
+    /** Rotates every selected component and chip by a quarter turn, as one undo step. */
     public void rotateSelection() {
-        List<ComponentInstance> before = selectedComponents();
-        if (before.isEmpty()) {
+        List<ComponentInstance> componentsBefore = selectedComponents();
+        List<ChipInstance> chipsBefore = selectedChips();
+        if (componentsBefore.isEmpty() && chipsBefore.isEmpty()) {
             return;
         }
-        List<ComponentInstance> after = before.stream()
-                .map(instance -> instance.withRotation(instance.rotation().rotatedClockwise()))
-                .toList();
-        editor.execute(new RotateComponentsCommand(editor.document(), before, after));
+        List<CircuitCommand> commands = new ArrayList<>();
+        if (!componentsBefore.isEmpty()) {
+            List<ComponentInstance> after = componentsBefore.stream()
+                    .map(instance -> instance.withRotation(instance.rotation().rotatedClockwise()))
+                    .toList();
+            commands.add(new RotateComponentsCommand(editor.document(), componentsBefore, after));
+        }
+        if (!chipsBefore.isEmpty()) {
+            List<ChipInstance> after = chipsBefore.stream()
+                    .map(instance -> instance.withRotation(instance.rotation().rotatedClockwise()))
+                    .toList();
+            commands.add(new RotateChipsCommand(editor.document(), chipsBefore, after));
+        }
+        executeCombined("Rotate", commands);
     }
 
     public void deleteSelection() {
@@ -606,6 +747,7 @@ public final class CircuitCanvasView extends Region {
         }
         editor.execute(new RemoveElementsCommand(editor.document(),
                 Set.copyOf(editor.selection().components()),
+                Set.copyOf(editor.selection().chips()),
                 Set.copyOf(editor.selection().connections())));
         editor.selection().clear();
     }
@@ -617,26 +759,30 @@ public final class CircuitCanvasView extends Region {
         }
         mode = Mode.IDLE;
         movedComponentsBefore = List.of();
+        movedChipsBefore = List.of();
         overlay = CanvasOverlay.EMPTY;
         setPendingPlacement(null);
         redraw();
     }
 
     public void copySelection() {
-        editor.clipboard().copy(editor.document(), editor.selection().components());
+        editor.clipboard().copy(editor.document(), editor.selection().components(), editor.selection().chips());
     }
 
     public void paste() {
         if (editor.clipboard().isEmpty()) {
             return;
         }
-        insert(editor.clipboard().prepareForPaste(PASTE_OFFSET, PASTE_OFFSET));
+        insert(editor.clipboard().prepareForPaste(editor.document(), PASTE_OFFSET, PASTE_OFFSET));
     }
 
     private void insert(CircuitClipboard.Fragment fragment) {
-        editor.execute(new PasteCommand(editor.document(), fragment.components(), fragment.connections()));
+        editor.execute(new PasteCommand(editor.document(), fragment.components(), fragment.chips(),
+                fragment.connections()));
         editor.selection().setSelection(
-                fragment.components().stream().map(ComponentInstance::id).toList(), List.of());
+                fragment.components().stream().map(ComponentInstance::id).toList(),
+                fragment.chips().stream().map(ChipInstance::id).toList(),
+                List.of());
     }
 
     /** {@code true} while the canvas has the keyboard focus. */
@@ -647,18 +793,18 @@ public final class CircuitCanvasView extends Region {
     /** Duplicates the selection in place, leaving whatever is on the clipboard alone. */
     public void duplicateSelection() {
         CircuitClipboard.Fragment copied = new CircuitClipboard()
-                .copy(editor.document(), editor.selection().components());
+                .copy(editor.document(), editor.selection().components(), editor.selection().chips());
         if (copied.isEmpty()) {
             return;
         }
-        insert(CircuitClipboard.prepareForPaste(copied, PASTE_OFFSET, PASTE_OFFSET));
+        insert(CircuitClipboard.prepareForPaste(editor.document(), copied, PASTE_OFFSET, PASTE_OFFSET));
     }
 
     // ------------------------------------------------------------ drag & drop
 
     /** The clipboard content a palette drag carries. */
-    public static javafx.scene.input.ClipboardContent dragContentFor(String definitionId) {
-        return ComponentDropTarget.contentFor(definitionId);
+    public static javafx.scene.input.ClipboardContent dragContentFor(PlacementRequest request) {
+        return DropTarget.contentFor(request);
     }
 
     private void installDragAndDrop() {
@@ -667,7 +813,12 @@ public final class CircuitCanvasView extends Region {
                     overlay = overlay.withGhost(ghost);
                     redraw();
                 },
-                this::place);
+                ghost -> {
+                    overlay = overlay.withChipGhost(ghost);
+                    redraw();
+                },
+                this::place,
+                this::placeChip);
     }
 
     private void place(ComponentInstance instance) {
@@ -676,31 +827,59 @@ public final class CircuitCanvasView extends Region {
         requestFocus();
     }
 
+    private void placeChip(ChipInstance instance) {
+        editor.execute(new AddChipCommand(editor.document(), instance));
+        editor.selection().selectChip(instance.id());
+        requestFocus();
+    }
+
     // ----------------------------------------------------------- context menu
 
     private void showContextMenu(MouseEvent event) {
         CircuitPoint world = viewport.screenToWorld(event.getX(), event.getY());
-        Optional<PlacedPort> port = hitTester.portAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
-        Optional<ComponentInstance> component = hitTester.componentAt(world);
-        Optional<Connection> wire = port.isEmpty() && component.isEmpty()
+        Optional<PlacedElectricalEndpoint> endpoint = hitTester.endpointAt(world, worldTolerance(PORT_TOLERANCE_PIXELS));
+        Optional<ComponentInstance> component = endpoint.isEmpty() ? hitTester.componentAt(world) : Optional.empty();
+        Optional<ChipInstance> chip = endpoint.isEmpty() && component.isEmpty()
+                ? hitTester.chipAt(world) : Optional.empty();
+        Optional<Connection> wire = endpoint.isEmpty() && component.isEmpty() && chip.isEmpty()
                 ? hitTester.connectionAt(world, worldTolerance(WIRE_TOLERANCE_PIXELS))
                 : Optional.empty();
-        if (port.isPresent()) {
+
+        Optional<PortEndpoint> componentPortEndpoint = endpoint
+                .map(PlacedElectricalEndpoint::endpoint)
+                .filter(ElectricalEndpoint.ComponentEndpoint.class::isInstance)
+                .map(e -> ((ElectricalEndpoint.ComponentEndpoint) e).port());
+
+        if (componentPortEndpoint.isPresent()) {
             contextMenu.showForPort(this, event.getScreenX(), event.getScreenY(),
-                    () -> analyzerListener.accept(port.get().endpoint()));
+                    () -> analyzerListener.accept(componentPortEndpoint.get()));
+        } else if (endpoint.isPresent()) {
+            // A chip pin: select its chip and offer the same actions as the chip body.
+            editor.document().chip(((ElectricalEndpoint.ChipPinEndpoint) endpoint.get().endpoint())
+                    .chipInstanceId()).ifPresent(instance -> {
+                if (!editor.selection().containsChip(instance.id())) {
+                    editor.selection().selectChip(instance.id());
+                }
+            });
+            contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (component.isPresent()) {
             if (!editor.selection().containsComponent(component.get().id())) {
                 editor.selection().selectComponent(component.get().id());
             }
             contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
+        } else if (chip.isPresent()) {
+            if (!editor.selection().containsChip(chip.get().id())) {
+                editor.selection().selectChip(chip.get().id());
+            }
+            contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (wire.isPresent()) {
-            Optional<PortEndpoint> endpoint = dev.logicforge.circuit.document.ElectricalEndpoints
+            Optional<PortEndpoint> wireEndpoint = dev.logicforge.circuit.document.ElectricalEndpoints
                     .componentPort(wire.get().from());
             if (!editor.selection().containsConnection(wire.get().id())) {
                 editor.selection().selectConnection(wire.get().id());
             }
             contextMenu.showForWire(this, event.getScreenX(), event.getScreenY(),
-                    () -> endpoint.ifPresent(analyzerListener));
+                    () -> wireEndpoint.ifPresent(analyzerListener));
         } else {
             contextMenu.showForCanvas(this, event.getScreenX(), event.getScreenY());
         }
@@ -715,6 +894,14 @@ public final class CircuitCanvasView extends Region {
             editor.document().component(id).ifPresent(components::add);
         }
         return components;
+    }
+
+    private List<ChipInstance> selectedChips() {
+        List<ChipInstance> chips = new ArrayList<>();
+        for (UUID id : editor.selection().chips()) {
+            editor.document().chip(id).ifPresent(chips::add);
+        }
+        return chips;
     }
 
     private boolean isMultiSelect(MouseEvent event) {
@@ -733,6 +920,12 @@ public final class CircuitCanvasView extends Region {
     /** Rotates a single component, used by the inspector. */
     public void rotate(ComponentInstance instance, Rotation rotation) {
         editor.execute(new RotateComponentsCommand(editor.document(), List.of(instance),
+                List.of(instance.withRotation(rotation))));
+    }
+
+    /** Rotates a single chip, used by the inspector. */
+    public void rotate(ChipInstance instance, Rotation rotation) {
+        editor.execute(new RotateChipsCommand(editor.document(), List.of(instance),
                 List.of(instance.withRotation(rotation))));
     }
 }

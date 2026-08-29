@@ -40,6 +40,12 @@ public final class Theme {
     public static final Color CURSOR_A = Color.web("#fbbf24");
     public static final Color CURSOR_B = Color.web("#c084fc");
 
+    // Chips (physical packages) -------------------------------------------
+    public static final Color CHIP_BODY_FILL = Color.web("#20252b");
+    public static final Color CHIP_BODY_STROKE = Color.web("#cbd5e1");
+    public static final Color CHIP_MARKER = Color.web("#cbd5e1");
+    public static final Color CHIP_PIN_STUB = Color.web("#7f8b9c");
+
     // Signals ------------------------------------------------------------
     private static final Color SIGNAL_ZERO = Color.web("#59657a");
     private static final Color SIGNAL_ONE = Color.web("#4ade80");

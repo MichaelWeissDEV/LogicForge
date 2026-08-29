@@ -1,0 +1,88 @@
+{
+  "formatVersion": 5,
+  "application": "LogicForge",
+  "name": "74hc-nand",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "74HC00: one NAND gate wired through its physical pins",
+      "components": [
+        {
+          "id": "279686f5-8a51-4c90-8667-f82174a2193c",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 112,
+          "label": "A",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "a5ecff72-5afb-4135-93e9-805128780132",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 224,
+          "label": "B",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "3c429270-c489-47b9-b1fa-463dbd4e69bf",
+          "type": "output.led",
+          "x": 620,
+          "y": 168,
+          "label": "Y",
+          "parameters": {
+            "color": "green"
+          }
+        }
+      ],
+      "chips": [
+        {
+          "id": "57bc1826-ab7a-4901-99af-707d1141699e",
+          "type": "74HC00",
+          "x": 360,
+          "y": 168,
+          "ref": "U1",
+          "display": "PACKAGE"
+        }
+      ],
+      "connections": [
+        {
+          "id": "02019f66-d1c6-4500-938c-3492248fae6b",
+          "from": {
+            "component": "279686f5-8a51-4c90-8667-f82174a2193c",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "57bc1826-ab7a-4901-99af-707d1141699e",
+            "pin": 1
+          }
+        },
+        {
+          "id": "40d0d199-47f6-46ba-acdf-5af5fd087ee0",
+          "from": {
+            "component": "a5ecff72-5afb-4135-93e9-805128780132",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "57bc1826-ab7a-4901-99af-707d1141699e",
+            "pin": 2
+          }
+        },
+        {
+          "id": "4013ca55-90e2-45c2-8750-332ef70017a4",
+          "from": {
+            "chip": "57bc1826-ab7a-4901-99af-707d1141699e",
+            "pin": 3
+          },
+          "to": {
+            "component": "3c429270-c489-47b9-b1fa-463dbd4e69bf",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}

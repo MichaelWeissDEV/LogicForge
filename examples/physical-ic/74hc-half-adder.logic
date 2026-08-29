@@ -1,0 +1,139 @@
+{
+  "formatVersion": 5,
+  "application": "LogicForge",
+  "name": "74hc-half-adder",
+  "circuits": [
+    {
+      "name": "main",
+      "description": "74HC86 XOR + 74HC08 AND: a half adder from real packages",
+      "components": [
+        {
+          "id": "bb8e24d4-54aa-4631-9f8f-7d8ed30c30dd",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 96,
+          "label": "A",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "a6c0c492-c4ca-4c91-8c32-90145664df1d",
+          "type": "source.toggle",
+          "x": 96,
+          "y": 320,
+          "label": "B",
+          "parameters": {
+            "initialOn": false
+          }
+        },
+        {
+          "id": "34423ade-aacf-4bce-b728-66cd4433bc16",
+          "type": "output.led",
+          "x": 660,
+          "y": 120,
+          "label": "SUM",
+          "parameters": {
+            "color": "green"
+          }
+        },
+        {
+          "id": "58588b7b-7861-4971-b917-eb6683610223",
+          "type": "output.led",
+          "x": 660,
+          "y": 320,
+          "label": "CARRY",
+          "parameters": {
+            "color": "amber"
+          }
+        }
+      ],
+      "chips": [
+        {
+          "id": "165e87da-0819-4f8e-889c-1594c664b7d9",
+          "type": "74HC86",
+          "x": 380,
+          "y": 120,
+          "ref": "U1",
+          "display": "PACKAGE"
+        },
+        {
+          "id": "2179e2c7-b9f6-4e21-9484-b866b8ef11e0",
+          "type": "74HC08",
+          "x": 380,
+          "y": 320,
+          "ref": "U2",
+          "display": "PACKAGE"
+        }
+      ],
+      "connections": [
+        {
+          "id": "5d05fa47-8529-47a0-9204-1cebceef7243",
+          "from": {
+            "component": "bb8e24d4-54aa-4631-9f8f-7d8ed30c30dd",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "165e87da-0819-4f8e-889c-1594c664b7d9",
+            "pin": 1
+          }
+        },
+        {
+          "id": "40a0d2bf-a00a-4055-8106-1880ab27696a",
+          "from": {
+            "component": "a6c0c492-c4ca-4c91-8c32-90145664df1d",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "165e87da-0819-4f8e-889c-1594c664b7d9",
+            "pin": 2
+          }
+        },
+        {
+          "id": "2f56db62-7fd9-4d94-8409-08e1517282be",
+          "from": {
+            "chip": "165e87da-0819-4f8e-889c-1594c664b7d9",
+            "pin": 3
+          },
+          "to": {
+            "component": "34423ade-aacf-4bce-b728-66cd4433bc16",
+            "port": "IN"
+          }
+        },
+        {
+          "id": "3a04e86d-f9e7-47fa-bee5-d31092a3ed1d",
+          "from": {
+            "component": "bb8e24d4-54aa-4631-9f8f-7d8ed30c30dd",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "2179e2c7-b9f6-4e21-9484-b866b8ef11e0",
+            "pin": 1
+          }
+        },
+        {
+          "id": "9b16b1dc-a754-4f16-ba0e-29fa27dc8c02",
+          "from": {
+            "component": "a6c0c492-c4ca-4c91-8c32-90145664df1d",
+            "port": "OUT"
+          },
+          "to": {
+            "chip": "2179e2c7-b9f6-4e21-9484-b866b8ef11e0",
+            "pin": 2
+          }
+        },
+        {
+          "id": "17f963d8-02ba-47d2-8c8a-2c606454a2a2",
+          "from": {
+            "chip": "2179e2c7-b9f6-4e21-9484-b866b8ef11e0",
+            "pin": 3
+          },
+          "to": {
+            "component": "58588b7b-7861-4971-b917-eb6683610223",
+            "port": "IN"
+          }
+        }
+      ]
+    }
+  ]
+}
