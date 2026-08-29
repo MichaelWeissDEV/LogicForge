@@ -1,5 +1,5 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "application": "LogicForge",
   "name": "mux",
   "circuits": [
@@ -8,7 +8,7 @@
       "description": "Interactive MUX component example",
       "components": [
         {
-          "id": "41a0d59c-8960-4901-a535-45302e37679e",
+          "id": "687595b4-6bb0-45d5-9e7e-8b7b389b3a8e",
           "type": "routing.mux2",
           "x": 280,
           "y": 180,

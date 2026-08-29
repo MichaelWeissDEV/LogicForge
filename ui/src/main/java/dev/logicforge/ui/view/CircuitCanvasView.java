@@ -694,12 +694,13 @@ public final class CircuitCanvasView extends Region {
             }
             contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (wire.isPresent()) {
-            PortEndpoint endpoint = wire.get().from();
+            Optional<PortEndpoint> endpoint = dev.logicforge.circuit.document.ElectricalEndpoints
+                    .componentPort(wire.get().from());
             if (!editor.selection().containsConnection(wire.get().id())) {
                 editor.selection().selectConnection(wire.get().id());
             }
             contextMenu.showForWire(this, event.getScreenX(), event.getScreenY(),
-                    () -> analyzerListener.accept(endpoint));
+                    () -> endpoint.ifPresent(analyzerListener));
         } else {
             contextMenu.showForCanvas(this, event.getScreenX(), event.getScreenY());
         }

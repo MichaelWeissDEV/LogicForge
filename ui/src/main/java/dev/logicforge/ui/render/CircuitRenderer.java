@@ -122,8 +122,10 @@ public final class CircuitRenderer {
         graphics.setLineWidth(Theme.WIRE_STROKE);
 
         for (Connection connection : document.connections()) {
-            Optional<PlacedPort> from = endpoint(connection.from());
-            Optional<PlacedPort> to = endpoint(connection.to());
+            Optional<PlacedPort> from = dev.logicforge.circuit.document.ElectricalEndpoints
+                    .componentPort(connection.from()).flatMap(this::endpoint);
+            Optional<PlacedPort> to = dev.logicforge.circuit.document.ElectricalEndpoints
+                    .componentPort(connection.to()).flatMap(this::endpoint);
             if (from.isEmpty() || to.isEmpty()) {
                 continue;
             }
@@ -334,8 +336,10 @@ public final class CircuitRenderer {
             }
             PortReference reference = new PortReference(instance.id(), spec.name());
             boolean wholeConnected = editor.document().connectionsAt(reference).stream().anyMatch(connection ->
-                    (connection.fromPort().equals(reference) && connection.from().isWhole())
-                            || (connection.toPort().equals(reference) && connection.to().isWhole()));
+                    connection.from() instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint from
+                            && from.port().port().equals(reference) && from.port().isWhole()
+                    || connection.to() instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint to
+                            && to.port().port().equals(reference) && to.port().isWhole());
             if (!wholeConnected) {
                 continue;
             }

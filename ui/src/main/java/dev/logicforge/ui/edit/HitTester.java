@@ -90,8 +90,10 @@ public final class HitTester {
     }
 
     private Optional<double[]> distanceTo(Connection connection, CircuitPoint point) {
-        Optional<PlacedPort> from = endpoint(connection.from());
-        Optional<PlacedPort> to = endpoint(connection.to());
+        Optional<PlacedPort> from = dev.logicforge.circuit.document.ElectricalEndpoints
+                .componentPort(connection.from()).flatMap(this::endpoint);
+        Optional<PlacedPort> to = dev.logicforge.circuit.document.ElectricalEndpoints
+                .componentPort(connection.to()).flatMap(this::endpoint);
         if (from.isEmpty() || to.isEmpty()) {
             return Optional.empty();
         }
@@ -117,8 +119,10 @@ public final class HitTester {
         List<UUID> components = componentsIn(area);
         List<UUID> found = new ArrayList<>();
         for (Connection connection : document().connections()) {
-            if (components.contains(connection.from().componentId())
-                    && components.contains(connection.to().componentId())) {
+            if (connection.from() instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint from
+                    && connection.to() instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint to
+                    && components.contains(from.port().componentId())
+                    && components.contains(to.port().componentId())) {
                 found.add(connection.id());
             }
         }

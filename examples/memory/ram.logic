@@ -1,5 +1,5 @@
 {
-  "formatVersion": 4,
+  "formatVersion": 5,
   "application": "LogicForge",
   "name": "ram",
   "circuits": [
@@ -8,7 +8,7 @@
       "description": "Interactive RAM component example",
       "components": [
         {
-          "id": "1b23e5ed-cda3-4066-ad89-8deb166c2d55",
+          "id": "e0d9e4d3-2c1a-4b9a-93ec-c17e51d07ab5",
           "type": "memory.ram",
           "x": 280,
           "y": 180,

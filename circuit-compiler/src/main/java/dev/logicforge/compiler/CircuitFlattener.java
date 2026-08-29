@@ -120,9 +120,6 @@ public final class CircuitFlattener {
                         flatId, chip.chipDefinitionId(), chip.position(), chip.rotation(),
                         chip.referenceDesignator(), chip.displayMode()
                 );
-                // We should also store it in a map if we want to trace back, but the compiler does not trace back chips yet.
-                // Wait, componentUuidByPath is used for source mapping. Let's add it.
-                componentUuidByPath.put(path + "/" + chip.id(), flatId);
                 flat.addChip(clone);
             }
 
@@ -223,7 +220,7 @@ public final class CircuitFlattener {
         }
 
         private void emitConnections() {
-            Map<Node, LinkedHashSet<PortEndpoint>> endpointsByGroup = new LinkedHashMap<>();
+            Map<Node, LinkedHashSet<dev.logicforge.circuit.document.ElectricalEndpoint>> endpointsByGroup = new LinkedHashMap<>();
             for (Map.Entry<Node, dev.logicforge.circuit.document.ElectricalEndpoint> entry : flatEndpointByNode.entrySet()) {
                 endpointsByGroup.computeIfAbsent(find(entry.getKey()), ignored -> new LinkedHashSet<>())
                         .add(entry.getValue());
@@ -233,11 +230,15 @@ public final class CircuitFlattener {
                     .computeIfAbsent(find(node), ignored -> new ArrayList<>()).add(id));
 
             int groupIndex = 0;
-            for (Map.Entry<Node, LinkedHashSet<PortEndpoint>> entry : endpointsByGroup.entrySet()) {
-                List<PortEndpoint> endpoints = List.copyOf(entry.getValue());
-                PortEndpoint representative = endpoints.get(0);
+            for (Map.Entry<Node, LinkedHashSet<dev.logicforge.circuit.document.ElectricalEndpoint>> entry : endpointsByGroup.entrySet()) {
+                List<dev.logicforge.circuit.document.ElectricalEndpoint> endpoints = List.copyOf(entry.getValue());
+                PortEndpoint representative = endpoints.stream()
+                        .filter(dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint.class::isInstance)
+                        .map(dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint.class::cast)
+                        .map(dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint::port)
+                        .findFirst().orElse(null);
                 for (Node node : parent.keySet()) {
-                    if (find(node).equals(entry.getKey())) {
+                    if (representative != null && find(node).equals(entry.getKey())) {
                         flatEndpointByPath.put(nodePath(node), representative);
                     }
                 }
@@ -248,15 +249,15 @@ public final class CircuitFlattener {
                 List<UUID> rootIds = rootIdsByGroup.getOrDefault(entry.getKey(), List.of());
                 UUID firstId = rootIds.isEmpty()
                         ? generatedConnectionId(groupIndex, 1) : rootIds.get(0);
-                dev.logicforge.circuit.document.ElectricalEndpoint p0 = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(endpoints.get(0));
-                dev.logicforge.circuit.document.ElectricalEndpoint p1 = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(endpoints.get(1));
+                dev.logicforge.circuit.document.ElectricalEndpoint p0 = endpoints.get(0);
+                dev.logicforge.circuit.document.ElectricalEndpoint p1 = endpoints.get(1);
                 flat.addConnection(new Connection(firstId, p0, p1, List.of()));
                 for (int i = 1; i < rootIds.size(); i++) {
                     flat.addConnection(new Connection(rootIds.get(i), p0, p1, List.of()));
                 }
                 for (int i = 2; i < endpoints.size(); i++) {
                     flat.addConnection(new Connection(generatedConnectionId(groupIndex, i),
-                            p0, new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(endpoints.get(i)), List.of()));
+                            p0, endpoints.get(i), List.of()));
                 }
                 groupIndex++;
             }

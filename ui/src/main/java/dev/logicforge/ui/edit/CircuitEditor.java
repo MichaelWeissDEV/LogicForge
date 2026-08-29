@@ -14,6 +14,7 @@ import dev.logicforge.compiler.CircuitCompiler;
 import dev.logicforge.compiler.CompilationResult;
 import dev.logicforge.compiler.ValidationIssue;
 import dev.logicforge.library.ComponentRegistry;
+import dev.logicforge.library.chip.StandardChipLibrary;
 import dev.logicforge.library.LibraryParameters;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
@@ -53,6 +54,7 @@ import java.util.UUID;
 public final class CircuitEditor {
 
     private final ComponentRegistry registry;
+    private final dev.logicforge.circuit.chip.ChipRegistry chipRegistry;
     private final CircuitCompiler compiler;
     private final Map<String, UndoStack> undoStacks = new LinkedHashMap<>();
     private UndoStack undoStack = new UndoStack();
@@ -82,9 +84,18 @@ public final class CircuitEditor {
     private boolean desiredRunning = true;
 
     public CircuitEditor(ComponentRegistry registry) {
+        this(registry, StandardChipLibrary.create());
+    }
+
+    public CircuitEditor(ComponentRegistry registry, dev.logicforge.circuit.chip.ChipRegistry chipRegistry) {
         this.registry = registry;
-        this.compiler = new CircuitCompiler(registry);
+        this.chipRegistry = chipRegistry;
+        this.compiler = new CircuitCompiler(registry, chipRegistry);
         setProject(CircuitProject.empty("untitled"), false);
+    }
+
+    public dev.logicforge.circuit.chip.ChipRegistry chipRegistry() {
+        return chipRegistry;
     }
 
     // ------------------------------------------------------------------
@@ -239,8 +250,7 @@ public final class CircuitEditor {
         }
         selection.selectComponent(endpoint.componentId());
         document.connections().stream()
-                .filter(connection -> connection.from().port().equals(endpoint.port())
-                        || connection.to().port().equals(endpoint.port()))
+                .filter(connection -> connection.touches(endpoint.port()))
                 .findFirst().ifPresent(connection -> selection.selectConnection(connection.id()));
         notifyChanged();
         return true;
@@ -553,8 +563,9 @@ public final class CircuitEditor {
         }
         Optional<dev.logicforge.circuit.document.Connection> connection =
                 document.connection(connectionId);
-        return connection.isPresent() ? hierarchyContext().resolveNet(connection.get().from())
-                : OptionalInt.empty();
+        return connection.flatMap(value -> dev.logicforge.circuit.document.ElectricalEndpoints
+                        .componentPort(value.from()))
+                .map(hierarchyContext()::resolveNet).orElse(OptionalInt.empty());
     }
 
     /**
@@ -566,7 +577,8 @@ public final class CircuitEditor {
         if (compilation == null) {
             return Optional.empty();
         }
-        return document.connection(connectionId).flatMap(connection -> signalAt(connection.from()));
+        return document.connection(connectionId).flatMap(connection -> dev.logicforge.circuit.document
+                .ElectricalEndpoints.componentPort(connection.from()).flatMap(this::signalAt));
     }
 
     public boolean hasDriverConflict(int netId) {

@@ -85,7 +85,10 @@ class ProjectFormatTest {
         circuit.addComponent(source);
         circuit.addComponent(sink);
         circuit.addConnection(new Connection(java.util.UUID.randomUUID(),
-                dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(source.id(), "OUT")), dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(sink.id(), "IN")),
+                new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(
+                        dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(source.id(), "OUT"))),
+                new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(
+                        dev.logicforge.circuit.document.PortEndpoint.whole(new PortReference(sink.id(), "IN"))),
                 java.util.List.of(new CircuitPoint(64, 0), new CircuitPoint(64, 48))));
 
         CircuitDocument loaded = roundTrip(CircuitProject.of("p", circuit)).mainCircuit();
@@ -178,8 +181,10 @@ class ProjectFormatTest {
 
         Connection loaded = ProjectFormat.fromJson(json, "legacy").mainCircuit()
                 .connections().iterator().next();
-        assertTrue(loaded.from().isWhole());
-        assertTrue(loaded.to().isWhole());
+        assertTrue(((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) loaded.from())
+                .port().isWhole());
+        assertTrue(((dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint) loaded.to())
+                .port().isWhole());
     }
 
     @Test

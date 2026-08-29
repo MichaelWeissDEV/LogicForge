@@ -68,8 +68,14 @@ public final class ChangeParameterCommand implements CircuitCommand {
 
     /** The port of this component that the wire is attached to. */
     private String portNameOn(Connection connection) {
-        return connection.from().componentId().equals(before.id())
-                ? connection.from().portName()
-                : connection.to().portName();
+        if (connection.from() instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint from
+                && from.port().componentId().equals(before.id())) {
+            return from.port().portName();
+        }
+        if (connection.to() instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint to
+                && to.port().componentId().equals(before.id())) {
+            return to.port().portName();
+        }
+        throw new IllegalArgumentException("Connection does not touch the component being changed");
     }
 }

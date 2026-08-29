@@ -12,6 +12,7 @@ import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortSlice;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.library.ComponentType;
+import dev.logicforge.library.chip.StandardChipLibrary;
 import dev.logicforge.logic.BitWidth;
 import dev.logicforge.simulation.CompiledCircuit;
 import dev.logicforge.simulation.CompiledInputBinding;
@@ -35,6 +36,11 @@ public final class CircuitCompiler {
     public CircuitCompiler(ComponentRegistry registry, dev.logicforge.circuit.chip.ChipRegistry chipRegistry) {
         this.registry = registry;
         this.chipRegistry = chipRegistry;
+    }
+
+    /** Uses the canonical standard chip catalog for callers that only customize components. */
+    public CircuitCompiler(ComponentRegistry registry) {
+        this(registry, StandardChipLibrary.create());
     }
 
     public List<ValidationIssue> validate(CircuitDocument document) {
@@ -163,17 +169,17 @@ public final class CircuitCompiler {
                 boolean modified = false;
                 
                 if (from instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
-                    PortEndpoint logical = mapChipPin(chipPin);
-                    if (logical != null) {
-                        from = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(logical);
+                    Optional<PortEndpoint> logical = mapChipPin(chipPin);
+                    if (logical.isPresent()) {
+                        from = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(logical.get());
                         modified = true;
                     }
                 }
                 
                 if (to instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
-                    PortEndpoint logical = mapChipPin(chipPin);
-                    if (logical != null) {
-                        to = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(logical);
+                    Optional<PortEndpoint> logical = mapChipPin(chipPin);
+                    if (logical.isPresent()) {
+                        to = new dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint(logical.get());
                         modified = true;
                     }
                 }
@@ -186,13 +192,43 @@ public final class CircuitCompiler {
             }
         }
         
-        private PortEndpoint mapChipPin(dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
+        private Optional<PortEndpoint> mapChipPin(dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint chipPin) {
             for (ChipInstanceExpander.ExpandedChip expanded : expandedChips) {
                 if (expanded.packageInstanceId().equals(chipPin.chipInstanceId())) {
-                    return expanded.signalPins().get(chipPin.physicalPinNumber());
+                    PortEndpoint endpoint = expanded.signalPins().get(chipPin.physicalPinNumber());
+                    if (endpoint != null) {
+                        return Optional.of(endpoint);
+                    }
+                    reportInvalidChipPin(chipPin);
+                    return Optional.empty();
                 }
             }
-            return null;
+            issues.add(ValidationIssue.error("Unknown chip instance " + chipPin.chipInstanceId()
+                    + " at physical pin " + chipPin.physicalPinNumber(), chipPin.chipInstanceId(), null));
+            return Optional.empty();
+        }
+
+        private void reportInvalidChipPin(dev.logicforge.circuit.document.ElectricalEndpoint.ChipPinEndpoint endpoint) {
+            dev.logicforge.circuit.chip.ChipInstance chip = document.chip(endpoint.chipInstanceId()).orElse(null);
+            if (chip == null) {
+                issues.add(ValidationIssue.error("Unknown chip instance " + endpoint.chipInstanceId()
+                        + " at physical pin " + endpoint.physicalPinNumber(), endpoint.chipInstanceId(), null));
+                return;
+            }
+            dev.logicforge.circuit.chip.ChipDefinition definition = chipRegistry.find(chip.chipDefinitionId()).orElse(null);
+            if (definition == null) {
+                return;
+            }
+            var pin = definition.packageDefinition().pin(endpoint.physicalPinNumber());
+            String identity = chip.referenceDesignator() + " (" + chip.chipDefinitionId() + ") pin "
+                    + endpoint.physicalPinNumber();
+            if (pin.isEmpty()) {
+                issues.add(ValidationIssue.error(identity + " is outside package "
+                        + definition.packageDefinition().type(), chip.id(), null));
+            } else {
+                issues.add(ValidationIssue.error(identity + " " + pin.get().name() + " cannot be used as a signal endpoint",
+                        chip.id(), null));
+            }
         }
 
         private void resolveComponents() {
@@ -239,6 +275,8 @@ public final class CircuitCompiler {
                 
                 if (!(fromEE instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint fromComp) || 
                     !(toEE instanceof dev.logicforge.circuit.document.ElectricalEndpoint.ComponentEndpoint toComp)) {
+                    issues.add(ValidationIssue.forConnection(ValidationIssue.Severity.ERROR,
+                            "Connection contains an unresolved physical chip pin", connection.id()));
                     continue;
                 }
                 
@@ -507,6 +545,9 @@ public final class CircuitCompiler {
             }
 
             Map<UUID, dev.logicforge.circuit.chip.ChipInstance> syntheticToPhysical = new LinkedHashMap<>();
+            Map<PhysicalPinRef, PortEndpoint> logicalEndpointByPhysicalPin = new LinkedHashMap<>();
+            Map<PhysicalPinRef, Integer> netByPhysicalPin = new LinkedHashMap<>();
+            RuntimeInstancePath rootPath = RuntimeInstancePath.root(document.metadata().name());
             for (ChipInstanceExpander.ExpandedChip expanded : expandedChips) {
                 dev.logicforge.circuit.chip.ChipInstance physical = null;
                 for (dev.logicforge.circuit.chip.ChipInstance chip : document.chips()) {
@@ -516,12 +557,22 @@ public final class CircuitCompiler {
                     }
                 }
                 if (physical != null) {
+                    dev.logicforge.circuit.chip.ChipInstance physicalChip = physical;
                     for (ComponentInstance logical : expanded.logicalUnits()) {
-                        syntheticToPhysical.put(logical.id(), physical);
+                        syntheticToPhysical.put(logical.id(), physicalChip);
                     }
+                    expanded.signalPins().forEach((pinNumber, logicalEndpoint) -> {
+                        PhysicalPinRef physicalPin = new PhysicalPinRef(rootPath, physicalChip.id(), pinNumber);
+                        logicalEndpointByPhysicalPin.put(physicalPin, logicalEndpoint);
+                        Integer net = netByEndpoint.get(logicalEndpoint);
+                        if (net != null) {
+                            netByPhysicalPin.put(physicalPin, net);
+                        }
+                    });
                 }
             }
-            ChipSourceMap chipSourceMap = new ChipSourceMap(syntheticToPhysical);
+            ChipSourceMap chipSourceMap = new ChipSourceMap(syntheticToPhysical,
+                    logicalEndpointByPhysicalPin, netByPhysicalPin);
 
             CircuitSourceMap sourceMap = new CircuitSourceMap(componentIdByUuid, uuidByComponentId,
                     netByPort, portsByNet, netByConnection, netByEndpoint, endpointsByNet,

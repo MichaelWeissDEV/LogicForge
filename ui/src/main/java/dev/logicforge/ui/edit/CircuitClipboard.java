@@ -3,6 +3,7 @@ package dev.logicforge.ui.edit;
 import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -43,8 +44,10 @@ public final class CircuitClipboard {
         }
         List<Connection> internal = new ArrayList<>();
         for (Connection connection : document.connections()) {
-            if (componentIds.contains(connection.from().componentId())
-                    && componentIds.contains(connection.to().componentId())) {
+            if (connection.from() instanceof ElectricalEndpoint.ComponentEndpoint from
+                    && connection.to() instanceof ElectricalEndpoint.ComponentEndpoint to
+                    && componentIds.contains(from.port().componentId())
+                    && componentIds.contains(to.port().componentId())) {
                 internal.add(connection);
             }
         }
@@ -77,14 +80,20 @@ public final class CircuitClipboard {
         }
         List<Connection> connections = new ArrayList<>(fragment.connections().size());
         for (Connection original : fragment.connections()) {
-            UUID from = newIds.get(original.from().componentId());
-            UUID to = newIds.get(original.to().componentId());
+            if (!(original.from() instanceof ElectricalEndpoint.ComponentEndpoint fromEndpoint)
+                    || !(original.to() instanceof ElectricalEndpoint.ComponentEndpoint toEndpoint)) {
+                continue;
+            }
+            UUID from = newIds.get(fromEndpoint.port().componentId());
+            UUID to = newIds.get(toEndpoint.port().componentId());
             if (from == null || to == null) {
                 continue;
             }
             connections.add(new Connection(UUID.randomUUID(),
-                    new dev.logicforge.circuit.document.PortEndpoint(new PortReference(from, original.from().portName()), original.from().slice()),
-                    new dev.logicforge.circuit.document.PortEndpoint(new PortReference(to, original.to().portName()), original.to().slice()),
+                    new ElectricalEndpoint.ComponentEndpoint(new dev.logicforge.circuit.document.PortEndpoint(
+                            new PortReference(from, fromEndpoint.port().portName()), fromEndpoint.port().slice())),
+                    new ElectricalEndpoint.ComponentEndpoint(new dev.logicforge.circuit.document.PortEndpoint(
+                            new PortReference(to, toEndpoint.port().portName()), toEndpoint.port().slice())),
                     original.waypoints().stream()
                             .map(point -> point.plus(offsetX, offsetY))
                             .toList()));
