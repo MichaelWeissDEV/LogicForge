@@ -68,7 +68,10 @@ public final class StudyWindow extends Stage {
         root.setCenter(content);
         root.setBottom(buildControls());
         setTitle("LogicForge Study — " + target.label());
-        setScene(new Scene(root, 1220, 780));
+        Scene scene = new Scene(root, 1220, 780);
+        scene.getStylesheets().add(StudyWindow.class
+                .getResource("/dev/logicforge/ui/logicforge.css").toExternalForm());
+        setScene(scene);
 
         controller.editor().addChangeListener(() -> dirty = true);
         updateControls();
@@ -110,7 +113,7 @@ public final class StudyWindow extends Stage {
         Label targetMode = new Label(controller.isLive()
                 ? "LIVE INSTANCE" : "REFERENCE IMPLEMENTATION");
         HBox top = new HBox(8, back, forward, targetMode, breadcrumbs);
-        top.setStyle("-fx-padding: 8;");
+        top.getStyleClass().add("study-toolbar");
         HBox.setHgrow(breadcrumbs, Priority.ALWAYS);
         return top;
     }
@@ -125,7 +128,7 @@ public final class StudyWindow extends Stage {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         HBox controls = new HBox(8, run, stepEvent, stepClock, stepInstruction, spacer, status);
-        controls.setStyle("-fx-padding: 8;");
+        controls.getStyleClass().add("study-controls");
         return controls;
     }
 

@@ -4,11 +4,13 @@ import dev.logicforge.circuit.document.ComponentGeometry;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.PortReference;
+import dev.logicforge.circuit.document.SubcircuitSupport;
 import dev.logicforge.circuit.geometry.CircuitPoint;
 import dev.logicforge.circuit.geometry.Rotation;
 import dev.logicforge.format.ProjectFormat;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.ui.edit.CircuitEditor;
+import dev.logicforge.ui.command.ChangeParameterCommand;
 import dev.logicforge.ui.view.CircuitCanvasView;
 import dev.logicforge.ui.view.Workbench;
 import dev.logicforge.ui.viewport.ViewportTransform;
@@ -172,8 +174,23 @@ public final class CanvasInteractionCheck {
         // 20: every component of the palette can be placed and simulated.
         int placed = 0;
         for (var type : editor.registry().all()) {
-            place(canvas, editor, type.id(), 200 + (placed % 8) * 60, 700);
+            ComponentInstance placedComponent =
+                    place(canvas, editor, type.id(), 200 + (placed % 8) * 60, 700);
             placed++;
+            // Interface declarations require unique exported names. Their shared default
+            // "SIGNAL" is convenient in the inspector but invalid when the bulk palette
+            // check deliberately places both declarations into one circuit.
+            if (type.id().equals(SubcircuitSupport.INPUT_DEFINITION_ID)
+                    || type.id().equals(SubcircuitSupport.OUTPUT_DEFINITION_ID)) {
+                editor.execute(new ChangeParameterCommand(editor.document(), type.definition(),
+                        editor.document().requireComponent(placedComponent.id()),
+                        SubcircuitSupport.INTERFACE_NAME.key(), "CHECK_" + placed));
+            }
+            if (editor.compilation().isEmpty()) {
+                System.err.println("Compilation failed after placing " + type.id() + ": "
+                        + editor.compileError().orElse("unknown error"));
+                break;
+            }
         }
         check("every component in the palette can be placed",
                 editor.document().componentCount() == 4 + placed);

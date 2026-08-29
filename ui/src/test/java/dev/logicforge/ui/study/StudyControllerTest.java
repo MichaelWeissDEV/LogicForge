@@ -12,6 +12,7 @@ import dev.logicforge.circuit.document.CircuitDocument;
 import dev.logicforge.circuit.document.CircuitMetadata;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.SubcircuitSupport;
@@ -198,9 +199,16 @@ class StudyControllerTest {
         return cpuId;
     }
 
-    private static PortEndpoint remap(PortEndpoint endpoint, Map<UUID, UUID> ids) {
-        return new PortEndpoint(new PortReference(ids.get(endpoint.componentId()),
-                endpoint.portName()), endpoint.slice());
+    private static ElectricalEndpoint remap(ElectricalEndpoint endpoint, Map<UUID, UUID> ids) {
+        return switch (endpoint) {
+            case ElectricalEndpoint.ComponentEndpoint component -> {
+                PortEndpoint port = component.port();
+                yield new ElectricalEndpoint.ComponentEndpoint(new PortEndpoint(
+                        new PortReference(ids.get(port.componentId()), port.portName()), port.slice()));
+            }
+            case ElectricalEndpoint.ChipPinEndpoint chip -> new ElectricalEndpoint.ChipPinEndpoint(
+                    ids.get(chip.chipInstanceId()), chip.physicalPinNumber());
+        };
     }
 
     private static void descendLabel(StudyController controller, String label) {

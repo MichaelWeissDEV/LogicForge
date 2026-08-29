@@ -10,6 +10,7 @@ import dev.logicforge.circuit.document.CircuitMetadata;
 import dev.logicforge.circuit.document.CircuitProject;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortDisplayMode;
@@ -207,7 +208,7 @@ class ProjectFormatTest {
         Connection loadedWire = loaded.connections().iterator().next();
 
         assertEquals(PortDisplayMode.EXPANDED, loadedRegister.portDisplayMode());
-        assertEquals(endpoint, loadedWire.to());
+        assertEquals(new ElectricalEndpoint.ComponentEndpoint(endpoint), loadedWire.to());
     }
 
     @Test
@@ -228,8 +229,8 @@ class ProjectFormatTest {
         CircuitProject loaded = roundTrip(CircuitProject.of("ranges", circuit));
         Connection loadedWire = loaded.mainCircuit().connections().iterator().next();
 
-        assertEquals(from, loadedWire.from());
-        assertEquals(to, loadedWire.to());
+        assertEquals(new ElectricalEndpoint.ComponentEndpoint(from), loadedWire.from());
+        assertEquals(new ElectricalEndpoint.ComponentEndpoint(to), loadedWire.to());
         assertTrue(ProjectFormat.toJson(loaded).contains("\"range\""));
     }
 

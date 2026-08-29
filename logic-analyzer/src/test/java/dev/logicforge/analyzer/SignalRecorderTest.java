@@ -136,4 +136,21 @@ class SignalRecorderTest {
         assertEquals(1, trace.transitions().size());
         assertEquals(LogicVector.ONE, trace.transitions().get(0).value());
     }
+
+    @Test
+    void traceCapacityEvictsOldTransitionsInConstantTimeOrder() {
+        CompiledCircuit.Builder builder = CompiledCircuit.builder();
+        int net = builder.addNet(BitWidth.ONE);
+        int src = builder.addComponent("test.switch", "SW", SWITCH, NONE, new int[]{net});
+        Simulation simulation = new Simulation(builder.build());
+        SignalRecorder recorder = new SignalRecorder(simulation, 3);
+        SignalTrace trace = recorder.watch(net, "A");
+
+        for (int index = 0; index < 10; index++) {
+            simulation.setInput(src, index % 2 == 0 ? LogicVector.ONE : LogicVector.ZERO);
+        }
+
+        assertEquals(3, trace.transitions().size());
+        assertTrue(trace.transitions().get(0).time() < trace.transitions().get(2).time());
+    }
 }

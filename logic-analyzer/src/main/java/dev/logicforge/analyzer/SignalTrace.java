@@ -2,7 +2,8 @@ package dev.logicforge.analyzer;
 
 import dev.logicforge.logic.BitWidth;
 import dev.logicforge.logic.LogicVector;
-import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.List;
 
 /**
@@ -15,15 +16,28 @@ import java.util.List;
  */
 public final class SignalTrace {
 
+    /** Large enough for long captures, while keeping analyzer memory use predictable. */
+    public static final int DEFAULT_CAPACITY = 100_000;
+
     private final AnalyzerSignalBinding binding;
     private final String label;
     private final BitWidth width;
-    private final List<SignalTransition> transitions = new ArrayList<>();
+    private final int capacity;
+    private final Deque<SignalTransition> transitions;
 
     SignalTrace(AnalyzerSignalBinding binding, String label, BitWidth width) {
+        this(binding, label, width, DEFAULT_CAPACITY);
+    }
+
+    SignalTrace(AnalyzerSignalBinding binding, String label, BitWidth width, int capacity) {
+        if (capacity < 1) {
+            throw new IllegalArgumentException("capacity must be positive");
+        }
         this.binding = binding;
         this.label = label;
         this.width = width;
+        this.capacity = capacity;
+        this.transitions = new ArrayDeque<>(Math.min(capacity, 1_024));
     }
 
     /** The runtime net or nets this trace was reconstructed from. */
@@ -53,7 +67,8 @@ public final class SignalTrace {
         if (bitIndex < 0 || bitIndex >= width.bits()) {
             throw new IndexOutOfBoundsException("Bit " + bitIndex + " of " + width);
         }
-        SignalTrace extracted = new SignalTrace(binding, label + "[" + bitIndex + "]", BitWidth.ONE);
+        SignalTrace extracted = new SignalTrace(
+                binding, label + "[" + bitIndex + "]", BitWidth.ONE, capacity);
         for (SignalTransition transition : transitions) {
             extracted.record(transition.time(), transition.deltaCycle(),
                     LogicVector.single(transition.value().getBit(bitIndex)));
@@ -78,12 +93,15 @@ public final class SignalTrace {
 
     void record(long time, int deltaCycle, LogicVector value) {
         if (!transitions.isEmpty()) {
-            SignalTransition last = transitions.get(transitions.size() - 1);
+            SignalTransition last = transitions.getLast();
             if (last.value().equals(value)) {
                 return;
             }
         }
-        transitions.add(new SignalTransition(time, deltaCycle, value));
+        transitions.addLast(new SignalTransition(time, deltaCycle, value));
+        if (transitions.size() > capacity) {
+            transitions.removeFirst();
+        }
     }
 
     void clear() {

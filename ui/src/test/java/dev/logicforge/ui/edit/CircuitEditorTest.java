@@ -463,6 +463,25 @@ class CircuitEditorTest {
     }
 
     @Test
+    void clockKeepsItsTimingParametersAndRuntimeOutputAfterCopyPaste() {
+        ParameterValues timing = editor.definition("source.clock").orElseThrow().defaultParameters()
+                .with(LibraryParameters.FREQUENCY_HZ, 2_000_000)
+                .with(LibraryParameters.DUTY_CYCLE_PERCENT, 35)
+                .with(LibraryParameters.INITIALLY_HIGH, true);
+        ComponentInstance clock = add("source.clock", 0, 0, timing);
+
+        editor.clipboard().copy(editor.document(), List.of(clock.id()));
+        CircuitClipboard.Fragment pasted = editor.clipboard().prepareForPaste(0, 100);
+        editor.execute(new PasteCommand(editor.document(), pasted.components(), pasted.connections()));
+        ComponentInstance copiedClock = pasted.components().getFirst();
+
+        assertEquals("source.clock", copiedClock.definitionId());
+        assertEquals(timing, copiedClock.parameters());
+        assertEquals(LogicVector.ONE, valueAt(clock, "OUT"));
+        assertEquals(LogicVector.ONE, valueAt(copiedClock, "OUT"));
+    }
+
+    @Test
     void driverConflictsAreVisibleToTheEditor() {
         ComponentInstance high = add("source.one", 0, 0);
         ComponentInstance low = add("source.zero", 0, 100);

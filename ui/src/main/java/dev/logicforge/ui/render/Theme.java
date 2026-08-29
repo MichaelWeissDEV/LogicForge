@@ -16,8 +16,13 @@ public final class Theme {
 
     // Surfaces -----------------------------------------------------------
     public static final Color CANVAS_BACKGROUND = Color.web("#15181d");
+    public static final Color WORKSPACE_BACKGROUND = CANVAS_BACKGROUND;
+    public static final Color PANEL_BACKGROUND = Color.web("#191d23");
+    public static final Color ELEVATED_PANEL = Color.web("#1f242c");
+    public static final Color BORDER = Color.web("#2a303a");
     public static final Color GRID_MINOR = Color.web("#1d2128");
     public static final Color GRID_MAJOR = Color.web("#272d36");
+    public static final Color DIGITAL_REFERENCE = Color.web("#303640");
 
     // Text ---------------------------------------------------------------
     public static final Color TEXT_PRIMARY = Color.web("#e6e9ef");
@@ -32,6 +37,8 @@ public final class Theme {
     public static final Color SELECTION_FILL = Color.web("#5b9dff33", 1);
     public static final Color PORT = Color.web("#7f8b9c");
     public static final Color PORT_HIGHLIGHT = Color.web("#5b9dff");
+    public static final Color CURSOR_A = Color.web("#fbbf24");
+    public static final Color CURSOR_B = Color.web("#c084fc");
 
     // Signals ------------------------------------------------------------
     private static final Color SIGNAL_ZERO = Color.web("#59657a");
@@ -39,6 +46,9 @@ public final class Theme {
     private static final Color SIGNAL_UNKNOWN = Color.web("#f59e0b");
     private static final Color SIGNAL_HIGH_Z = Color.web("#38bdf8");
     public static final Color SIGNAL_CONFLICT = Color.web("#ef4444");
+    public static final Color ERROR = SIGNAL_CONFLICT;
+    public static final Color WARNING = Color.web("#f59e0b");
+    public static final Color SUCCESS = Color.web("#22c55e");
     public static final Color WIRE_UNPOWERED = Color.web("#4a5361");
     public static final Color BUS_DEFINED = Color.web("#a78bfa");
 

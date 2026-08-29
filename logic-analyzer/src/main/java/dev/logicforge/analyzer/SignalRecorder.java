@@ -28,12 +28,22 @@ import java.util.Set;
 public final class SignalRecorder implements SimulationObserver {
 
     private final Simulation simulation;
+    private final int traceCapacity;
     private final Map<AnalyzerSignalBinding, SignalTrace> traces = new LinkedHashMap<>();
     private final Map<Integer, Set<AnalyzerSignalBinding>> watchersByNet = new LinkedHashMap<>();
     private boolean capturing = true;
 
     public SignalRecorder(Simulation simulation) {
+        this(simulation, SignalTrace.DEFAULT_CAPACITY);
+    }
+
+    /** Creates a recorder with a fixed per-trace transition capacity. */
+    public SignalRecorder(Simulation simulation, int traceCapacity) {
+        if (traceCapacity < 1) {
+            throw new IllegalArgumentException("traceCapacity must be positive");
+        }
         this.simulation = simulation;
+        this.traceCapacity = traceCapacity;
         simulation.addObserver(this);
     }
 
@@ -62,7 +72,8 @@ public final class SignalRecorder implements SimulationObserver {
         if (existing != null) {
             return existing;
         }
-        SignalTrace trace = new SignalTrace(binding, label, BitWidth.of(binding.width()));
+        SignalTrace trace = new SignalTrace(
+                binding, label, BitWidth.of(binding.width()), traceCapacity);
         trace.record(simulation.time(), simulation.deltaCycle(), binding.read(simulation));
         traces.put(binding, trace);
         for (int netId : binding.netIds()) {

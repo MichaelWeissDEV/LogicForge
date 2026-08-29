@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.logicforge.circuit.component.ParameterValues;
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.circuit.document.Connection;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.geometry.CircuitPoint;
@@ -124,8 +125,10 @@ class SignalBindingTest {
                         .with(LibraryParameters.WIDTH, 8));
         UUID connectionId = UUID.randomUUID();
         editor.execute(new ConnectCommand(editor.document(), new Connection(connectionId,
-                PortEndpoint.range(new PortReference(source.id(), "OUT"), 7, 4),
-                PortEndpoint.range(new PortReference(probe.id(), "IN"), 3, 0),
+                new ElectricalEndpoint.ComponentEndpoint(
+                        PortEndpoint.range(new PortReference(source.id(), "OUT"), 7, 4)),
+                new ElectricalEndpoint.ComponentEndpoint(
+                        PortEndpoint.range(new PortReference(probe.id(), "IN"), 3, 0)),
                 java.util.List.of())));
 
         assertEquals(4, editor.connectionWidth(connectionId));

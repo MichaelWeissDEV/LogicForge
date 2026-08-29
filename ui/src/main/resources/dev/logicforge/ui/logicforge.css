@@ -13,8 +13,16 @@
     -lf-text-secondary: #98a2b3;
     -lf-text-muted: #667085;
     -lf-accent: #5b9dff;
+    -lf-selection: #5b9dff;
+    -lf-hover: #252b34;
+    -lf-focus: #5b9dff;
+    -lf-signal-low: #59657a;
+    -lf-signal-high: #4ade80;
+    -lf-signal-unknown: #f59e0b;
+    -lf-signal-z: #38bdf8;
     -lf-warning: #f59e0b;
     -lf-error: #ef4444;
+    -lf-success: #22c55e;
 
     -fx-background-color: -lf-background;
     -fx-font-size: 12.5px;
@@ -332,4 +340,152 @@
     -fx-border-color: -lf-border;
     -fx-background-radius: 5px;
     -fx-font-size: 11.5px;
+}
+
+/* ----------------------------------------------------- Logic analyzer */
+
+.logic-analyzer {
+    -fx-border-color: -lf-border transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.analyzer-toolbar {
+    -fx-padding: 6 10 6 10;
+    -fx-spacing: 6;
+}
+
+.analyzer-toolbar .panel-header {
+    -fx-padding: 0 8 0 0;
+    -fx-font-weight: bold;
+}
+
+.analyzer-toolbar .tool-button {
+    -fx-min-height: 27;
+    -fx-pref-height: 27;
+    -fx-padding: 4 8 4 8;
+}
+
+.analyzer-toolbar .search-field {
+    -fx-min-height: 27;
+    -fx-pref-height: 27;
+    -fx-pref-width: 142;
+}
+
+.analyzer-mode {
+    -fx-pref-width: 76;
+}
+
+.analyzer-mode-cell {
+    -fx-text-fill: -lf-text-secondary;
+    -fx-padding: 0 2 0 2;
+}
+
+.analyzer-zoom-label {
+    -fx-min-width: 42;
+    -fx-alignment: center;
+    -fx-font-family: monospace;
+    -fx-text-fill: -lf-text-secondary;
+}
+
+.analyzer-measurement-bar {
+    -fx-background-color: -lf-surface-raised;
+    -fx-border-color: transparent transparent -lf-border transparent;
+    -fx-padding: 4 12 4 12;
+    -fx-min-height: 24;
+}
+
+.analyzer-measurement {
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+    -fx-text-fill: -lf-text-secondary;
+}
+
+.analyzer-channel-list,
+.analyzer-ruler-corner {
+    -fx-background-color: -lf-surface;
+}
+
+.analyzer-channel-list {
+    -fx-border-color: transparent -lf-border transparent transparent;
+    -fx-border-width: 0 1 0 0;
+}
+
+.analyzer-ruler-corner {
+    -fx-border-color: transparent transparent -lf-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.analyzer-channel-row {
+    -fx-padding: 0 4 0 7;
+    -fx-border-color: transparent transparent -lf-border transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.analyzer-channel-row:hover {
+    -fx-background-color: -lf-hover;
+}
+
+.analyzer-channel-toggle {
+    -fx-font-family: monospace;
+    -fx-font-size: 10px;
+    -fx-text-fill: -lf-text-muted;
+}
+
+.analyzer-channel-dot {
+    -fx-font-size: 9px;
+}
+
+.analyzer-channel-name {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: -lf-text-primary;
+}
+
+.analyzer-channel-value {
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+    -fx-min-width: 34;
+    -fx-alignment: center-right;
+}
+
+.analyzer-row-action {
+    -fx-min-width: 23;
+    -fx-pref-width: 23;
+    -fx-padding: 3;
+}
+
+.analyzer-waveform,
+.analyzer-body {
+    -fx-background-color: -lf-background;
+}
+
+/* Shared compact chrome used by the Study window and the main workbench. */
+.study-toolbar,
+.study-controls {
+    -fx-background-color: -lf-surface;
+    -fx-padding: 8 12 8 12;
+    -fx-spacing: 8;
+}
+
+.study-toolbar {
+    -fx-border-color: transparent transparent -lf-border transparent;
+}
+
+.study-controls {
+    -fx-border-color: -lf-border transparent transparent transparent;
+}
+
+.study-toolbar .button,
+.study-controls .button,
+.study-controls .toggle-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 5;
+    -fx-text-fill: -lf-text-secondary;
+    -fx-padding: 5 10 5 10;
+}
+
+.study-toolbar .button:hover,
+.study-controls .button:hover,
+.study-controls .toggle-button:hover {
+    -fx-background-color: -lf-hover;
+    -fx-text-fill: -lf-text-primary;
 }

@@ -41,14 +41,23 @@ public final class WorkbenchScreenshot {
     @Override
     public void start(Stage stage) throws Exception {
         Workbench workbench = new Workbench(stage);
-        Scene scene = new Scene(workbench, 1360, 860);
+        Scene scene = new Scene(workbench, 1280, 720);
         scene.getStylesheets().add(
                 LogicForgeApp.class.getResource("/dev/logicforge/ui/logicforge.css").toExternalForm());
         workbench.installShortcuts(scene);
         stage.setScene(scene);
         stage.show();
 
-        buildDemoCircuit(workbench.editor());
+        DemoCircuit demo = buildDemoCircuit(workbench.editor());
+        workbench.analyzerController().addSignal(
+                new PortReference(demo.clock().id(), "OUT"), "CLK");
+        workbench.analyzerController().addSignal(
+                new PortReference(demo.switchA().id(), "OUT"), "A");
+        workbench.analyzerController().addSignal(
+                new PortReference(demo.carry().id(), "IN"), "CARRY");
+        for (int edge = 0; edge < 8; edge++) {
+            workbench.editor().stepTime();
+        }
         workbench.canvas().zoomToFit();
 
         // Let the scene settle for a few pulses, then capture it.
@@ -70,7 +79,12 @@ public final class WorkbenchScreenshot {
     }
 
     /** Two switches into an AND gate and an LED, plus an XOR half of a half adder. */
-    private static void buildDemoCircuit(CircuitEditor editor) {
+    private record DemoCircuit(
+            ComponentInstance clock, ComponentInstance switchA, ComponentInstance carry) {
+    }
+
+    private static DemoCircuit buildDemoCircuit(CircuitEditor editor) {
+        ComponentInstance clock = place(editor, "source.clock", 0, -110, "CLK");
         ComponentInstance switchA = place(editor, "source.toggle", 0, 0, "A");
         ComponentInstance switchB = place(editor, "source.toggle", 0, 120, "B");
         ComponentInstance and = place(editor, "logic.and", 200, 20, "CARRY_AND");
@@ -91,6 +105,7 @@ public final class WorkbenchScreenshot {
 
         editor.toggleInput(switchA.id());
         editor.selection().selectComponent(and.id());
+        return new DemoCircuit(clock, switchA, carry);
     }
 
     private static ComponentInstance place(CircuitEditor editor, String definitionId, double x,
