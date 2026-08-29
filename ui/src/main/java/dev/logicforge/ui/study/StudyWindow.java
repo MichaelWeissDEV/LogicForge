@@ -1,5 +1,10 @@
 package dev.logicforge.ui.study;
 
+import dev.logicforge.circuit.chip.ChipInstance;
+import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
+import dev.logicforge.circuit.document.PortEndpoint;
+import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.ui.view.CircuitCanvasView;
 import dev.logicforge.ui.view.LogicAnalyzerView;
 import dev.logicforge.ui.edit.LogicAnalyzerController;
@@ -49,8 +54,7 @@ public final class StudyWindow extends Stage {
                             location.parentPath(), location.endpoint());
                     canvas.zoomToFit();
                 }));
-        this.canvas.setAnalyzerListener(endpoint -> analyzerController.addSignal(endpoint,
-                endpoint.portName()));
+        this.canvas.setAnalyzerListener(this::addToAnalyzer);
         this.canvas.setHierarchyOpenListener(instance -> {
             controller.descend(instance);
             updateControls();
@@ -97,6 +101,27 @@ public final class StudyWindow extends Stage {
 
     public StudyController controller() {
         return controller;
+    }
+
+    /** Adds the port or chip pin the user right-clicked to the analyzer. */
+    private void addToAnalyzer(ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            PortEndpoint port = component.port();
+            PortReference reference = port.port();
+            String componentLabel = controller.editor().document().component(reference.componentId())
+                    .map(ComponentInstance::label)
+                    .filter(label -> !label.isBlank())
+                    .orElseGet(() -> reference.componentId().toString().substring(0, 8));
+            String pin = port.slice() instanceof dev.logicforge.circuit.document.PortSlice.Bit bit
+                    ? reference.portName() + "[" + bit.index() + "]" : reference.portName();
+            analyzerController.addSignal(port, componentLabel + "." + pin);
+        } else if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            String designator = controller.editor().document().chip(chipPin.chipInstanceId())
+                    .map(ChipInstance::referenceDesignator)
+                    .filter(label -> !label.isBlank())
+                    .orElseGet(() -> chipPin.chipInstanceId().toString().substring(0, 8));
+            analyzerController.addSignal(chipPin, designator + ".pin" + chipPin.physicalPinNumber());
+        }
     }
 
     private HBox buildTop() {

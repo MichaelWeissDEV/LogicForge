@@ -3,6 +3,7 @@ package dev.logicforge.ui.edit;
 import dev.logicforge.analyzer.AnalyzerSignalBinding;
 import dev.logicforge.analyzer.SignalRecorder;
 import dev.logicforge.analyzer.SignalTrace;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.circuit.document.PortSlice;
@@ -41,7 +42,7 @@ public final class LogicAnalyzerController {
      * entry (see {@link #resolveBinding}).
      */
     public record WatchedSignal(
-            PortEndpoint reference, Optional<String> instancePath, String hierarchyPath, String label) {
+            ElectricalEndpoint reference, Optional<String> instancePath, String hierarchyPath, String label) {
     }
 
     private final CircuitEditor editor;
@@ -62,7 +63,7 @@ public final class LogicAnalyzerController {
         return editor.activeInstancePath().isPresent();
     }
 
-    public void addSignal(PortEndpoint reference, String label) {
+    public void addSignal(ElectricalEndpoint reference, String label) {
         Optional<String> path = hierarchyPath(reference);
         if (path.isEmpty()) {
             return;
@@ -74,11 +75,15 @@ public final class LogicAnalyzerController {
         resync();
     }
 
+    public void addSignal(PortEndpoint reference, String label) {
+        addSignal(new ElectricalEndpoint.ComponentEndpoint(reference), label);
+    }
+
     public void addSignal(PortReference reference, String label) {
         addSignal(PortEndpoint.whole(reference), label);
     }
 
-    public void removeSignal(PortEndpoint reference) {
+    public void removeSignal(ElectricalEndpoint reference) {
         if (watched.removeIf(signal -> signal.reference().equals(reference))) {
             resync();
         }
@@ -90,7 +95,7 @@ public final class LogicAnalyzerController {
         }
     }
 
-    public boolean isWatching(PortEndpoint reference) {
+    public boolean isWatching(ElectricalEndpoint reference) {
         return watched.stream().anyMatch(signal -> signal.reference().equals(reference));
     }
 
@@ -104,12 +109,16 @@ public final class LogicAnalyzerController {
                 .map(path -> new SignalLocation(path, signal.reference()));
     }
 
-    public record SignalLocation(RuntimeInstancePath parentPath, PortEndpoint endpoint) {
+    public record SignalLocation(RuntimeInstancePath parentPath, ElectricalEndpoint endpoint) {
+    }
+
+    public Optional<SignalTrace> traceFor(ElectricalEndpoint reference) {
+        return watched.stream().filter(signal -> signal.reference().equals(reference)).findFirst()
+                .flatMap(this::traceFor);
     }
 
     public Optional<SignalTrace> traceFor(PortEndpoint reference) {
-        return watched.stream().filter(signal -> signal.reference().equals(reference)).findFirst()
-                .flatMap(this::traceFor);
+        return traceFor(new ElectricalEndpoint.ComponentEndpoint(reference));
     }
 
     public Optional<SignalTrace> traceFor(WatchedSignal signal) {
@@ -194,6 +203,17 @@ public final class LogicAnalyzerController {
             case ResolvedSignal.ScalarNet scalar -> new AnalyzerSignalBinding.Scalar(scalar.netId());
             case ResolvedSignal.BitVector bits -> new AnalyzerSignalBinding.Bits(bits.nets());
         };
+    }
+
+    private Optional<String> hierarchyPath(ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            return hierarchyPath(component.port());
+        }
+        if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            return editor.activeInstancePath().map(path -> path + "/" + chipPin.chipInstanceId()
+                    + ".pin" + chipPin.physicalPinNumber());
+        }
+        return Optional.empty();
     }
 
     private Optional<String> hierarchyPath(PortEndpoint endpoint) {

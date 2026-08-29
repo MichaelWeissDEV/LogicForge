@@ -1,6 +1,8 @@
 package dev.logicforge.ui.view;
 
+import dev.logicforge.circuit.chip.ChipInstance;
 import dev.logicforge.circuit.document.ComponentInstance;
+import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
 import dev.logicforge.library.ComponentRegistry;
@@ -96,8 +98,17 @@ public final class Workbench extends BorderPane {
         return split;
     }
 
-    /** Adds the port the user right-clicked to the analyzer, labelled by its component. */
-    private void addToAnalyzer(PortEndpoint endpoint) {
+    /** Adds the port or chip pin the user right-clicked to the analyzer. */
+    private void addToAnalyzer(ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            addPortToAnalyzer(component.port());
+        } else if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            addChipPinToAnalyzer(chipPin);
+        }
+    }
+
+    /** Labelled by its component. */
+    private void addPortToAnalyzer(PortEndpoint endpoint) {
         PortReference reference = endpoint.port();
         String componentLabel = editor.document().component(reference.componentId())
                 .map(ComponentInstance::label)
@@ -106,6 +117,20 @@ public final class Workbench extends BorderPane {
         String pin = endpoint.slice() instanceof dev.logicforge.circuit.document.PortSlice.Bit bit
                 ? reference.portName() + "[" + bit.index() + "]" : reference.portName();
         analyzerController.addSignal(endpoint, componentLabel + "." + pin);
+        revealAnalyzer();
+    }
+
+    /** Labelled by its chip's reference designator (e.g. "U1.pin7"). */
+    private void addChipPinToAnalyzer(ElectricalEndpoint.ChipPinEndpoint chipPin) {
+        String designator = editor.document().chip(chipPin.chipInstanceId())
+                .map(ChipInstance::referenceDesignator)
+                .filter(label -> !label.isBlank())
+                .orElseGet(() -> chipPin.chipInstanceId().toString().substring(0, 8));
+        analyzerController.addSignal(chipPin, designator + ".pin" + chipPin.physicalPinNumber());
+        revealAnalyzer();
+    }
+
+    private void revealAnalyzer() {
         if (!analyzerToggle.isSelected()) {
             analyzerToggle.setSelected(true);
             toggleAnalyzer();

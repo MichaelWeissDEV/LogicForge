@@ -234,6 +234,15 @@ public final class CircuitEditor {
     /** Opens the exact concrete hierarchy containing an analyzer endpoint and selects it. */
     public boolean navigateToRuntimeEndpoint(
             dev.logicforge.compiler.RuntimeInstancePath parentPath, PortEndpoint endpoint) {
+        return navigateToRuntimeEndpoint(parentPath, new ElectricalEndpoint.ComponentEndpoint(endpoint));
+    }
+
+    /**
+     * Opens the exact concrete hierarchy containing an analyzer endpoint and selects it — a
+     * component port or a physical chip pin.
+     */
+    public boolean navigateToRuntimeEndpoint(
+            dev.logicforge.compiler.RuntimeInstancePath parentPath, ElectricalEndpoint endpoint) {
         if (project.circuit(parentPath.rootCircuitName()).isEmpty()) {
             return false;
         }
@@ -246,15 +255,30 @@ public final class CircuitEditor {
             }
             openSubcircuit(instance);
         }
-        if (document.component(endpoint.componentId()).isEmpty()) {
-            return false;
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            PortEndpoint port = component.port();
+            if (document.component(port.componentId()).isEmpty()) {
+                return false;
+            }
+            selection.selectComponent(port.componentId());
+            document.connections().stream()
+                    .filter(connection -> connection.touches(port.port()))
+                    .findFirst().ifPresent(connection -> selection.selectConnection(connection.id()));
+            notifyChanged();
+            return true;
         }
-        selection.selectComponent(endpoint.componentId());
-        document.connections().stream()
-                .filter(connection -> connection.touches(endpoint.port()))
-                .findFirst().ifPresent(connection -> selection.selectConnection(connection.id()));
-        notifyChanged();
-        return true;
+        if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            if (document.chip(chipPin.chipInstanceId()).isEmpty()) {
+                return false;
+            }
+            selection.selectChip(chipPin.chipInstanceId());
+            document.connections().stream()
+                    .filter(connection -> connection.from().equals(endpoint) || connection.to().equals(endpoint))
+                    .findFirst().ifPresent(connection -> selection.selectConnection(connection.id()));
+            notifyChanged();
+            return true;
+        }
+        return false;
     }
 
     private void switchActiveCircuit(String circuitName, Optional<String> instancePath,
@@ -566,6 +590,26 @@ public final class CircuitEditor {
             Optional<String> instancePath, PortEndpoint endpoint) {
         return compilation == null ? Optional.empty()
                 : new HierarchyRuntimeContext(compilation, instancePath).resolveSignal(endpoint);
+    }
+
+    /**
+     * Hierarchy-path-aware counterpart of {@link #signalAt(ElectricalEndpoint)} for a
+     * long-lived watch (a logic analyzer trace) that must capture its instance path instead of
+     * relying on the editor's ambient current view. A chip pin resolves through the compiler's
+     * {@code ChipSourceMap} exactly like the ambient overload — chips inside a nested
+     * subcircuit are not addressable this way yet, only chips in the compiled circuit's own
+     * root; see {@link #logicalEndpointForChipPin(UUID, int)}.
+     */
+    public Optional<dev.logicforge.compiler.ResolvedSignal> signalAt(
+            Optional<String> instancePath, ElectricalEndpoint endpoint) {
+        if (endpoint instanceof ElectricalEndpoint.ComponentEndpoint component) {
+            return signalAt(instancePath, component.port());
+        }
+        if (endpoint instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+            return logicalEndpointForChipPin(chipPin.chipInstanceId(), chipPin.physicalPinNumber())
+                    .flatMap(logical -> signalAt(instancePath, logical));
+        }
+        return Optional.empty();
     }
 
     /** The value on a wire, for drawing it in the colour of its signal. */

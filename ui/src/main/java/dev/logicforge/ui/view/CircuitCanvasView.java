@@ -96,7 +96,7 @@ public final class CircuitCanvasView extends Region {
     private PlacementRequest pendingPlacement;
     private Runnable statusListener = () -> {
     };
-    private java.util.function.Consumer<PortEndpoint> analyzerListener = endpoint -> {
+    private java.util.function.Consumer<ElectricalEndpoint> analyzerListener = endpoint -> {
     };
     private java.util.function.Consumer<ComponentInstance> hierarchyOpenListener = instance -> {
     };
@@ -147,8 +147,8 @@ public final class CircuitCanvasView extends Region {
         this.statusListener = listener;
     }
 
-    /** Called with the port a user picked "Add to Logic Analyzer" for. */
-    public void setAnalyzerListener(java.util.function.Consumer<PortEndpoint> listener) {
+    /** Called with the port or chip pin a user picked "Add to Logic Analyzer" for. */
+    public void setAnalyzerListener(java.util.function.Consumer<ElectricalEndpoint> listener) {
         this.analyzerListener = listener;
     }
 
@@ -845,23 +845,19 @@ public final class CircuitCanvasView extends Region {
                 ? hitTester.connectionAt(world, worldTolerance(WIRE_TOLERANCE_PIXELS))
                 : Optional.empty();
 
-        Optional<PortEndpoint> componentPortEndpoint = endpoint
-                .map(PlacedElectricalEndpoint::endpoint)
-                .filter(ElectricalEndpoint.ComponentEndpoint.class::isInstance)
-                .map(e -> ((ElectricalEndpoint.ComponentEndpoint) e).port());
-
-        if (componentPortEndpoint.isPresent()) {
+        if (endpoint.isPresent()) {
+            // A port or chip pin: select its chip (if any) and offer the analyzer action —
+            // the same treatment a component port already gets.
+            ElectricalEndpoint electrical = endpoint.get().endpoint();
+            if (electrical instanceof ElectricalEndpoint.ChipPinEndpoint chipPin) {
+                editor.document().chip(chipPin.chipInstanceId()).ifPresent(instance -> {
+                    if (!editor.selection().containsChip(instance.id())) {
+                        editor.selection().selectChip(instance.id());
+                    }
+                });
+            }
             contextMenu.showForPort(this, event.getScreenX(), event.getScreenY(),
-                    () -> analyzerListener.accept(componentPortEndpoint.get()));
-        } else if (endpoint.isPresent()) {
-            // A chip pin: select its chip and offer the same actions as the chip body.
-            editor.document().chip(((ElectricalEndpoint.ChipPinEndpoint) endpoint.get().endpoint())
-                    .chipInstanceId()).ifPresent(instance -> {
-                if (!editor.selection().containsChip(instance.id())) {
-                    editor.selection().selectChip(instance.id());
-                }
-            });
-            contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
+                    () -> analyzerListener.accept(electrical));
         } else if (component.isPresent()) {
             if (!editor.selection().containsComponent(component.get().id())) {
                 editor.selection().selectComponent(component.get().id());
@@ -873,13 +869,12 @@ public final class CircuitCanvasView extends Region {
             }
             contextMenu.showForComponent(this, event.getScreenX(), event.getScreenY());
         } else if (wire.isPresent()) {
-            Optional<PortEndpoint> wireEndpoint = dev.logicforge.circuit.document.ElectricalEndpoints
-                    .componentPort(wire.get().from());
+            ElectricalEndpoint wireEndpoint = wire.get().from();
             if (!editor.selection().containsConnection(wire.get().id())) {
                 editor.selection().selectConnection(wire.get().id());
             }
             contextMenu.showForWire(this, event.getScreenX(), event.getScreenY(),
-                    () -> wireEndpoint.ifPresent(analyzerListener));
+                    () -> analyzerListener.accept(wireEndpoint));
         } else {
             contextMenu.showForCanvas(this, event.getScreenX(), event.getScreenY());
         }
