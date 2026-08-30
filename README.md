@@ -68,17 +68,20 @@ assembler and disassembler.
 
 **Structural implementations.** The headless `component-structures` module supplies a
 registry of canonical reference circuits: gate-level 2:1 muxes (widths 1, 3, 4, 8 and 16),
-half/full/ripple adders, a 16-bit decrementer, SR and D latches, a master-slave DFF,
-Register8, an 8x8 dual-read register file and ALU8. These are real hierarchies, not
-behavioral components hidden inside subcircuits, and every one registered is proven
-equivalent to its behavioral counterpart — including four-valued `X`/`Z` propagation, not
-just fully-defined values — by a dedicated test that drives both from the same source and
-compares their outputs directly. (A gate-level 2-to-4 decoder exists in the same module but
-is deliberately *not* registered: it lacks the behavioral decoder's `ENABLE` input, and its
-product-term structure resolves some outputs to a definite `0` on a partially undefined
-select where the behavioral component conservatively drives every output to `X` — a genuine
-divergence, not just a port-shape mismatch. See `StructuralDecoderTest` for the exact case.)
-LF-8 `STRUCTURAL` mode replaces its ALU and register file with these circuits, exposing both
+half/full/ripple adders, a 16-bit decrementer, resettable registers (widths 1, 3, 4, 8), a
+16-bit loadable counter (two proven reset values), a modulo-8 counter, SR and D latches, a
+master-slave DFF, Register8, an 8x8 dual-read register file and ALU8. These are real
+hierarchies, not behavioral components hidden inside subcircuits, and every one registered
+is proven equivalent to its behavioral counterpart — including four-valued `X`/`Z`
+propagation and, for the counters, their `TC` (terminal count) output, not just the common
+case — by a dedicated test that drives both from the same source and compares their outputs
+directly. (A gate-level 2-to-4 decoder with a real `ENABLE` gate on every output also exists
+in the same module but is deliberately *not* registered: for a partially undefined `SELECT`,
+its product-term structure resolves some outputs to a definite `0` where the behavioral
+component conservatively drives every output to `X` — a genuine, permanent divergence
+between an actual gate network and that simpler abstraction, not a bug to fix. See
+`StructuralDecoderTest` for the exact case.) LF-8 `STRUCTURAL` mode replaces its ALU and
+register file with these circuits, exposing both
 deep paths in a running processor, and `GATE_LEVEL` mode goes further still. All three
 modes are differentially tested instruction-by-instruction against `FAST` — the reference —
 across arithmetic, logic, shifts, flag boundary values (`0x00`/`0x01`/`0x7F`/`0x80`/`0xFE`/

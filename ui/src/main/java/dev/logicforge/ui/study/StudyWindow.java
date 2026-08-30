@@ -87,6 +87,10 @@ public final class StudyWindow extends Stage {
                 }
                 dirty = false;
                 lastRefresh = now;
+                controller.advanceWhileRunning();
+                controller.lastBreakpointHit().ifPresent(hit ->
+                        status.setText("Breakpoint hit at 0x"
+                                + Integer.toHexString(hit.address()).toUpperCase(java.util.Locale.ROOT)));
                 canvas.redraw();
                 inspector.refresh();
                 updateControls();

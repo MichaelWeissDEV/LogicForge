@@ -320,33 +320,49 @@ public final class StructuralCircuitFactory {
         return circuit;
     }
 
+    /**
+     * Matches {@code routing.decoder}'s own port shape ({@code SEL, ENABLE} in, {@code
+     * OUT0..OUT3} out) — a genuine {@code ENABLE} gate on every output, not the address-only
+     * shape this circuit had before. See {@link
+     * dev.logicforge.structures.StructuralDecoderTest} for exactly how far the equivalence
+     * goes and why: for every fully defined {@code SEL}/{@code ENABLE}, gate for gate,
+     * indistinguishable. For a partially undefined {@code SEL}, the two remain intentionally
+     * different — a real product-term decoder resolves some outputs to a definite 0 whenever
+     * that output's own term happens to depend on a defined-0 select bit, where the
+     * behavioral component conservatively drives every output to X the instant any select
+     * bit is undefined. That is not a bug in either one; it is what distinguishes an actual
+     * gate network from the simpler abstraction, so it is deliberately not "fixed" away, and
+     * this circuit is deliberately not registered in {@link StructuralImplementationRegistry}.
+     */
     private static CircuitDocument decoder2To4Circuit() {
         ComponentRegistry registry = ComponentRegistry.standard();
         CircuitDocument circuit = document(DECODER_2_TO_4,
-                "Gate-level 2-to-4 decoder using inverted and true select terms");
-        ComponentInstance address = input(circuit, registry, -260, 0, "A", 2);
-        ComponentInstance outputs = output(circuit, registry, 260, 0, "Y", 4);
+                "Gate-level 2-to-4 decoder with a real ENABLE gate on every output");
+        ComponentInstance select = input(circuit, registry, -260, 0, "SEL", 2);
+        ComponentInstance enable = input(circuit, registry, -260, 160, "ENABLE", 1);
         ComponentInstance split = component(circuit, registry, "routing.splitter", -180, 0,
                 registry.require("routing.splitter").definition().defaultParameters()
                         .with(LibraryParameters.WIDTH, 2), "ADDRESS_BITS");
-        ComponentInstance join = component(circuit, registry, "routing.joiner", 180, 0,
-                registry.require("routing.joiner").definition().defaultParameters()
-                        .with(LibraryParameters.WIDTH, 4), "OUTPUT_BITS");
         ComponentInstance not0 = component(circuit, registry, "logic.not", -100, -50, "NOT_A0");
         ComponentInstance not1 = component(circuit, registry, "logic.not", -100, 50, "NOT_A1");
-        wire(circuit, address, "OUT", split, "BUS");
+        wire(circuit, select, "OUT", split, "BUS");
         wire(circuit, split, "BIT0", not0, "A");
         wire(circuit, split, "BIT1", not1, "A");
         for (int value = 0; value < 4; value++) {
-            ComponentInstance term = component(circuit, registry, "logic.and", 40,
-                    -90 + value * 60.0, "DECODE_" + value);
+            double y = -150 + value * 100.0;
+            ComponentInstance term = component(circuit, registry, "logic.and", 40, y,
+                    "DECODE_" + value);
             wire(circuit, (value & 1) == 0 ? not0 : split,
                     (value & 1) == 0 ? "Y" : "BIT0", term, "IN0");
             wire(circuit, (value & 2) == 0 ? not1 : split,
                     (value & 2) == 0 ? "Y" : "BIT1", term, "IN1");
-            wire(circuit, term, "OUT", join, "BIT" + value);
+            ComponentInstance gated = component(circuit, registry, "logic.and", 140, y,
+                    "GATED_" + value);
+            wire(circuit, term, "OUT", gated, "IN0");
+            wire(circuit, enable, "OUT", gated, "IN1");
+            ComponentInstance out = output(circuit, registry, 260, y, "OUT" + value, 1);
+            wire(circuit, gated, "OUT", out, "IN");
         }
-        wire(circuit, join, "BUS", outputs, "IN");
         return circuit;
     }
 
@@ -601,6 +617,7 @@ public final class StructuralCircuitFactory {
         ComponentInstance enable = input(circuit, registry, -420, 20, "ENABLE", 1);
         ComponentInstance data = input(circuit, registry, -420, 100, "DATA", 16);
         ComponentInstance count = output(circuit, registry, 420, -80, "COUNT", 16);
+        ComponentInstance tc = output(circuit, registry, 420, 180, "TC", 1);
         String registerName = structuralRegisterName(16, true, resetValue);
         ComponentInstance storage = subcircuit(circuit, registerName, 160, -80, "REGISTER16");
         ComponentInstance adder = subcircuit(circuit, rippleAdderName(16), -160, -80,
@@ -630,7 +647,31 @@ public final class StructuralCircuitFactory {
         wire(circuit, clk, "OUT", storage, "CLK");
         wire(circuit, reset, "OUT", storage, "RESET");
         wire(circuit, storage, "Q", count, "IN");
+        wireTerminalCount(circuit, registry, storage, "Q", 16, tc, 280, 180);
         return circuit;
+    }
+
+    /**
+     * TC ("terminal count") is 1 exactly when every bit of the counter's own output is 1 —
+     * an ordinary N-input AND reduction, gate for gate what {@code LoadableCounterBehavior}
+     * and {@code ModuloCounterBehavior} both compute for their maximum representable value
+     * (which, for {@link #moduloCounter3Circuit}, is also its modulus - 1: modulus 8 is the
+     * full 3-bit range).
+     */
+    private static void wireTerminalCount(CircuitDocument circuit, ComponentRegistry registry,
+                                          ComponentInstance countSource, String countPort, int width,
+                                          ComponentInstance tc, double x, double y) {
+        ComponentInstance bits = component(circuit, registry, "routing.splitter", x, y,
+                registry.require("routing.splitter").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, width), "TERMINAL_COUNT_BITS");
+        wire(circuit, countSource, countPort, bits, "BUS");
+        ComponentInstance reduction = component(circuit, registry, "logic.and", x + 80, y,
+                registry.require("logic.and").definition().defaultParameters()
+                        .with(LibraryParameters.INPUT_COUNT, width), "TERMINAL_COUNT_AND");
+        for (int bit = 0; bit < width; bit++) {
+            wire(circuit, bits, "BIT" + bit, reduction, "IN" + bit);
+        }
+        wire(circuit, reduction, "OUT", tc, "IN");
     }
 
     private static CircuitDocument moduloCounter3Circuit() {
@@ -641,6 +682,7 @@ public final class StructuralCircuitFactory {
         ComponentInstance reset = input(circuit, registry, -360, -40, "RESET", 1);
         ComponentInstance enable = input(circuit, registry, -360, 20, "ENABLE", 1);
         ComponentInstance count = output(circuit, registry, 360, -60, "COUNT", 3);
+        ComponentInstance tc = output(circuit, registry, 360, 100, "TC", 1);
         ComponentInstance storage = subcircuit(circuit,
                 structuralRegisterName(3, true, 0), 120, -60, "REGISTER3");
         ComponentInstance adder = subcircuit(circuit, rippleAdderName(3), -140, -60,
@@ -664,6 +706,7 @@ public final class StructuralCircuitFactory {
         wire(circuit, clk, "OUT", storage, "CLK");
         wire(circuit, reset, "OUT", storage, "RESET");
         wire(circuit, storage, "Q", count, "IN");
+        wireTerminalCount(circuit, registry, storage, "Q", 3, tc, 240, 100);
         return circuit;
     }
 

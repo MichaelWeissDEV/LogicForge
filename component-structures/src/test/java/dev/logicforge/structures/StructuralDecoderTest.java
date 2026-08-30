@@ -23,41 +23,46 @@ import dev.logicforge.simulation.Simulation;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link StructuralCircuitFactory#decoder2To4Project} is a plain gate-level 2-to-4 decoder
- * — {@code A} in, {@code Y} out — with no {@code ENABLE} input at all, unlike the behavioral
- * {@code routing.decoder} it would need to stand in for ({@code SEL, ENABLE} in, {@code
- * OUT0..OUT3} out). It is deliberately <b>not</b> registered in {@link
- * StructuralImplementationRegistry}: these tests exist to pin down exactly why, not just as
- * a port-shape mismatch but a real four-valued-logic divergence, so a future attempt to wire
- * an ENABLE gate onto it knows what it still has to get right.
+ * {@link StructuralCircuitFactory#decoder2To4Project} now matches the behavioral {@code
+ * routing.decoder}'s own port shape exactly ({@code SEL, ENABLE} in, {@code OUT0..OUT3}
+ * out) — see {@link StructuralCircuitFactory#decoder2To4Circuit} for the actual gate-level
+ * {@code ENABLE} wiring. It is still deliberately <b>not</b> registered in {@link
+ * StructuralImplementationRegistry}: these tests exist to pin down exactly why, and it is
+ * not a port-shape mismatch anymore — it is a real, permanent four-valued-logic divergence.
  *
- * <p>For a fully defined {@code SEL}, the two agree — see {@link
- * #matchesTheEnabledBehavioralDecoderForEveryFullyDefinedSelectValue()}. The divergence only
- * shows up once {@code SEL} carries an {@code X}: the behavioral decoder treats <em>any</em>
- * undefined {@code SEL} bit as "cannot know which output would be selected," so it drives
- * every output to X. The gate-level product terms, though, resolve some outputs to a
- * definite 0 whenever a term happens to depend on a select bit that is 0 rather than the X
- * one — see {@link #divergesFromTheBehavioralDecoderOnAPartiallyUndefinedSelect()}.
+ * <p>For every fully defined {@code SEL} and {@code ENABLE}, the two agree exactly — see
+ * {@link #matchesTheBehavioralDecoderForEveryFullyDefinedSelectAndEnableValue()}. The
+ * divergence only shows up once {@code SEL} carries an {@code X}: the behavioral decoder
+ * treats <em>any</em> undefined {@code SEL} bit as "cannot know which output would be
+ * selected," so it drives every output to X. The gate-level product terms, though, resolve
+ * some outputs to a definite 0 whenever a term happens to depend on a select bit that is 0
+ * rather than the X one — see {@link #divergesFromTheBehavioralDecoderOnAPartiallyUndefinedSelect()}.
  */
 class StructuralDecoderTest {
 
     @Test
-    void matchesTheEnabledBehavioralDecoderForEveryFullyDefinedSelectValue() {
+    void matchesTheBehavioralDecoderForEveryFullyDefinedSelectAndEnableValue() {
         for (int sel = 0; sel < 4; sel++) {
-            Result result = evaluate(LogicVector.fromUnsignedLong(sel, 2));
-            assertEquals(result.behavioral(), result.structural(), "SEL=" + sel);
-            for (int output = 0; output < 4; output++) {
-                assertEquals(output == sel, result.structural().getBit(output) == LogicState.ONE);
+            for (int enable = 0; enable <= 1; enable++) {
+                Result result = evaluate(LogicVector.fromUnsignedLong(sel, 2),
+                        enable == 1 ? LogicVector.ONE : LogicVector.ZERO);
+                assertEquals(result.behavioral(), result.structural(),
+                        "SEL=" + sel + " ENABLE=" + enable);
+                for (int output = 0; output < 4; output++) {
+                    boolean expectedHigh = enable == 1 && output == sel;
+                    assertEquals(expectedHigh, result.structural().getBit(output) == LogicState.ONE,
+                            "OUT" + output + " at SEL=" + sel + " ENABLE=" + enable);
+                }
             }
         }
     }
 
     @Test
     void divergesFromTheBehavioralDecoderOnAPartiallyUndefinedSelect() {
-        // SEL = "X0": bit 0 (LSB) is defined as 0, bit 1 is undefined.
+        // SEL = "X0": bit 0 (LSB) is defined as 0, bit 1 is undefined. ENABLE is held high.
         LogicVector partiallyUndefined = LogicVector.of("X0");
 
-        Result result = evaluate(partiallyUndefined);
+        Result result = evaluate(partiallyUndefined, LogicVector.ONE);
 
         assertEquals(LogicVector.repeat(LogicState.UNKNOWN, 4), result.behavioral(),
                 "the behavioral decoder cannot know which output applies, so every output is X");
@@ -77,13 +82,13 @@ class StructuralDecoderTest {
         StructuralImplementationRegistry registry = StructuralImplementationRegistry.standard();
         assertTrue(registry.find("routing.decoder",
                 ParameterValues.empty().with(LibraryParameters.SELECT_BITS, 2), ImplementationLevel.GATE)
-                .isEmpty(), "not a faithful implementation yet — see class javadoc");
+                .isEmpty(), "not a faithful implementation for every input — see class javadoc");
     }
 
     private record Result(LogicVector behavioral, LogicVector structural) {
     }
 
-    private static Result evaluate(LogicVector sel) {
+    private static Result evaluate(LogicVector sel, LogicVector enable) {
         ComponentRegistry registry = ComponentRegistry.standard();
         CircuitProject project = new CircuitProject("struct-decoder-equivalence");
         for (CircuitDocument child : StructuralCircuitFactory.decoder2To4Project().circuits()) {
@@ -94,7 +99,8 @@ class StructuralDecoderTest {
         CircuitDocument main = new CircuitDocument(new CircuitMetadata("main", "decoder equivalence harness"));
 
         BusSource selA = busSource(main, "SEL_A", -300, -100, sel);
-        ComponentInstance enable = add(main, "source.one", "ENABLE", -300, 0, ParameterValues.empty());
+        ComponentInstance enableA = add(main, sourceTypeFor(enable.getBit(0)), "ENABLE_A",
+                -300, 0, ParameterValues.empty());
         ComponentInstance behavioral = add(main, "routing.decoder", "BEHAVIORAL", 0, -60,
                 registry.require("routing.decoder").definition().defaultParameters()
                         .with(LibraryParameters.SELECT_BITS, 2));
@@ -105,19 +111,28 @@ class StructuralDecoderTest {
                 busProbeParams(registry));
 
         BusSource selB = busSource(main, "SEL_B", -300, 100, sel);
+        ComponentInstance enableB = add(main, sourceTypeFor(enable.getBit(0)), "ENABLE_B",
+                -300, 160, ParameterValues.empty());
         ComponentInstance structural = sub(main, StructuralCircuitFactory.DECODER_2_TO_4, "STRUCTURAL", 0, 100);
+        ComponentInstance structuralJoin = add(main, "routing.joiner", "STRUCTURAL_JOIN", 200, 100,
+                registry.require("routing.joiner").definition().defaultParameters()
+                        .with(LibraryParameters.WIDTH, 4));
         ComponentInstance structuralOut = add(main, "routing.bus_probe", "STRUCTURAL_OUT", 380, 100,
                 busProbeParams(registry));
 
         wire(main, selA.instance(), selA.port(), behavioral, "SEL");
-        wire(main, enable, "OUT", behavioral, "ENABLE");
+        wire(main, enableA, "OUT", behavioral, "ENABLE");
         for (int i = 0; i < 4; i++) {
             wire(main, behavioral, "OUT" + i, behavioralJoin, "BIT" + i);
         }
         wire(main, behavioralJoin, "BUS", behavioralOut, "IN");
 
-        wire(main, selB.instance(), selB.port(), structural, "A");
-        wire(main, structural, "Y", structuralOut, "IN");
+        wire(main, selB.instance(), selB.port(), structural, "SEL");
+        wire(main, enableB, "OUT", structural, "ENABLE");
+        for (int i = 0; i < 4; i++) {
+            wire(main, structural, "OUT" + i, structuralJoin, "BIT" + i);
+        }
+        wire(main, structuralJoin, "BUS", structuralOut, "IN");
 
         project.putCircuit(main);
         var compiled = new CircuitCompiler(registry).compile(project, "main");

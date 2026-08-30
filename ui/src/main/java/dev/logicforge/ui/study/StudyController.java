@@ -2,13 +2,20 @@ package dev.logicforge.ui.study;
 
 import dev.logicforge.processor.lf8.runtime.Lf8RuntimeProbe;
 import dev.logicforge.processor.lf8.runtime.ClockControl;
+import dev.logicforge.processor.lf8.runtime.Breakpoint;
+import dev.logicforge.processor.lf8.runtime.BreakpointEngine;
+import dev.logicforge.processor.lf8.runtime.MemoryReadBreakpoint;
+import dev.logicforge.processor.lf8.runtime.MemoryWriteBreakpoint;
+import dev.logicforge.processor.lf8.runtime.PcBreakpoint;
 
 import dev.logicforge.circuit.document.ComponentInstance;
 import dev.logicforge.library.ComponentRegistry;
 import dev.logicforge.simulation.Simulation;
 import dev.logicforge.ui.edit.CircuitEditor;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.List;
 import java.util.Optional;
 import dev.logicforge.compiler.RuntimeInstancePath;
 
@@ -20,6 +27,8 @@ public final class StudyController {
     private final StudyTarget target;
     private final CircuitEditor editor = new CircuitEditor(ComponentRegistry.standard());
     private final Deque<java.util.UUID> forwardInstances = new ArrayDeque<>();
+    private final BreakpointEngine breakpointEngine = new BreakpointEngine();
+    private BreakpointEngine.BreakpointHit lastHit;
 
     public StudyController(StudyTarget target) {
         this.target = target;
@@ -81,6 +90,125 @@ public final class StudyController {
         }
         return cpuPath.map(path -> new Lf8RuntimeProbe(live.project(), live.compilation(),
                 live.simulation(), path));
+    }
+
+    // ------------------------------------------------------------------ breakpoints
+
+    /** Every breakpoint set so far, regardless of which CPU it targets or its enabled state. */
+    public List<Breakpoint> breakpoints() {
+        return breakpointEngine.breakpoints();
+    }
+
+    public boolean canAddBreakpoint() {
+        return lf8Probe().isPresent();
+    }
+
+    public void addPcBreakpoint(int address) {
+        addBreakpoint(cpuPath -> new PcBreakpoint(cpuPath, address));
+    }
+
+    public void addMemoryReadBreakpoint(int firstAddress, int lastAddress) {
+        addBreakpoint(cpuPath -> new MemoryReadBreakpoint(cpuPath, firstAddress, lastAddress, true));
+    }
+
+    public void addMemoryWriteBreakpoint(int firstAddress, int lastAddress) {
+        addBreakpoint(cpuPath -> new MemoryWriteBreakpoint(cpuPath, firstAddress, lastAddress, true));
+    }
+
+    private void addBreakpoint(java.util.function.Function<RuntimeInstancePath, Breakpoint> factory) {
+        RuntimeInstancePath cpuPath = lf8Probe().map(Lf8RuntimeProbe::cpuPath).orElse(null);
+        if (cpuPath == null) {
+            return;
+        }
+        List<Breakpoint> updated = new ArrayList<>(breakpointEngine.breakpoints());
+        updated.add(factory.apply(cpuPath));
+        breakpointEngine.setBreakpoints(updated);
+    }
+
+    public void removeBreakpoint(Breakpoint breakpoint) {
+        List<Breakpoint> updated = new ArrayList<>(breakpointEngine.breakpoints());
+        updated.remove(breakpoint);
+        breakpointEngine.setBreakpoints(updated);
+        if (lastHit != null && lastHit.breakpoint().equals(breakpoint)) {
+            lastHit = null;
+        }
+    }
+
+    public void setBreakpointEnabled(Breakpoint breakpoint, boolean enabled) {
+        List<Breakpoint> updated = new ArrayList<>(breakpointEngine.breakpoints());
+        int index = updated.indexOf(breakpoint);
+        if (index < 0) {
+            return;
+        }
+        Breakpoint replacement = switch (breakpoint) {
+            case PcBreakpoint pc -> new PcBreakpoint(pc.cpuPath(), pc.address(), enabled);
+            case MemoryReadBreakpoint read -> new MemoryReadBreakpoint(
+                    read.cpuPath(), read.firstAddress(), read.lastAddress(), enabled);
+            case MemoryWriteBreakpoint write -> new MemoryWriteBreakpoint(
+                    write.cpuPath(), write.firstAddress(), write.lastAddress(), enabled);
+        };
+        updated.set(index, replacement);
+        breakpointEngine.setBreakpoints(updated);
+    }
+
+    /** The breakpoint (if any) that just fired, until the next {@link #checkBreakpoints()} clears it. */
+    public Optional<BreakpointEngine.BreakpointHit> lastBreakpointHit() {
+        return Optional.ofNullable(lastHit);
+    }
+
+    /** Upper bound on clock edges one Study refresh tick pumps — keeps "Run" UI-responsive. */
+    private static final int MAX_EDGES_PER_TICK = 2_000;
+
+    /**
+     * Drives the LF-8 CPU's own clock forward while "Run" is active and checks breakpoints
+     * after every single edge — an LF-8 circuit's {@code CLK} is an ordinary manually-driven
+     * switch (see {@code ClockControl}), not a scheduled {@code source.clock}, so nothing
+     * else in the simulator advances it on its own; without this, toggling "Run" on an LF-8
+     * target would sit idle forever. Reuses the existing headless {@code BreakpointEngine}
+     * exactly the way a fired logic analyzer trigger reuses {@code SimulationSession} — the
+     * engine only ever decides *whether* a condition matched, this method decides what to do
+     * about it. Stops on a breakpoint hit, on the CPU halting, or after {@link
+     * #MAX_EDGES_PER_TICK} edges (so a UI frame can never be blocked indefinitely); the next
+     * tick picks up exactly where this one left off.
+     */
+    public void advanceWhileRunning() {
+        if (!isLive() || !editor.isRunning()) {
+            return;
+        }
+        Lf8RuntimeProbe probe = lf8Probe().orElse(null);
+        Simulation simulation = editor.simulation().orElse(null);
+        if (probe == null || simulation == null) {
+            return;
+        }
+        var clock = dev.logicforge.processor.lf8.runtime.ClockControl
+                .discover(live().compilation(), simulation, probe.cpuPath()).orElse(null);
+        if (clock == null) {
+            return;
+        }
+        boolean stop = false;
+        for (int edge = 0; edge < MAX_EDGES_PER_TICK && !stop; edge++) {
+            if (!clock.stepActiveEdge()) {
+                stop = true;
+                break;
+            }
+            var hit = breakpointEngine.evaluate(probe);
+            if (hit.isPresent()) {
+                lastHit = hit.orElseThrow();
+                stop = true;
+            } else if (halted(probe)) {
+                stop = true;
+            }
+        }
+        editor.simulationSession().ifPresent(
+                dev.logicforge.simulation.SimulationSession::simulationChanged);
+        if (stop) {
+            editor.setRunning(false);
+        }
+    }
+
+    private static boolean halted(Lf8RuntimeProbe probe) {
+        return probe.cpuPort("HALT").map(value -> value.singleBit()
+                == dev.logicforge.logic.LogicState.ONE).orElse(false);
     }
 
     public void descend(ComponentInstance instance) {

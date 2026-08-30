@@ -1,11 +1,14 @@
 package dev.logicforge.ui.view;
 
 import dev.logicforge.compiler.ValidationIssue;
+import dev.logicforge.simulation.SimulationMetrics;
 import dev.logicforge.simulation.SimulationStatus;
 import dev.logicforge.simulation.SimulationTime;
 import dev.logicforge.ui.edit.CircuitEditor;
 import dev.logicforge.ui.viewport.ViewportTransform;
+import java.util.Locale;
 import javafx.scene.control.Label;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -22,6 +25,7 @@ public final class StatusBarView extends HBox {
     private final Label zoom = new Label();
     private final Label simulation = new Label();
     private final Label time = new Label();
+    private final Tooltip metricsTooltip = new Tooltip();
 
     public StatusBarView(CircuitEditor editor, ViewportTransform viewport) {
         this.editor = editor;
@@ -34,6 +38,8 @@ public final class StatusBarView extends HBox {
             label.getStyleClass().add("status-item");
         }
         getChildren().addAll(message, spacer, components, nets, zoom, simulation, time);
+        metricsTooltip.setShowDelay(javafx.util.Duration.millis(200));
+        Tooltip.install(time, metricsTooltip);
 
         editor.addChangeListener(this::update);
         update();
@@ -47,6 +53,8 @@ public final class StatusBarView extends HBox {
         zoom.setText("Zoom: " + Math.round(viewport.scale() * 100) + "%");
 
         time.setText("t = " + SimulationTime.ofPicoseconds(editor.currentTime()));
+        metricsTooltip.setText(editor.metrics().map(StatusBarView::formatMetrics)
+                .orElse("No simulation metrics yet"));
 
         SimulationStatus status = editor.status();
         simulation.setText("Simulation: " + status.displayName());
@@ -87,5 +95,18 @@ public final class StatusBarView extends HBox {
     public void showMessage(String text) {
         message.getStyleClass().removeAll("status-warning", "status-error");
         message.setText(text);
+    }
+
+    /** Purely observational — see {@link SimulationMetrics}; hover the time label to see it. */
+    private static String formatMetrics(SimulationMetrics metrics) {
+        return String.format(Locale.ROOT,
+                "Simulation metrics (since start or last reset)%n"
+                        + "Events processed: %,d%n"
+                        + "Component evaluations: %,d%n"
+                        + "Net transitions: %,d%n"
+                        + "Delta cycles: %,d (max depth at one timestamp: %,d)%n"
+                        + "Scheduled wakeups: %,d",
+                metrics.eventsProcessed(), metrics.componentEvaluations(), metrics.netTransitions(),
+                metrics.deltaCycles(), metrics.maxDeltaDepth(), metrics.scheduledWakeups());
     }
 }

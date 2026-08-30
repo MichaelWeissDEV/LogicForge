@@ -461,6 +461,11 @@ public final class CircuitEditor {
         return simulation == null ? SimulationStatus.STABLE : simulation.status();
     }
 
+    /** Purely observational activity counters — see {@link dev.logicforge.simulation.SimulationMetrics}. */
+    public Optional<dev.logicforge.simulation.SimulationMetrics> metrics() {
+        return simulation == null ? Optional.empty() : Optional.of(simulation.metrics());
+    }
+
     public boolean isRunning() {
         return simulationSession == null ? desiredRunning : simulationSession.isRunning();
     }

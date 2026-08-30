@@ -42,6 +42,28 @@ class CircuitEditorTest {
     private final CircuitEditor editor = new CircuitEditor(ComponentRegistry.standard());
 
     @Test
+    void metricsAreEmptyBeforeAnyCompilationAndAccumulateAfterActivity() {
+        CircuitEditor fresh = new CircuitEditor(ComponentRegistry.standard());
+        // A brand-new editor already has a compiled empty "main" circuit, so metrics exist
+        // immediately — but with nothing driven yet, nothing should have happened.
+        var initial = fresh.metrics().orElseThrow();
+        assertEquals(0, initial.netTransitions());
+
+        ComponentInstance switchInstance = add("source.toggle", 0, 0);
+        ComponentInstance led = add("output.led", 200, 0);
+        connect(switchInstance, "OUT", led, "IN");
+        var afterWiring = editor.metrics().orElseThrow();
+
+        editor.toggleInput(switchInstance.id());
+
+        var afterToggle = editor.metrics().orElseThrow();
+        assertTrue(afterToggle.netTransitions() > afterWiring.netTransitions(),
+                "flipping the switch must register as real net activity");
+        assertTrue(afterToggle.eventsProcessed() > 0);
+        assertTrue(afterToggle.componentEvaluations() > 0);
+    }
+
+    @Test
     void switchingActiveCircuitClearsSelectionWithoutMutatingDocuments() {
         CircuitProject project = CircuitProject.empty("navigation");
         CircuitDocument child = project.addCircuit("ALU8");
