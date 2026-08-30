@@ -49,6 +49,18 @@ public final class StructuralImplementationRegistry {
                 "Gate-level Mux2", "NOT/AND/OR implementation",
                 StructuralCircuitFactory::mux2Project,
                 List.of("mux", "routing", "gates")));
+        for (int width : List.of(3, 4, 8, 16)) {
+            registry.register(descriptor("routing.mux2",
+                    ParameterMatcher.equalTo(LibraryParameters.WIDTH, width),
+                    "Structural Mux2 (width " + width + ")", "Bit-sliced gate-level 2:1 mux",
+                    () -> StructuralCircuitFactory.structuralBusMuxProject(width),
+                    List.of("mux", "routing", "hierarchy")));
+        }
+        registry.register(descriptor("arithmetic.decrementer",
+                ParameterMatcher.equalTo(LibraryParameters.WIDTH, 16),
+                "Structural Decrementer16", "A + 0xFFFF through the ripple-adder hierarchy",
+                StructuralCircuitFactory::decrementer16Project,
+                List.of("decrement", "16-bit", "adder", "hierarchy")));
         registry.register(descriptor("sequential.d_ff",
                 ParameterMatcher.equalTo(LibraryParameters.CLOCK_EDGE, "rising"),
                 "Master-Slave DFF", "DFF -> D latches -> SR latches -> gates",

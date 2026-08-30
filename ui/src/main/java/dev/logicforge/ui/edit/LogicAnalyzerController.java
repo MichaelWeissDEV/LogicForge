@@ -3,6 +3,8 @@ package dev.logicforge.ui.edit;
 import dev.logicforge.analyzer.AnalyzerSignalBinding;
 import dev.logicforge.analyzer.SignalRecorder;
 import dev.logicforge.analyzer.SignalTrace;
+import dev.logicforge.analyzer.TriggerCondition;
+import dev.logicforge.analyzer.TriggerEngine;
 import dev.logicforge.circuit.document.ElectricalEndpoint;
 import dev.logicforge.circuit.document.PortReference;
 import dev.logicforge.circuit.document.PortEndpoint;
@@ -51,6 +53,9 @@ public final class LogicAnalyzerController {
 
     private Simulation attachedSimulation;
     private SignalRecorder recorder;
+    private TriggerEngine triggerEngine;
+    private WatchedSignal armedSignal;
+    private TriggerCondition armedCondition;
 
     public LogicAnalyzerController(CircuitEditor editor) {
         this.editor = editor;
@@ -154,13 +159,88 @@ public final class LogicAnalyzerController {
         listeners.add(listener);
     }
 
+    // ------------------------------------------------------------------ trigger
+
+    /**
+     * Arms the trigger on one watched signal: the shared simulation run-control (the same
+     * one the toolbar's Run/Pause button and Study window drive) is paused the instant
+     * {@code condition} matches — see {@link TriggerEngine} for why that wiring lives here,
+     * in the UI layer, rather than inside the trigger engine itself.
+     */
+    public void armTrigger(WatchedSignal signal, TriggerCondition condition) {
+        if (!watched.contains(signal)) {
+            throw new IllegalArgumentException("Not a watched signal: " + signal);
+        }
+        armedSignal = signal;
+        armedCondition = condition;
+        applyTrigger();
+        notifyListeners();
+    }
+
+    public void disarmTrigger() {
+        armedSignal = null;
+        armedCondition = null;
+        if (triggerEngine != null) {
+            triggerEngine.disarm();
+        }
+        notifyListeners();
+    }
+
+    public TriggerEngine.Status triggerStatus() {
+        return triggerEngine == null ? TriggerEngine.Status.DISARMED : triggerEngine.status();
+    }
+
+    public Optional<WatchedSignal> armedSignal() {
+        return Optional.ofNullable(armedSignal);
+    }
+
+    public Optional<TriggerCondition> armedCondition() {
+        return Optional.ofNullable(armedCondition);
+    }
+
+    public OptionalLong triggerTime() {
+        return triggerEngine == null ? OptionalLong.empty() : triggerEngine.triggerTime();
+    }
+
+    /** Re-arms after a fire, keeping the same signal and condition — "run again". */
+    public void rearmTrigger() {
+        if (armedSignal == null || triggerEngine == null) {
+            return;
+        }
+        applyTrigger();
+        notifyListeners();
+    }
+
+    /** (Re-)binds the trigger engine to the currently armed signal's freshly resolved net(s). */
+    private void applyTrigger() {
+        if (triggerEngine == null || armedSignal == null || armedCondition == null) {
+            return;
+        }
+        resolveBinding(armedSignal).ifPresentOrElse(
+                binding -> triggerEngine.arm(binding, armedCondition),
+                triggerEngine::disarm);
+    }
+
     private void resync() {
         Simulation current = editor.simulation().orElse(null);
         if (current != attachedSimulation) {
             if (recorder != null) {
                 recorder.detach();
             }
+            if (triggerEngine != null) {
+                triggerEngine.detach();
+            }
             recorder = current == null ? null : new SignalRecorder(current);
+            triggerEngine = current == null ? null : new TriggerEngine(current);
+            if (triggerEngine != null) {
+                // Called from inside Simulation's onNetChanged dispatch (TriggerEngine is a
+                // SimulationObserver too). Simulation.setRunning(false) only flips a flag —
+                // it never touches the event queue or the observer list — so this is safe to
+                // call re-entrantly; it never causes a recompile (only a structural edit
+                // does), so resync() below never sees attachedSimulation change as a result
+                // of firing, and never re-enters addObserver/removeObserver mid-dispatch.
+                triggerEngine.addFireListener(() -> editor.setRunning(false));
+            }
             attachedSimulation = current;
         }
         if (recorder != null) {
@@ -175,6 +255,16 @@ public final class LogicAnalyzerController {
                 }
             }
             desired.forEach((signal, binding) -> recorder.watch(binding, signal.label()));
+        }
+        if (armedSignal != null && !watched.contains(armedSignal)) {
+            // The armed watch itself was removed; there is nothing left to trigger on.
+            armedSignal = null;
+            armedCondition = null;
+            if (triggerEngine != null) {
+                triggerEngine.disarm();
+            }
+        } else if (triggerEngine != null && triggerEngine.status() != TriggerEngine.Status.TRIGGERED) {
+            applyTrigger();
         }
         notifyListeners();
     }

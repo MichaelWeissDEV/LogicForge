@@ -231,7 +231,7 @@ public final class Simulation {
                 netValues[netId] = resolved;
                 metricNetTransitions++;
                 lastChangedNets.add(netId);
-                for (SimulationObserver observer : observers) {
+                for (SimulationObserver observer : List.copyOf(observers)) {
                     observer.onNetChanged(netId, previous, resolved, time, deltaCycle);
                 }
                 for (int consumer : circuit.net(netId).consumers()) {

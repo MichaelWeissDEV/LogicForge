@@ -237,6 +237,7 @@ public final class CanvasInteractionCheck {
         check("pressing push button does not make project dirty", !editor.isDirty());
 
         runChipChecks(workbench, canvas, editor, viewport);
+        runTriggerChecks(workbench, editor, switchA);
 
         // 24-26: Inverted push button test - TODO: Fix parameter propagation to behavior
         // ComponentInstance invButton = place(canvas, editor, "source.button", -200, -300);
@@ -372,6 +373,47 @@ public final class CanvasInteractionCheck {
                 reloaded.mainCircuit().chipCount() == chipsNow
                         && reloaded.mainCircuit().connectionCount() == connectionsNow);
         Files.deleteIfExists(file);
+    }
+
+    /**
+     * The analyzer trigger, driven through the exact {@link
+     * dev.logicforge.ui.edit.LogicAnalyzerController} instance the live Workbench wires into
+     * its {@code LogicAnalyzerView} — proving the whole chain (arm on a watched signal, fire
+     * on a real simulation event, pause the shared run-control, rearm, disarm) works against
+     * a real compiled circuit and a real {@code SimulationSession}, not a substitute.
+     */
+    private static void runTriggerChecks(Workbench workbench, CircuitEditor editor,
+                                         ComponentInstance switchA) {
+        var analyzer = workbench.analyzerController();
+        PortReference out = new PortReference(switchA.id(), "OUT");
+        analyzer.addSignal(dev.logicforge.circuit.document.PortEndpoint.whole(out), "TRIGGER_CHECK");
+        var signal = analyzer.watchedSignals().stream()
+                .filter(watched -> "TRIGGER_CHECK".equals(watched.label())).findFirst().orElseThrow();
+
+        analyzer.armTrigger(signal, new dev.logicforge.analyzer.TriggerCondition.RisingEdge(0));
+        check("trigger arms on a watched signal",
+                analyzer.triggerStatus() == dev.logicforge.analyzer.TriggerEngine.Status.ARMED);
+        check("run control is still running before the trigger fires", editor.isRunning());
+
+        editor.toggleInput(switchA.id()); // OFF -> ON: a rising edge
+        check("trigger fires on the rising edge",
+                analyzer.triggerStatus() == dev.logicforge.analyzer.TriggerEngine.Status.TRIGGERED);
+        check("firing the trigger pauses the shared run control", !editor.isRunning());
+
+        editor.setRunning(true);
+        analyzer.rearmTrigger();
+        check("rearm goes back to watching with the same condition",
+                analyzer.triggerStatus() == dev.logicforge.analyzer.TriggerEngine.Status.ARMED);
+
+        analyzer.disarmTrigger();
+        check("disarm stops watching",
+                analyzer.triggerStatus() == dev.logicforge.analyzer.TriggerEngine.Status.DISARMED);
+        editor.toggleInput(switchA.id()); // ON -> OFF, must not re-arm or fire
+        check("a disarmed trigger ignores further circuit activity",
+                analyzer.triggerStatus() == dev.logicforge.analyzer.TriggerEngine.Status.DISARMED);
+
+        analyzer.removeSignal(signal);
+        editor.setRunning(true);
     }
 
     // ------------------------------------------------------------------ gestures

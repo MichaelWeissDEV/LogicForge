@@ -2,12 +2,15 @@ package dev.logicforge.ui.view;
 
 import dev.logicforge.analyzer.SignalTrace;
 import dev.logicforge.analyzer.SignalTransition;
+import dev.logicforge.analyzer.TriggerCondition;
+import dev.logicforge.analyzer.TriggerEngine;
 import dev.logicforge.analyzer.WaveformSegment;
 import dev.logicforge.analyzer.WaveformSegments;
 import dev.logicforge.logic.LogicState;
 import dev.logicforge.logic.LogicVector;
 import dev.logicforge.ui.analyzer.TimeGridCalculator;
 import dev.logicforge.ui.analyzer.TimelineTransform;
+import dev.logicforge.ui.analyzer.WaveformLayout;
 import dev.logicforge.ui.edit.LogicAnalyzerController;
 import dev.logicforge.ui.render.Theme;
 import java.util.ArrayList;
@@ -27,14 +30,21 @@ import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.geometry.Side;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.OverrunStyle;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.MouseEvent;
@@ -64,6 +74,10 @@ public final class LogicAnalyzerView extends BorderPane {
     private static final double MIN_CANVAS_WIDTH = 240;
     private static final double MAX_CANVAS_WIDTH = 48_000;
     private static final double EDGE_HIT_PIXELS = 9;
+    private static final double DIGITAL_MIN_WIDTH = 1.5;
+    private static final double BUS_MIN_WIDTH = 2;
+    /** Horizontal spacing between same-instant delta-cycle glitches; see {@link WaveformLayout}. */
+    private static final double GLITCH_LADDER_STEP = 3;
 
     private final LogicAnalyzerController controller;
     private final java.util.function.Consumer<LogicAnalyzerController.WatchedSignal> showSignal;
@@ -76,6 +90,9 @@ public final class LogicAnalyzerView extends BorderPane {
     private final Label timeLabel = new Label("t = 0 ps");
     private final Label zoomLabel = new Label("100%");
     private final Label measurementLabel = new Label("Enable cursors for Δt");
+    private final Label triggerStatusLabel = new Label();
+    private final Button rearmButton = new Button("Rearm");
+    private final Button disarmButton = new Button("Disarm");
     private final ToggleButton captureButton = new ToggleButton("Capturing");
     private final ToggleButton followButton = new ToggleButton("Follow");
     private final ToggleButton gridButton = new ToggleButton("Grid");
@@ -181,8 +198,25 @@ public final class LogicAnalyzerView extends BorderPane {
         controls.getStyleClass().addAll("toolbar", "analyzer-toolbar");
 
         measurementLabel.getStyleClass().add("analyzer-measurement");
-        HBox measurements = new HBox(measurementLabel);
-        measurements.setAlignment(Pos.CENTER_RIGHT);
+
+        triggerStatusLabel.getStyleClass().add("analyzer-trigger-status");
+        rearmButton.getStyleClass().add("tool-button");
+        rearmButton.setTooltip(new Tooltip("Re-arm the trigger on the same signal and condition"));
+        rearmButton.setOnAction(event -> {
+            controller.rearmTrigger();
+            requestRedraw();
+        });
+        disarmButton.getStyleClass().add("tool-button");
+        disarmButton.setTooltip(new Tooltip("Stop watching for the trigger condition"));
+        disarmButton.setOnAction(event -> {
+            controller.disarmTrigger();
+            requestRedraw();
+        });
+        Region triggerSpacer = new Region();
+        HBox.setHgrow(triggerSpacer, Priority.ALWAYS);
+        HBox measurements = new HBox(6, triggerStatusLabel, rearmButton, disarmButton,
+                triggerSpacer, measurementLabel);
+        measurements.setAlignment(Pos.CENTER_LEFT);
         measurements.getStyleClass().add("analyzer-measurement-bar");
         return new VBox(controls, measurements);
     }
@@ -253,6 +287,64 @@ public final class LogicAnalyzerView extends BorderPane {
         return button;
     }
 
+    /** The condition menu for one channel's trigger button — edge kinds only make sense for a single bit. */
+    private void showTriggerMenu(LogicAnalyzerController.WatchedSignal signal, Node anchor) {
+        int width = controller.traceFor(signal).map(trace -> trace.width().bits()).orElse(1);
+        ContextMenu menu = new ContextMenu();
+        if (width == 1) {
+            menu.getItems().addAll(
+                    triggerMenuItem("Rising edge", signal, new TriggerCondition.RisingEdge(0)),
+                    triggerMenuItem("Falling edge", signal, new TriggerCondition.FallingEdge(0)),
+                    triggerMenuItem("Any edge", signal, new TriggerCondition.AnyEdge(0)));
+            menu.getItems().add(new SeparatorMenuItem());
+        }
+        MenuItem equalsItem = new MenuItem("Equals value…");
+        equalsItem.setOnAction(event -> promptValueTrigger(signal, width, true));
+        MenuItem notEqualsItem = new MenuItem("Not equals value…");
+        notEqualsItem.setOnAction(event -> promptValueTrigger(signal, width, false));
+        menu.getItems().addAll(equalsItem, notEqualsItem);
+        if (controller.armedSignal().map(signal::equals).orElse(false)) {
+            MenuItem disarm = new MenuItem("Disarm");
+            disarm.setOnAction(event -> {
+                controller.disarmTrigger();
+                requestRedraw();
+            });
+            menu.getItems().addAll(new SeparatorMenuItem(), disarm);
+        }
+        menu.show(anchor, Side.BOTTOM, 0, 0);
+    }
+
+    private MenuItem triggerMenuItem(String text, LogicAnalyzerController.WatchedSignal signal,
+                                     TriggerCondition condition) {
+        MenuItem item = new MenuItem(text);
+        item.setOnAction(event -> {
+            controller.armTrigger(signal, condition);
+            requestRedraw();
+        });
+        return item;
+    }
+
+    /** Prompts for a {@code width}-bit four-valued value (0/1/X/Z) and arms a value trigger on it. */
+    private void promptValueTrigger(LogicAnalyzerController.WatchedSignal signal, int width, boolean equals) {
+        TextInputDialog dialog = new TextInputDialog("0".repeat(width));
+        dialog.setTitle(equals ? "Trigger: Value Equals" : "Trigger: Value Not Equals");
+        dialog.setHeaderText("Enter a " + width + "-bit value using 0, 1, X or Z, most significant bit first");
+        dialog.setContentText("Value:");
+        dialog.showAndWait().ifPresent(text -> {
+            String entered = text.strip().toUpperCase(Locale.ROOT);
+            if (entered.length() != width || !entered.chars().allMatch(c -> "01XZ".indexOf(c) >= 0)) {
+                new Alert(Alert.AlertType.ERROR, "Enter exactly " + width
+                        + " characters, each 0, 1, X or Z.", ButtonType.OK).showAndWait();
+                return;
+            }
+            LogicVector target = LogicVector.of(entered);
+            controller.armTrigger(signal, equals
+                    ? new TriggerCondition.ValueEquals(target)
+                    : new TriggerCondition.ValueNotEquals(target));
+            requestRedraw();
+        });
+    }
+
     private Region separator() {
         Region separator = new Region();
         separator.getStyleClass().add("toolbar-separator");
@@ -294,6 +386,27 @@ public final class LogicAnalyzerView extends BorderPane {
         paintRuler();
         paintWaveforms(signals, end, busModeBox.getValue());
         updateMeasurement();
+        updateTriggerStatus();
+    }
+
+    private void updateTriggerStatus() {
+        TriggerEngine.Status status = controller.triggerStatus();
+        String signalLabel = controller.armedSignal().map(LogicAnalyzerController.WatchedSignal::label)
+                .orElse(null);
+        String text = switch (status) {
+            case DISARMED -> "Trigger: DISARMED";
+            case ARMED -> "Trigger: ARMED — " + signalLabel;
+            case TRIGGERED -> "Trigger: TRIGGERED @ "
+                    + TimeGridCalculator.formatTime(controller.triggerTime().orElse(0)) + " — " + signalLabel;
+        };
+        triggerStatusLabel.setText(text);
+        triggerStatusLabel.setTextFill(switch (status) {
+            case DISARMED -> Theme.TEXT_MUTED;
+            case ARMED -> Theme.WARNING;
+            case TRIGGERED -> Theme.ERROR;
+        });
+        rearmButton.setDisable(controller.armedSignal().isEmpty());
+        disarmButton.setDisable(status == TriggerEngine.Status.DISARMED);
     }
 
     private long earliestTime(List<LogicAnalyzerController.WatchedSignal> signals, long now) {
@@ -373,11 +486,18 @@ public final class LogicAnalyzerView extends BorderPane {
             Button showButton = toolButton("↗", () -> showSignal.accept(signal));
             showButton.setTooltip(new Tooltip("Show source endpoint"));
             showButton.getStyleClass().add("analyzer-row-action");
+            Button triggerButton = new Button("⚡");
+            triggerButton.getStyleClass().add("analyzer-row-action");
+            if (controller.armedSignal().map(signal::equals).orElse(false)) {
+                triggerButton.getStyleClass().add("analyzer-trigger-armed");
+            }
+            triggerButton.setTooltip(new Tooltip("Set a trigger on this signal"));
+            triggerButton.setOnAction(event -> showTriggerMenu(signal, triggerButton));
             Button removeButton = toolButton("×", () -> controller.removeSignal(signal));
             removeButton.setTooltip(new Tooltip("Remove channel"));
             removeButton.getStyleClass().add("analyzer-row-action");
 
-            HBox row = new HBox(4, enabled, dot, name, value, spacer, showButton, removeButton);
+            HBox row = new HBox(4, enabled, dot, name, value, spacer, triggerButton, showButton, removeButton);
             row.setAlignment(Pos.CENTER_LEFT);
             row.setMinHeight(ROW_HEIGHT);
             row.setPrefHeight(ROW_HEIGHT);
@@ -499,18 +619,17 @@ public final class LogicAnalyzerView extends BorderPane {
         g.strokeLine(visible[0], lowY, visible[1], lowY);
 
         LogicState previous = null;
-        for (WaveformSegment segment : segments) {
-            LogicState state = segment.value().getBit(0);
-            double rawX0 = timeline.timeToX(segment.startTime());
-            double rawX1 = timeline.timeToX(segment.endTime());
-            double x0 = crisp(rawX0);
-            double x1 = crisp(Math.max(rawX1, rawX0 + 1.5));
+        for (WaveformLayout.SegmentSpan span : WaveformLayout.layout(segments, timeline,
+                DIGITAL_MIN_WIDTH, GLITCH_LADDER_STEP)) {
+            LogicState state = span.segment().value().getBit(0);
+            double x0 = crisp(span.x0());
+            double x1 = crisp(span.x1());
             if (previous != null) {
                 paintTransition(g, x0, yFor(previous, highY, lowY, midY),
                         yFor(state, highY, lowY, midY), state);
             }
             paintDigitalSegment(g, state, x0, x1, highY, lowY, midY);
-            if (rawX1 - rawX0 < 1.5 || state == LogicState.UNKNOWN
+            if (x1 - x0 <= DIGITAL_MIN_WIDTH || state == LogicState.UNKNOWN
                     || state == LogicState.HIGH_IMPEDANCE) {
                 g.setFill(Theme.signalColor(state));
                 g.fillOval(x0 - 1.5, midY - 1.5, 3, 3);
@@ -584,16 +703,17 @@ public final class LogicAnalyzerView extends BorderPane {
         g.setFont(Font.font("Monospace", 10));
         g.setTextAlign(TextAlignment.CENTER);
         g.setTextBaseline(VPos.CENTER);
-        for (WaveformSegment segment : segments) {
-            double x0 = timeline.timeToX(segment.startTime());
-            double x1 = Math.max(x0 + 2, timeline.timeToX(segment.endTime()));
-            Color color = colorFor(segment.value());
+        for (WaveformLayout.SegmentSpan span : WaveformLayout.layout(segments, timeline,
+                BUS_MIN_WIDTH, GLITCH_LADDER_STEP)) {
+            double x0 = span.x0();
+            double x1 = span.x1();
+            Color color = colorFor(span.segment().value());
             g.setStroke(color);
             g.setLineWidth(1.5);
             g.strokeRect(x0, boxTop, x1 - x0, boxBottom - boxTop);
             if (x1 - x0 > 28) {
                 g.setFill(color);
-                g.fillText(displayValue(segment.value(), busMode),
+                g.fillText(displayValue(span.segment().value(), busMode),
                         (x0 + x1) / 2, (boxTop + boxBottom) / 2, x1 - x0 - 5);
             }
         }

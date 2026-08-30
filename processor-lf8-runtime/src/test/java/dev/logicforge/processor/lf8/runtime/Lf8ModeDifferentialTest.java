@@ -52,8 +52,185 @@ class Lf8ModeDifferentialTest {
         assertTrue(fast.getLast().halted());
     }
 
+    @Test
+    void allImplementationsMatchForSubAndAndOrNotAndShiftInstructions() {
+        int[] program = Lf8Assembler.assemble("""
+                    LDI R0, 0x0f
+                    LDI R1, 0x33
+                    SUB R0, R1
+                    AND R0, R1
+                    LDI R0, 0x0f
+                    OR R0, R1
+                    NOT R0
+                    SHL R0
+                    SHL R0
+                    SHL R0
+                    SHR R0
+                    SHR R0
+                    SHR R0
+                    STORE R0, 0x8000
+                    HLT
+                """);
+
+        List<ArchitecturalState> fast = run(Lf8ImplementationMode.FAST, program);
+        List<ArchitecturalState> structural = run(Lf8ImplementationMode.STRUCTURAL, program);
+        List<ArchitecturalState> gate = run(Lf8ImplementationMode.GATE_LEVEL, program);
+        assertEquals(fast, structural, "STRUCTURAL diverged from FAST at an instruction boundary");
+        assertEquals(fast, gate, "GATE_LEVEL diverged from FAST at an instruction boundary");
+        assertTrue(fast.getLast().halted());
+    }
+
+    /**
+     * Every flag-setting instruction at the boundary values that most often expose an
+     * off-by-one in a carry/borrow/zero/sign implementation: the smallest and largest
+     * 8-bit values, the sign-bit edge (0x7F/0x80), and the wrap points either side of it
+     * (0xFE/0xFF). The three implementations only need to agree with each other — see the
+     * class javadoc on why this file never hand-predicts an expected flag encoding.
+     */
+    @Test
+    void allImplementationsMatchAtEveryFlagBoundaryValue() {
+        int[] program = Lf8Assembler.assemble("""
+                    LDI R0, 0x00
+                    LDI R1, 0x01
+                    ADD R0, R1
+                    LDI R0, 0xff
+                    ADD R0, R1
+                    LDI R0, 0x7f
+                    ADD R0, R1
+                    LDI R0, 0x80
+                    SUB R0, R1
+                    LDI R0, 0x00
+                    SUB R0, R1
+                    LDI R0, 0xfe
+                    ADD R0, R1
+                    LDI R0, 0x01
+                    SUB R0, R1
+                    STORE R0, 0x8000
+                    HLT
+                """);
+
+        List<ArchitecturalState> fast = run(Lf8ImplementationMode.FAST, program);
+        List<ArchitecturalState> structural = run(Lf8ImplementationMode.STRUCTURAL, program);
+        List<ArchitecturalState> gate = run(Lf8ImplementationMode.GATE_LEVEL, program);
+        assertEquals(fast, structural, "STRUCTURAL diverged from FAST at an instruction boundary");
+        assertEquals(fast, gate, "GATE_LEVEL diverged from FAST at an instruction boundary");
+        assertTrue(fast.getLast().halted());
+    }
+
+    /**
+     * IRQ is held asserted for the whole run (the way a real device typically holds its
+     * request line until acknowledged); the handler is responsible for not re-entering, so
+     * it disables interrupts as its first action, matching how real ISRs behave. The main
+     * path's five ADDs run to completion regardless of exactly which one the interrupt lands
+     * between, since IRET resumes exactly where it left off — R1 landing on 5 alongside the
+     * ISR's own marker in RAM proves both "the interrupt was taken" and "control returned
+     * correctly," on top of the primary assertion that all three implementations agree.
+     */
+    @Test
+    void allImplementationsMatchAcrossAMaskableInterruptTakenAndReturnedFromWithIret() {
+        int irqVector = 0x40;
+        int[] program = Lf8Assembler.assemble("""
+                .org 0
+                start:
+                    LDI R0, 1
+                    LDI R1, 0
+                    EI
+                    ADD R1, R0
+                    ADD R1, R0
+                    ADD R1, R0
+                    ADD R1, R0
+                    ADD R1, R0
+                    STORE R1, 0x8000
+                    HLT
+                .org 0x40
+                isr:
+                    DI
+                    LDI R2, 0x99
+                    STORE R2, 0x8001
+                    IRET
+                """);
+
+        // IRQ has to stay asserted long enough for LDI/LDI/EI to actually execute (each
+        // instruction takes several clock edges to fetch and run) before it is sampled;
+        // unlike NMI, nothing takes it until EI runs.
+        List<ArchitecturalState> fast =
+                runWithInterrupt(Lf8ImplementationMode.FAST, program, irqVector, 0, "IRQ", 40);
+        List<ArchitecturalState> structural =
+                runWithInterrupt(Lf8ImplementationMode.STRUCTURAL, program, irqVector, 0, "IRQ", 40);
+        List<ArchitecturalState> gate =
+                runWithInterrupt(Lf8ImplementationMode.GATE_LEVEL, program, irqVector, 0, "IRQ", 40);
+        assertEquals(fast, structural, "STRUCTURAL diverged from FAST during interrupt handling");
+        assertEquals(fast, gate, "GATE_LEVEL diverged from FAST during interrupt handling");
+        assertTrue(fast.getLast().halted());
+        assertEquals(LogicVector.fromUnsignedLong(5, 8), fast.getLast().ram().get(0),
+                "the five ADDs completed despite the interrupt landing somewhere among them");
+        assertEquals(LogicVector.fromUnsignedLong(0x99, 8), fast.getLast().ram().get(1),
+                "the ISR actually ran and IRET returned control to the main path");
+    }
+
+    /**
+     * NMI must fire even though interrupts are never enabled with {@code EI} — that is
+     * exactly what "non-maskable" means — and it uses its own vector, independent of IRQ's.
+     */
+    @Test
+    void allImplementationsMatchAcrossANonMaskableInterruptTakenWithoutEverEnablingInterrupts() {
+        int nmiVector = 0x40;
+        int[] program = Lf8Assembler.assemble("""
+                .org 0
+                start:
+                    LDI R0, 1
+                    LDI R1, 0
+                    ADD R1, R0
+                    ADD R1, R0
+                    ADD R1, R0
+                    STORE R1, 0x8000
+                    HLT
+                .org 0x40
+                isr:
+                    DI
+                    LDI R2, 0x55
+                    STORE R2, 0x8001
+                    IRET
+                """);
+
+        List<ArchitecturalState> fast =
+                runWithInterrupt(Lf8ImplementationMode.FAST, program, 0, nmiVector, "NMI", 8);
+        List<ArchitecturalState> structural =
+                runWithInterrupt(Lf8ImplementationMode.STRUCTURAL, program, 0, nmiVector, "NMI", 8);
+        List<ArchitecturalState> gate =
+                runWithInterrupt(Lf8ImplementationMode.GATE_LEVEL, program, 0, nmiVector, "NMI", 8);
+        assertEquals(fast, structural, "STRUCTURAL diverged from FAST during NMI handling");
+        assertEquals(fast, gate, "GATE_LEVEL diverged from FAST during NMI handling");
+        assertTrue(fast.getLast().halted());
+        assertEquals(LogicVector.fromUnsignedLong(3, 8), fast.getLast().ram().get(0),
+                "the three ADDs completed despite the NMI landing somewhere among them");
+        assertEquals(LogicVector.fromUnsignedLong(0x55, 8), fast.getLast().ram().get(1),
+                "the NMI actually ran despite interrupts never being enabled with EI");
+    }
+
     private static List<ArchitecturalState> run(Lf8ImplementationMode mode, int[] program) {
-        CircuitProject project = Lf8ComputerFactory.create(mode, program);
+        return run(Lf8ComputerFactory.create(mode, program), mode, null, 0);
+    }
+
+    /**
+     * Like {@link #run(Lf8ImplementationMode, int[])}, but the computer's vector table is
+     * explicit and one interrupt line ({@code "IRQ"} or {@code "NMI"}) is pulsed for a few
+     * clock edges right after reset, then released — the top-level toggle is driven directly
+     * (not through {@link Lf8RuntimeProbe#inputSource}, which resolves a CPU port back to its
+     * driving source and fails for {@code IRQ}: at the computer level that pin is fed through
+     * an OR gate combining the toggle with the timer peripheral's own request, not driven
+     * directly by one source). A held-forever line risks an interrupt storm — NMI is
+     * non-maskable by definition, so nothing in the handler can stop it from being retaken
+     * for as long as the line stays asserted.
+     */
+    private static List<ArchitecturalState> runWithInterrupt(Lf8ImplementationMode mode, int[] program,
+            int irqVector, int nmiVector, String interruptLine, int pulseEdges) {
+        CircuitProject project = Lf8ComputerFactory.createWithVectors(mode, program, irqVector, nmiVector, 0);
+        return run(project, mode, interruptLine, pulseEdges);
+    }
+
+    private static List<ArchitecturalState> run(CircuitProject project, Lf8ImplementationMode mode,
+            String interruptLine, int pulseEdges) {
         var compilation = new CircuitCompiler(ComponentRegistry.standard())
                 .compile(project, CircuitProject.MAIN_CIRCUIT);
         Simulation simulation = new Simulation(compilation.circuit());
@@ -67,12 +244,20 @@ class Lf8ModeDifferentialTest {
         int ram = compilation.componentByLabel("RAM").orElseThrow();
         int characterOutput = compilation.componentByLabel("CHARACTER_OUTPUT").orElseThrow();
         int haltNet = compilation.hierarchySourceMap().netId(cpuPath + ".HALT").orElseThrow();
+        Integer interrupt = interruptLine == null ? null
+                : compilation.componentByLabel(interruptLine).orElseThrow();
 
         simulation.setInput(clock, LogicState.ZERO);
         simulation.setInput(reset, LogicState.ONE);
         simulation.setInput(reset, LogicState.ZERO);
+        if (interrupt != null) {
+            simulation.setInput(interrupt, LogicState.ONE);
+        }
         ArrayList<ArchitecturalState> boundaries = new ArrayList<>();
         for (int edges = 0; edges < 1_000; edges++) {
+            if (interrupt != null && edges == pulseEdges) {
+                simulation.setInput(interrupt, LogicState.ZERO);
+            }
             simulation.setInput(clock, LogicState.ZERO);
             simulation.setInput(clock, LogicState.ONE);
             boolean halted = simulation.readNet(haltNet).singleBit() == LogicState.ONE;

@@ -1,9 +1,12 @@
 # LogicForge architecture
 
-This document describes how LogicForge 0.1 is put together and, more importantly, why. The
-scope of this version is deliberately small — combinational logic — but the structure is
-the one the project intends to keep as it grows towards buses, sequential logic, memories
-and a small CPU.
+This document describes how LogicForge is put together and, more importantly, why. The
+project started from a deliberately small scope — pure combinational logic — and the
+structure below is the same one it has grown through buses, sequential logic, memories, a
+hierarchical project format, a programmable CPU, physical IC packages and a logic analyzer
+with a trigger engine. Nothing described as a future layer in an earlier revision of this
+document was bolted on as an afterthought: the boundaries below were chosen so each of
+those layers could arrive without disturbing the ones already in place.
 
 ## Module boundaries
 
@@ -11,25 +14,34 @@ and a small CPU.
              logic-core
              /        \
    circuit-model      simulation-core
-        |     \        /      |
-        |    component-library |
-        |          |           |
-        |    circuit-compiler  |
-   project-format      |       |
-             \         |      /
-                     ui
+        |     \        /      |    \
+        |    component-library |  logic-analyzer
+        |          |           |       |
+        |    circuit-compiler  |       |
+   project-format      |       |       |
+             \         |      /       /
+                     ui  ------------/
                       |
                      app
 ```
 
+`component-structures`, `processor-lf8`, `processor-lf8-runtime` and `lf8-tools` sit beside
+`component-library` on the same footing — headless modules the compiler and the UI both
+depend on, never the other way around.
+
 | Module | Responsibility | Depends on |
 | --- | --- | --- |
 | `logic-core` | `LogicState`, `LogicVector`, `BitWidth`, and the one definition of the logic semantics | nothing |
-| `circuit-model` | The editable document, component definitions, parameters, geometry | `logic-core` |
+| `circuit-model` | The editable document: components, chips, wires, geometry, parameters | `logic-core` |
 | `simulation-core` | Nets, events, the engine, the compiled runtime form | `logic-core` |
+| `logic-analyzer` | Headless signal recording, waveform segments and the trigger engine | `simulation-core` |
 | `component-library` | The built-in components: definitions, behaviours, registry | `circuit-model`, `simulation-core` |
-| `circuit-compiler` | Validation, net forming, runtime ids, source mapping | the four above |
+| `component-structures` | Canonical gate-level reference circuits and their registry | `circuit-model`, `component-library` |
+| `circuit-compiler` | Validation, net forming, runtime ids, source mapping, chip expansion | the four above |
 | `project-format` | Reading and writing `.logic` files | `circuit-model` |
+| `processor-lf8` | The LF-8 CPU: microcode, memory map, computer circuit factory | `circuit-compiler`, `component-structures` |
+| `processor-lf8-runtime` | Headless probing (registers, flags, microstep) for tests and tools | `processor-lf8` |
+| `lf8-tools` | LF-8 assembler and disassembler | `processor-lf8` |
 | `ui` | Viewport, wire routing, commands, renderers, JavaFX views | everything above |
 | `app` | Application entry point, development tools | `ui` |
 
@@ -88,8 +100,45 @@ cannot be drawn in one place and wired in another.
 Geometry types (`CircuitPoint`, `CircuitSize`, `CircuitBounds`, `Rotation`, `PortSide`) are
 plain records in the model, never JavaFX types.
 
-`CircuitProject` holds circuits by name. Version 0.1 always has exactly one, called `main`;
-the container exists so subcircuits do not require a format change.
+`CircuitProject` holds circuits by name, always including one called `main`. A project can
+hold several circuits: any of them can be instantiated as a subcircuit inside another
+(`SubcircuitSupport` treats a circuit definition as an ordinary `ComponentDefinition`, so a
+subcircuit instance is placed, wired and undone exactly like a gate), which is how every
+hierarchical structure in the project — the structural adder/register/ALU library, the LF-8
+CPU's datapath and control unit, a user's own reusable circuits — is actually built. Nesting
+is not artificially bounded; a chip's own logical units are the only thing that never nests
+further, since a physical package is expanded before hierarchy flattening ever sees it (see
+**Physical chips** below).
+
+### Physical chips
+
+A real 7400-series part is not a behavioral component wearing a chip-shaped icon. `ChipDefinition`
+describes a physical package (a `PackageDefinition` with real pin numbers and positions) and
+the logical units inside it (`ChipLogicalUnit`, each an ordinary `ComponentType` — a NAND
+gate is a NAND gate whether it is standalone or the third gate in a 74HC00). A placed
+`ChipInstance` lives in `CircuitDocument.chips()`, a collection parallel to, and independent
+of, ordinary components.
+
+The key type is `ElectricalEndpoint`, a sealed interface with two cases: `ComponentEndpoint`
+(an ordinary `PortEndpoint`) and `ChipPinEndpoint` (a chip instance id plus a physical pin
+number). Every place that used to speak `PortEndpoint` — `Connection.from()`/`to()`, the
+router, the hit tester, the renderer, the logic analyzer's watch list — now speaks
+`ElectricalEndpoint`, so a wire between two chip pins, or a chip pin and a component port,
+is not a special case bolted on top; it is the same code path a component-to-component wire
+already used. `ElectricalEndpointGeometry` and `ChipGeometry` are the single places that
+resolve an endpoint's world position, the same role `ComponentGeometry` already played for
+ordinary ports — the same "one place computes it, everyone else calls it" rule that keeps a
+rotated gate's renderer and hit tester from disagreeing applies identically to a rotated
+chip package.
+
+Before the ordinary compiler ever runs, `ChipInstanceExpander` turns every `ChipInstance`
+into its logical gates and the wires among them, exactly as if the user had placed those
+gates by hand — placing a chip never changes what the simulator itself understands, only
+what the editor shows. `ChipSourceMap` is the resulting bidirectional bridge: a physical
+pin's logical net, and a logical net's physical pin, both resolvable in either direction,
+which is what lets the logic analyzer watch a chip's pin 7 the same way it watches an
+ordinary port, and what lets the Study window navigate from a watch straight back to the
+chip that owns it.
 
 ## Compiled circuit
 
@@ -134,17 +183,18 @@ wholesale, and driving a value a port already has produces no event at all.
 **Determinism.** Events carry `(time, deltaCycle, sequence)` and are ordered by all three.
 Nets and components are visited in ascending id order. There is no hash iteration order and
 no threading anywhere in the core, so the same circuit with the same inputs always produces
-the same trace. `SimulationEvent` already carries a time field: version 0.1 only advances
-delta cycles within a moment, but propagation delays, clocks and sequential components will
-use the same queue.
+the same trace. `SimulationEvent` carries a time field alongside the delta cycle: a clock,
+every structural counter/register and the LF-8's own instruction timing all advance
+simulation time on the same queue that originally only ever advanced delta cycles within one
+moment.
 
 **Stabilisation and loops.** `runUntilStable()` processes delta cycles until the queue is
 empty. A circuit that never settles is stopped after `maxDeltaCycles` and reported as
 `SimulationOscillationException` — the application shows "Combinational oscillation
 detected" and stays responsive. Note that four-state logic usually converges on its own: an
 inverter feeding itself settles at `X`, which is the correct answer rather than a hang. The
-limit is the safety net for cases that do not converge, including the stateful components to
-come.
+limit is the safety net for cases that do not converge, stateful components (a badly built
+sequential circuit) included.
 
 **Initial state.** After `reset()` every net is `Z` and every component is evaluated once,
 so constants and switches drive their values and the gates settle. Switches return to the
@@ -153,12 +203,17 @@ value their `Initially On` parameter specifies.
 **Component state.** Behaviours are shared between instances and must be stateless
 themselves; anything that has to survive between evaluations lives in a
 `ComponentRuntimeState` the simulator owns. Gates have none. A toggle switch keeps an
-`InputSourceState`, which is the same mechanism registers and memories will use — the
-engine has never assumed that an output is a pure function of the inputs.
+`InputSourceState`, the same mechanism every register, counter and memory in the component
+library uses — the engine has never assumed that an output is a pure function of the inputs.
 
-**Observation.** Every net change passes through `SimulationObserver`, which is what a logic
-analyser, a signal trace or a breakpoint will hook into. There is no global event bus: the
-observer list belongs to the simulation, and the document has its own listener interface.
+**Observation.** Every net change passes through `SimulationObserver`. There is no global
+event bus: the observer list belongs to the simulation, and the document has its own
+listener interface. `SignalRecorder` (in `logic-analyzer`) and `TriggerEngine` are both
+independent observers on the same simulation, reacting to the exact same push-based event
+stream — which is what makes a trigger delta-cycle accurate: it sees every transition the
+waveform is built from, including a glitch that settles back within one physical time step,
+never a periodic sample that could land between two of them. A headless `BreakpointEngine`
+(PC, memory-read and memory-write breakpoints) hooks into the same mechanism.
 
 ## Component model
 
@@ -226,7 +281,7 @@ class names, no serialised objects, no net ids, no simulation state.
 
 ```json
 {
-  "formatVersion": 2,
+  "formatVersion": 5,
   "application": "LogicForge",
   "name": "half-adder",
   "circuits": [
@@ -253,18 +308,40 @@ than depending on a document library, and it gives exact control over the output
 the project, and does not mark the project as modified. What a switch returns to on reset is
 a component parameter and therefore *is* part of the project.
 
-## What this design leaves room for
+## What was speculative and is now load-bearing
 
-The pieces that later features need are already in place, and none of them are speculative
-scaffolding — every one of them is used today:
+Every item below was originally written up as scaffolding for a later feature; none of them
+turned out to need rework to carry the weight actually put on them:
 
-- `LogicVector` and per-port `BitWidth` for multi-bit buses,
-- multi-driver nets with proper resolution, used now by the tri-state buffers,
-- `PortDirection.INOUT` for bidirectional buses,
-- an event queue with a time axis for clocks and propagation delays,
-- `ComponentRuntimeState` for flip-flops, registers and memories,
-- `SimulationObserver` for the logic analyser,
-- `pause`/`step` decoupled from the UI frame rate for breakpoints,
-- a project that holds several circuits, for subcircuits,
-- and a compiler between the document and the runtime, so all of the above can change the
-  runtime form without touching the editor.
+- `LogicVector` and per-port `BitWidth` — carry every bus in the component library, the LF-8
+  datapath and every physical chip's multi-bit pins alike.
+- Multi-driver nets with proper resolution — used by the tri-state buffers, and by every
+  physical chip's output pin sharing a net with ordinary component drivers.
+- An event queue with a time axis — the LF-8's clock, and every clocked structural
+  component (registers, counters, the master-slave DFF) run on it directly; delta cycles
+  within one moment were the whole story in the combinational-only version, and now
+  routinely span dozens of cycles per instruction.
+- `ComponentRuntimeState` — flip-flops, registers, memories and the LF-8's own register file
+  and RAM/ROM all use it; still stateless behaviors otherwise.
+- `SimulationObserver` — `SignalRecorder`, `TriggerEngine` and `BreakpointEngine` are three
+  independent observers on the same event stream, none aware of the others.
+- `pause`/`step` decoupled from the UI frame rate — `SimulationSession` is the one shared
+  run-control both the toolbar and a fired trigger drive, and what `stepEvent`/`stepTime`
+  are built on.
+- A project holding several circuits — every subcircuit, the structural library's own
+  hierarchies (an adder built from adders built from gates) and the LF-8's datapath/control
+  split are ordinary instances of this, not a separate mechanism.
+- The compiler sitting between the document and the runtime — physical chip expansion
+  (`ChipInstanceExpander`) runs entirely on the document side of that boundary, so the
+  runtime model never had to learn what a chip is.
+
+## What is still genuinely future work
+
+- The instruction control unit's own microcode sequencing has no gate-level decomposition
+  yet, even under LF-8 `GATE_LEVEL` mode.
+- Transistor networks and physical propagation timing: a placed 74HC00 simulates as four
+  ideal NAND gates on the same delta-cycle model as everything else, not as a timing-accurate
+  model of the actual part.
+- The headless `BreakpointEngine` has no Study-window UI yet.
+- The logic analyzer has no viewport-based segment culling; a very long capture rebuilds its
+  full waveform-segment list on every redraw.
