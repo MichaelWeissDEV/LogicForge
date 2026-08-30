@@ -1,3 +1,11 @@
+plugins {
+    // Lets Gradle auto-download a matching JDK when the required toolchain (Java 25) isn't
+    // installed/registered locally, instead of failing with "Toolchain download repositories
+    // have not been configured" — the error VS Code's Gradle plugin hits when it can't find
+    // JDK 25 on PATH.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
 rootProject.name = 'logicforge'
 
 include 'logic-core'
