@@ -11,7 +11,8 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Tests, examples and UI check
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 25
@@ -22,7 +23,61 @@ jobs:
           cache: gradle
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
-      - name: Run test suite
+      - name: Install Xvfb and the JavaFX system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libgtk-3-0t64 libgl1 libxtst6 libxxf86vm1
+      - name: Compile
+        run: ./gradlew compileJava compileTestJava :app:compileToolsJava
+      - name: Unit and integration tests
         run: ./gradlew test
       - name: Verify generated examples
         run: ./gradlew verifyExamples
+      - name: UI interaction check (Xvfb)
+        run: xvfb-run --auto-servernum ./gradlew :app:uiCheck
+
+  lint-packaging:
+    name: Desktop metadata and scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install validators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils appstream shellcheck shared-mime-info
+      - name: desktop-file-validate
+        run: desktop-file-validate packaging/linux/dev.logicforge.LogicForge.desktop
+      - name: appstreamcli validate
+        run: appstreamcli validate --no-net packaging/linux/dev.logicforge.LogicForge.metainfo.xml
+      - name: MIME definition
+        run: |
+          mkdir -p "$RUNNER_TEMP/mime/packages"
+          cp packaging/linux/dev.logicforge.LogicForge.xml "$RUNNER_TEMP/mime/packages/"
+          update-mime-database "$RUNNER_TEMP/mime"
+          grep 'application/x-logicforge-project:\*\.logic' "$RUNNER_TEMP/mime/globs2"
+      - name: shellcheck
+        run: shellcheck scripts/*.sh packaging/linux/*.sh
+
+  deb:
+    name: .deb package
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev binutils lintian desktop-file-utils \
+            appstream shared-mime-info xvfb xauth x11-utils xdg-utils libfile-mimeinfo-perl
+      - name: Build and verify the app image and .deb
+        run: ./gradlew packageDeb verifyDeb
+      - name: Smoke test the app image
+        run: scripts/smoke-test-linux.sh image app/build/jpackage/LogicForge
+      - name: Install, start, open/save and remove the .deb
+        run: scripts/smoke-test-linux.sh deb app/build/packages/logicforge_*.deb

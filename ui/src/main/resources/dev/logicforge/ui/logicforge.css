@@ -53,6 +53,21 @@
     -fx-spacing: 6;
 }
 
+/* The workbench toolbar is a ToolBar: undo Modena's gradient and keep the flat look. */
+.tool-bar.toolbar {
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+}
+
+.tool-bar.toolbar .tool-bar-overflow-button > .arrow {
+    -fx-background-color: -lf-text-secondary;
+}
+
+.tool-bar.toolbar .tool-bar-overflow-button:hover {
+    -fx-background-color: -lf-surface-raised;
+    -fx-background-radius: 5px;
+}
+
 .toolbar .app-title {
     -fx-font-size: 13px;
     -fx-font-weight: bold;
@@ -300,6 +315,31 @@
 }
 
 .dialog-pane .label {
+    -fx-text-fill: -lf-text-primary;
+}
+
+/* Modena gives the header a light gradient; with light text it would be unreadable. */
+.dialog-pane > .header-panel {
+    -fx-background-color: -lf-border, -lf-surface-raised;
+    -fx-background-insets: 0, 0 0 1 0;
+}
+
+.dialog-pane > .header-panel .label {
+    -fx-font-size: 13.5px;
+    -fx-font-weight: bold;
+}
+
+.dialog-pane > .button-bar > .container {
+    -fx-background-color: transparent;
+}
+
+.dialog-pane .details-button {
+    -fx-text-fill: -lf-text-secondary;
+}
+
+.dialog-pane .text-area .content,
+.dialog-pane .text-field {
+    -fx-background-color: -lf-background;
     -fx-text-fill: -lf-text-primary;
 }
 

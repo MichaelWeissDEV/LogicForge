@@ -222,8 +222,13 @@ public final class MemoryView extends Stage {
         java.io.File file = chooser.showOpenDialog(this);
         if (file == null) return;
         try {
-            byte[] bytes = Files.readAllBytes(file.toPath());
             int bytesPerWord = (dataWidth + 7) / 8;
+            // Only as much as fits the memory is used, so never read more than that.
+            byte[] bytes;
+            try (java.io.InputStream stream = Files.newInputStream(file.toPath())) {
+                bytes = stream.readNBytes((int) Math.min(Integer.MAX_VALUE - 8,
+                        (long) memorySize * bytesPerWord));
+            }
             int wordCount = Math.min(memorySize, (bytes.length + bytesPerWord - 1) / bytesPerWord);
             List<LogicVector> words = new ArrayList<>(wordCount);
             for (int word = 0; word < wordCount; word++) {
@@ -267,7 +272,8 @@ public final class MemoryView extends Stage {
                     }
                 }
             }
-            Files.write(file.toPath(), bytes);
+            dev.logicforge.format.AtomicFileWriter.write(file.toPath(), bytes,
+                    dev.logicforge.format.AtomicFileWriter.Backup.NONE);
         } catch (IOException failure) {
             showIoError("Could not save memory image", failure);
         }

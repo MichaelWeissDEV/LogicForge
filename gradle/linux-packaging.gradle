@@ -1,0 +1,319 @@
+/*
+ * Linux packaging for LogicForge, applied to the :app project.
+ *
+ *   ./gradlew packageLinuxImage   self-contained jpackage app image (private Java runtime + JavaFX)
+ *   ./gradlew stageLinuxRoot      the file system tree the .deb and the snap are built from
+ *   ./gradlew packageDeb          build/packages/logicforge_<version>_<arch>.deb
+ *   ./gradlew verifyDeb           dpkg-deb, lintian, desktop-file-validate, appstreamcli
+ *   ./gradlew packageSnap         runs snapcraft (only if it is installed)
+ *
+ * The version comes from gradle.properties; the desktop entry, MIME type, AppStream metadata
+ * and icons from packaging/linux. Nothing here is part of `build` or `check`, so machines
+ * without the packaging tools still build and test normally.
+ */
+
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.StandardCopyOption
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
+
+def packagingDir = rootProject.file('packaging/linux')
+def appName = 'LogicForge'
+def packageName = 'logicforge'
+def applicationId = 'dev.logicforge.LogicForge'
+def launcherMainClass = 'dev.logicforge.app.Main'
+def appVersion = project.version.toString()
+def appVendor = 'LogicForge contributors'
+def appDescription = 'Digital logic simulator'
+// The private runtime needs these modules (see jdeps); jlink adds what they require.
+def runtimeModules = 'java.base,javafx.controls'
+/*
+ * javafx.graphics requires java.desktop, but JavaFX renders, loads images and fonts and talks
+ * to GTK with its own native libraries and never loads AWT's. Leaving AWT's out keeps the
+ * package free of their distribution-specific dependencies — Ubuntu's JDK, for instance, links
+ * libjavajpeg against libjpeg.so.8, which Debian does not have.
+ */
+def unusedNativeLibraries = ['libawt', 'libawt_headless', 'libawt_xawt', 'libjawt', 'libfontmanager',
+                             'libjavajpeg', 'liblcms', 'libmlib_image', 'libjsound', 'libsplashscreen']
+def jlinkOptions = (['--strip-debug', '--no-man-pages', '--no-header-files', '--strip-native-commands',
+                     '--compress=zip-6']
+        + ['--exclude-files=' + unusedNativeLibraries.collect { "**/${it}.so" }.join(',')]).join(' ')
+
+def jpackageDir = layout.buildDirectory.dir('jpackage')
+def appImageDir = layout.buildDirectory.dir("jpackage/${appName}")
+def javafxJmodsDir = layout.buildDirectory.dir('jpackage-work/javafx-jmods')
+def jpackageInputDir = layout.buildDirectory.dir('jpackage-work/input')
+def metadataDir = layout.buildDirectory.dir('linux-metadata')
+def linuxRootDir = layout.buildDirectory.dir('linux-root')
+def distributionsDir = layout.buildDirectory.dir('packages')
+
+def toolchainHome = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(25)
+}.map { it.metadata.installationPath.asFile }
+
+/** JavaFX's platform jars (javafx-graphics-25.0.1-linux.jar, …); the classifier-less ones are empty. */
+def javafxPlatformJars = configurations.runtimeClasspath.filter {
+    it.name.startsWith('javafx-') && it.name.endsWith("-${javafxPlatformClassifier()}.jar")
+}
+/** Everything else the application needs at run time, plus its own jar. */
+def applicationJars = files(tasks.named('jar')) + configurations.runtimeClasspath.filter {
+    !it.name.startsWith('javafx-')
+}
+
+def requireLinux = { String what ->
+    if (!org.gradle.internal.os.OperatingSystem.current().isLinux()) {
+        throw new GradleException("${what} can only be built on Linux")
+    }
+}
+
+/**
+ * Runs a command and fails the build if it fails. Its output is forwarded line by line to the
+ * build output (inheriting the streams would send it to the Gradle daemon's log instead).
+ */
+def run = { List<String> command, File workingDir = null, Map<String, String> environment = [:] ->
+    logger.info('Running {}', command.join(' '))
+    def builder = new ProcessBuilder(command.collect { it.toString() }).redirectErrorStream(true)
+    if (workingDir != null) {
+        builder.directory(workingDir)
+    }
+    builder.environment().putAll(environment)
+    def process = builder.start()
+    process.inputStream.newReader('UTF-8').eachLine { line -> println(line) }
+    int exit = process.waitFor()
+    if (exit != 0) {
+        throw new GradleException("Command failed with exit code ${exit}: ${command.join(' ')}")
+    }
+}
+
+def commandExists = { String command ->
+    System.getenv('PATH').split(File.pathSeparator).any { new File(it, command).canExecute() }
+}
+
+/** The date of this release for the AppStream entry: -PreleaseDate, SOURCE_DATE_EPOCH or today. */
+def releaseDate = providers.gradleProperty('releaseDate').orElse(
+        providers.environmentVariable('SOURCE_DATE_EPOCH').map {
+            LocalDate.ofInstant(Instant.ofEpochSecond(Long.parseLong(it.trim())), ZoneOffset.UTC).toString()
+        }).orElse(LocalDate.now(ZoneOffset.UTC).toString())
+
+// ------------------------------------------------------------------ jpackage app image
+
+tasks.register('javafxJmods') {
+    group = 'distribution'
+    description = 'Turns the JavaFX Linux jars into jmods so jlink puts their native libraries into the runtime'
+    inputs.files(javafxPlatformJars)
+    outputs.dir(javafxJmodsDir)
+    doLast {
+        requireLinux('The JavaFX runtime modules')
+        def output = javafxJmodsDir.get().asFile
+        project.delete(output)
+        output.mkdirs()
+        def needed = ['javafx-base', 'javafx-graphics', 'javafx-controls']
+        javafxPlatformJars.files.findAll { jar -> needed.any { jar.name.startsWith(it + '-') } }.each { File jar ->
+            // javafx-graphics-25.0.1-linux.jar -> module javafx.graphics, version 25.0.1
+            def parts = (jar.name - '.jar').split('-')
+            def module = "${parts[0]}.${parts[1]}"
+            def moduleVersion = parts[2]
+            def work = new File(temporaryDir, module)
+            project.delete(work)
+            project.copy {
+                from zipTree(jar)
+                into new File(work, 'classes')
+                // Native libraries go to lib/ of the runtime instead of being unpacked at run time
+                // into ~/.openjfx; the rest is build tooling metadata.
+                exclude '*.so', '*.jar', 'META-INF/**'
+            }
+            project.copy {
+                from zipTree(jar)
+                into new File(work, 'libs')
+                include '*.so'
+            }
+            def command = ["${toolchainHome.get()}/bin/jmod", 'create',
+                           '--class-path', new File(work, 'classes').path,
+                           '--module-version', moduleVersion]
+            if (new File(work, 'libs').list()?.length) {
+                command += ['--libs', new File(work, 'libs').path]
+            }
+            run(command + [new File(output, "${module}.jmod").path])
+        }
+    }
+}
+
+tasks.register('packageLinuxImage') {
+    group = 'distribution'
+    description = 'Builds the self-contained application image (jpackage app-image) in build/jpackage/LogicForge'
+    dependsOn 'javafxJmods'
+    inputs.files(applicationJars)
+    inputs.dir(javafxJmodsDir)
+    inputs.property('version', appVersion)
+    inputs.property('jlinkOptions', jlinkOptions)
+    inputs.file("${packagingDir}/icons/hicolor/256x256/apps/${applicationId}.png")
+    outputs.dir(appImageDir)
+    doLast {
+        requireLinux('The Linux application image')
+        if (!commandExists('objcopy')) {
+            throw new GradleException("packageLinuxImage needs 'objcopy' for jlink --strip-debug (sudo apt install binutils)")
+        }
+        def input = jpackageInputDir.get().asFile
+        project.delete(input, appImageDir)
+        project.copy {
+            from applicationJars
+            into input
+        }
+        run(["${toolchainHome.get()}/bin/jpackage",
+             '--type', 'app-image',
+             '--name', appName,
+             '--dest', jpackageDir.get().asFile.path,
+             '--input', input.path,
+             '--main-jar', tasks.named('jar').get().archiveFileName.get(),
+             '--main-class', launcherMainClass,
+             '--module-path', javafxJmodsDir.get().asFile.path,
+             '--add-modules', runtimeModules,
+             '--jlink-options', jlinkOptions,
+             '--java-options', '--enable-native-access=javafx.graphics',
+             '--app-version', appVersion,
+             '--vendor', appVendor,
+             '--description', appDescription,
+             '--copyright', "Copyright (c) 2026 ${appVendor}. MIT License.",
+             '--icon', "${packagingDir}/icons/hicolor/256x256/apps/${applicationId}.png"])
+        def launcher = appImageDir.get().file("bin/${appName}").asFile
+        if (!launcher.canExecute() || !appImageDir.get().file('lib/runtime/lib/libglass.so').asFile.exists()) {
+            throw new GradleException('The application image is incomplete: ' + appImageDir.get().asFile)
+        }
+        def leftOver = unusedNativeLibraries.findAll { appImageDir.get().file("lib/runtime/lib/${it}.so").asFile.exists() }
+        if (!leftOver.isEmpty()) {
+            throw new GradleException("jlink did not leave out ${leftOver}; check --exclude-files")
+        }
+    }
+}
+
+// ------------------------------------------------------------------ desktop metadata
+
+tasks.register('linuxMetadata') {
+    group = 'distribution'
+    description = 'Fills the version and release date into the AppStream metadata and the man page'
+    def date = releaseDate
+    inputs.property('version', appVersion)
+    inputs.property('releaseDate', date)
+    inputs.files("${packagingDir}/${applicationId}.metainfo.xml", "${packagingDir}/${packageName}.1")
+    outputs.dir(metadataDir)
+    doLast {
+        def output = metadataDir.get().asFile
+        project.delete(output)
+        output.mkdirs()
+        def metainfo = new File("${packagingDir}/${applicationId}.metainfo.xml").getText('UTF-8')
+        def firstRelease = ~/<release version="[^"]*" date="[^"]*"/
+        if (!(metainfo =~ firstRelease).find()) {
+            throw new GradleException('The AppStream metadata has no <release version="…" date="…"> entry')
+        }
+        metainfo = metainfo.replaceFirst(firstRelease.pattern(),
+                "<release version=\"${appVersion}\" date=\"${date.get()}\"")
+        new File(output, "${applicationId}.metainfo.xml").setText(metainfo, 'UTF-8')
+        def manual = new File("${packagingDir}/${packageName}.1").getText('UTF-8')
+                .replace('@VERSION@', appVersion)
+        new File(output, "${packageName}.1").setText(manual, 'UTF-8')
+    }
+}
+
+tasks.register('stageLinuxRoot') {
+    group = 'distribution'
+    description = 'Assembles the installed file system tree (/usr/…) that the .deb and the snap package'
+    dependsOn 'packageLinuxImage', 'linuxMetadata'
+    inputs.dir(appImageDir)
+    inputs.dir(metadataDir)
+    inputs.dir(packagingDir)
+    outputs.dir(linuxRootDir)
+    doLast {
+        def root = linuxRootDir.get().asFile
+        project.delete(root)
+        project.copy {
+            from appImageDir
+            into new File(root, "usr/lib/${packageName}")
+        }
+        project.copy {
+            from("${packagingDir}/${applicationId}.desktop") { into 'usr/share/applications' }
+            from("${packagingDir}/${applicationId}.xml") { into 'usr/share/mime/packages' }
+            from(metadataDir) {
+                include "${applicationId}.metainfo.xml"
+                into 'usr/share/metainfo'
+            }
+            from("${packagingDir}/icons/hicolor") {
+                include "*/apps/${applicationId}.png"
+                into 'usr/share/icons/hicolor'
+            }
+            from("${packagingDir}/copyright") { into "usr/share/doc/${packageName}" }
+            into root
+        }
+        project.copy {
+            from(metadataDir) { include "${packageName}.1" }
+            into new File(root, 'usr/share/man/man1')
+        }
+        def bin = new File(root, 'usr/bin')
+        bin.mkdirs()
+        Files.createSymbolicLink(new File(bin, packageName).toPath(),
+                java.nio.file.Path.of("../lib/${packageName}/bin/${appName}"))
+    }
+}
+
+// ------------------------------------------------------------------ .deb
+
+tasks.register('packageDeb') {
+    group = 'distribution'
+    description = 'Builds build/packages/logicforge_<version>_<arch>.deb from the staged tree'
+    dependsOn 'stageLinuxRoot'
+    inputs.dir(linuxRootDir)
+    inputs.file("${packagingDir}/build-deb.sh")
+    inputs.property('maintainer', providers.gradleProperty('linuxPackageMaintainer').orElse(''))
+    outputs.dir(distributionsDir)
+    doLast {
+        requireLinux('The .deb package')
+        ['dpkg-deb', 'dpkg-shlibdeps'].each { tool ->
+            if (!commandExists(tool)) {
+                throw new GradleException("packageDeb needs '${tool}' (sudo apt install dpkg-dev)")
+            }
+        }
+        def environment = [PACKAGE_VERSION: appVersion]
+        def maintainer = providers.gradleProperty('linuxPackageMaintainer').getOrNull()
+        if (maintainer) {
+            environment.PACKAGE_MAINTAINER = maintainer
+        }
+        run(['bash', "${packagingDir}/build-deb.sh", linuxRootDir.get().asFile.path,
+             distributionsDir.get().asFile.path], rootProject.projectDir, environment)
+    }
+}
+
+tasks.register('verifyDeb') {
+    group = 'verification'
+    description = 'Checks the .deb: metadata, contents, lintian, desktop entry and AppStream'
+    dependsOn 'packageDeb'
+    doLast {
+        requireLinux('verifyDeb')
+        def debs = distributionsDir.get().asFile.listFiles().findAll { it.name ==~ /${packageName}_.*\.deb/ }
+        if (debs.size() != 1) {
+            throw new GradleException("Expected exactly one .deb in ${distributionsDir.get()}, found ${debs*.name}")
+        }
+        run(['bash', rootProject.file('scripts/verify-deb.sh').path, debs[0].path], rootProject.projectDir)
+    }
+}
+
+// ------------------------------------------------------------------ snap
+
+tasks.register('packageSnap') {
+    group = 'distribution'
+    description = 'Builds the snap with snapcraft (snap/snapcraft.yaml); needs snapcraft installed'
+    doLast {
+        requireLinux('The snap')
+        if (!commandExists('snapcraft')) {
+            throw new GradleException('packageSnap needs snapcraft: sudo snap install snapcraft --classic. '
+                    + 'It is not part of the normal build, so nothing else depends on it.')
+        }
+        run(['snapcraft', 'pack', '--output', distributionsDir.get().asFile.path + '/'], rootProject.projectDir)
+    }
+}
+
+/** The classifier of the JavaFX jars for the build machine, as the openjfx plugin resolves them. */
+String javafxPlatformClassifier() {
+    def arch = System.getProperty('os.arch')
+    return arch == 'aarch64' ? 'linux-aarch64' : 'linux'
+}

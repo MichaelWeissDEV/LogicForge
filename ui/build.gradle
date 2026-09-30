@@ -20,3 +20,48 @@ javafx {
     version = '25.0.1'
     modules = ['javafx.controls', 'javafx.graphics']
 }
+
+/*
+ * Application metadata and icons as resources. The version comes from gradle.properties and
+ * the icons from packaging/linux/icons, so the About dialog, the window icon and the Linux
+ * packages always describe the same build.
+ */
+def buildInfoDirectory = layout.buildDirectory.dir('generated/resources/build-info')
+
+def generateBuildInfo = tasks.register('generateBuildInfo') {
+    description = 'Writes build-info.properties with the application name, id and version'
+    def appVersion = project.version.toString()
+    inputs.property('version', appVersion)
+    outputs.dir(buildInfoDirectory)
+    doLast {
+        def file = buildInfoDirectory.get().file('dev/logicforge/ui/build-info.properties').asFile
+        file.parentFile.mkdirs()
+        file.text = """\
+            |name=LogicForge
+            |applicationId=dev.logicforge.LogicForge
+            |version=${appVersion}
+            |summary=Digital logic simulator
+            |license=MIT
+            |homepage=https://github.com/MichaelWeissDEV/LogicForge
+            |""".stripMargin()
+    }
+}
+
+sourceSets.main.resources.srcDir(generateBuildInfo)
+
+tasks.named('processResources', ProcessResources) {
+    from(rootProject.file('packaging/linux/icons/hicolor')) {
+        include '*/apps/dev.logicforge.LogicForge.png'
+        exclude '512x512/**'
+        eachFile { details ->
+            def size = details.relativePath.segments[0].tokenize('x')[0]
+            details.path = "dev/logicforge/ui/icons/logicforge-${size}.png"
+        }
+        includeEmptyDirs = false
+    }
+}
+
+tasks.named('test') {
+    // AppInfoTest checks the generated build information against the Gradle version.
+    systemProperty 'logicforge.version', project.version.toString()
+}

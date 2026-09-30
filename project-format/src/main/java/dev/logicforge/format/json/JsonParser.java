@@ -3,8 +3,16 @@ package dev.logicforge.format.json;
 /** A small recursive-descent JSON parser, sufficient for LogicForge project files. */
 public final class JsonParser {
 
+    /**
+     * Deepest object/array nesting accepted. Real project files stay in the single digits;
+     * the limit only exists so a damaged or hostile file fails with a parse error instead of
+     * exhausting the stack.
+     */
+    static final int MAX_DEPTH = 256;
+
     private final String text;
     private int position;
+    private int depth;
 
     private JsonParser(String text) {
         this.text = text;
@@ -27,13 +35,24 @@ public final class JsonParser {
         }
         char character = text.charAt(position);
         return switch (character) {
-            case '{' -> readObject();
-            case '[' -> readArray();
+            case '{' -> nested(this::readObject);
+            case '[' -> nested(this::readArray);
             case '"' -> new JsonValue.JsonString(readString());
             case 't', 'f' -> readBoolean();
             case 'n' -> readNull();
             default -> readNumber();
         };
+    }
+
+    private JsonValue nested(java.util.function.Supplier<JsonValue> reader) {
+        if (++depth > MAX_DEPTH) {
+            throw new JsonParseException("Nesting deeper than " + MAX_DEPTH + " levels", position);
+        }
+        try {
+            return reader.get();
+        } finally {
+            depth--;
+        }
     }
 
     private JsonValue readObject() {
@@ -101,6 +120,9 @@ public final class JsonParser {
                 value.append(character);
                 continue;
             }
+            if (position >= text.length()) {
+                throw new JsonParseException("Unterminated string", position);
+            }
             char escape = text.charAt(position++);
             switch (escape) {
                 case '"' -> value.append('"');
@@ -112,7 +134,14 @@ public final class JsonParser {
                 case 'r' -> value.append('\r');
                 case 't' -> value.append('\t');
                 case 'u' -> {
-                    value.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
+                    if (position + 4 > text.length()) {
+                        throw new JsonParseException("Truncated unicode escape", position);
+                    }
+                    try {
+                        value.append((char) Integer.parseInt(text.substring(position, position + 4), 16));
+                    } catch (NumberFormatException failure) {
+                        throw new JsonParseException("Invalid unicode escape", position);
+                    }
                     position += 4;
                 }
                 default -> throw new JsonParseException("Unknown escape '\\" + escape + "'", position);

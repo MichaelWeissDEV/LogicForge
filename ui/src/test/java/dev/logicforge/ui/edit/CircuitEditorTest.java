@@ -632,6 +632,35 @@ class CircuitEditorTest {
         return child;
     }
 
+    @Test
+    void aPushButtonDrivesOneOnlyWhileItIsHeld() {
+        ComponentInstance button = add("source.button", 0, 0);
+        ComponentInstance led = add("output.led", 200, 0);
+        connect(button, "OUT", led, "IN");
+
+        assertEquals(LogicVector.ZERO, valueAt(led, "IN"));
+        editor.handleInputInteraction(button.id(), true);
+        assertEquals(LogicVector.ONE, valueAt(led, "IN"));
+        editor.handleInputInteraction(button.id(), false);
+        assertEquals(LogicVector.ZERO, valueAt(led, "IN"));
+    }
+
+    @Test
+    void anInvertedPushButtonIsActiveLowAndInvertedExactlyOnce() {
+        ComponentInstance button = add("source.button", 0, 0);
+        editor.execute(new ChangeParameterCommand(editor.document(),
+                editor.definition("source.button").orElseThrow(),
+                editor.document().requireComponent(button.id()), LibraryParameters.INVERTED.key(), true));
+        ComponentInstance led = add("output.led", 200, 0);
+        connect(button, "OUT", led, "IN");
+
+        assertEquals(LogicVector.ONE, valueAt(led, "IN"), "released, an active-low button reads 1");
+        editor.handleInputInteraction(button.id(), true);
+        assertEquals(LogicVector.ZERO, valueAt(led, "IN"), "held down it reads 0");
+        editor.handleInputInteraction(button.id(), false);
+        assertEquals(LogicVector.ONE, valueAt(led, "IN"), "released again it reads 1 again");
+    }
+
     private ComponentInstance add(String definitionId, double x, double y) {
         return add(definitionId, x, y,
                 editor.definition(definitionId).orElseThrow().defaultParameters());

@@ -190,11 +190,11 @@ public final class LogicAnalyzerView extends BorderPane {
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        HBox controls = new HBox(6, title, captureButton, clearButton, separator(),
-                zoomFit, zoomOut, zoomLabel, zoomIn, separator(), gridButton, edgeSnapButton,
-                separator(), cursorAButton, cursorBButton, followButton, busModeBox, spacer,
+        // A ToolBar so that controls which do not fit a narrow window go to its overflow menu.
+        javafx.scene.control.ToolBar controls = new javafx.scene.control.ToolBar(title, captureButton,
+                clearButton, separator(), zoomFit, zoomOut, zoomLabel, zoomIn, separator(), gridButton,
+                edgeSnapButton, separator(), cursorAButton, cursorBButton, followButton, busModeBox, spacer,
                 searchField, timeLabel);
-        controls.setAlignment(Pos.CENTER_LEFT);
         controls.getStyleClass().addAll("toolbar", "analyzer-toolbar");
 
         measurementLabel.getStyleClass().add("analyzer-measurement");

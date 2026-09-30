@@ -737,8 +737,11 @@ public final class CircuitEditor {
     /**
      * Handles a user interaction with an input component.
      * For TOGGLE: toggles the state on click.
-     * For MOMENTARY: sets to active state on press, inactive on release.
-     * Respects the inverted parameter for both types.
+     * For MOMENTARY: the input state is 1 while pressed and 0 when released.
+     *
+     * <p>The input state records what the user does, not what the output drives: an
+     * inverted (active-low) button's behaviour inverts the state on its output, so the
+     * editor must not invert it a second time.
      */
     public void handleInputInteraction(UUID componentId, boolean pressed) {
         document.component(componentId).ifPresent(instance -> {
@@ -746,15 +749,7 @@ public final class CircuitEditor {
             if (defOpt.isEmpty()) {
                 return;
             }
-            var def = defOpt.get();
-            var interaction = def.inputInteraction();
-            
-            // Get inverted parameter, defaulting to false if not present
-            boolean inverted = false;
-            if (instance.parameters().asMap().containsKey(LibraryParameters.INVERTED.key())) {
-                inverted = instance.parameters().getBoolean(LibraryParameters.INVERTED);
-            }
-            
+            var interaction = defOpt.get().inputInteraction();
             if (interaction == dev.logicforge.circuit.component.InputInteraction.TOGGLE && !pressed) {
                 // Toggle on click (release after press)
                 inputStateOf(componentId).ifPresent(state -> {
@@ -762,11 +757,7 @@ public final class CircuitEditor {
                     setInput(componentId, current == LogicState.ONE ? LogicState.ZERO : LogicState.ONE);
                 });
             } else if (interaction == dev.logicforge.circuit.component.InputInteraction.MOMENTARY) {
-                // Momentary: pressed = active, released = inactive
-                LogicState value = pressed
-                        ? (inverted ? LogicState.ZERO : LogicState.ONE)
-                        : (inverted ? LogicState.ONE : LogicState.ZERO);
-                setInput(componentId, value);
+                setInput(componentId, pressed ? LogicState.ONE : LogicState.ZERO);
             }
         });
     }

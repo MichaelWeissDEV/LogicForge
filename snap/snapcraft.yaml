@@ -1,0 +1,64 @@
+# Snap package for LogicForge.
+#
+#   snapcraft pack                      (or ./gradlew packageSnap)
+#   sudo snap install ./logicforge_<version>_amd64.snap --dangerous
+#
+# The snap contains exactly the tree the .deb installs (./gradlew stageLinuxRoot): the
+# self-contained jpackage image under usr/lib/logicforge plus the shared desktop entry, icons,
+# MIME type and AppStream metadata from packaging/linux. Version, summary, description and
+# icon are read from that metadata, so nothing here needs editing for a release.
+name: logicforge
+title: LogicForge
+base: core24
+adopt-info: logicforge
+grade: stable
+confinement: strict
+license: MIT
+icon: packaging/linux/icons/hicolor/256x256/apps/dev.logicforge.LogicForge.png
+website: https://github.com/MichaelWeissDEV/LogicForge
+source-code: https://github.com/MichaelWeissDEV/LogicForge
+issues: https://github.com/MichaelWeissDEV/LogicForge/issues
+
+platforms:
+  amd64:
+
+apps:
+  logicforge:
+    command: usr/lib/logicforge/bin/LogicForge
+    common-id: dev.logicforge.LogicForge
+    desktop: usr/share/applications/dev.logicforge.LogicForge.desktop
+    # GTK 3, fonts, theming and the desktop, desktop-legacy, gsettings, wayland, x11 and GPU
+    # plugs. JavaFX draws through GTK's X11 backend, i.e. through XWayland on Wayland sessions.
+    extensions: [gnome]
+    plugs:
+      # Opening and saving .logic projects in the user's home directory ...
+      - home
+      # ... and, once connected by the user, on USB sticks and other removable media.
+      - removable-media
+    # No network plug: LogicForge never opens a network connection.
+
+parts:
+  logicforge:
+    plugin: nil
+    source: .
+    source-type: local
+    build-packages:
+      # jlink, jmod and jpackage for the private runtime; Gradle comes with the wrapper.
+      - openjdk-25-jdk-headless
+      # jlink --strip-debug strips the native libraries with objcopy.
+      - binutils
+    stage-packages:
+      # Linked by JavaFX's glass (XTest) and ES2 pipeline (XF86VidMode); not always part of
+      # the GNOME runtime.
+      - libxtst6
+      - libxxf86vm1
+    override-build: |
+      export JAVA_HOME="/usr/lib/jvm/java-25-openjdk-${CRAFT_ARCH_BUILD_FOR}"
+      ./gradlew --no-daemon --console=plain :app:stageLinuxRoot
+      cp -a app/build/linux-root/. "${CRAFT_PART_INSTALL}/"
+      craftctl set version="$(sed -n 's/^version=//p' gradle.properties)"
+    parse-info:
+      - usr/share/metainfo/dev.logicforge.LogicForge.metainfo.xml
+    prime:
+      # The man page is of no use inside the snap.
+      - -usr/share/man

@@ -1,0 +1,126 @@
+# Builds and verifies the release packages for a version tag (v0.1.0, v1.0.0, ...) and attaches
+# them to a *draft* GitHub release. Publishing the draft, and uploading the snap to the Snap
+# Store, stay manual decisions.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Check version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Version from gradle.properties
+        run: |
+          version="$(sed -n 's/^version=//p' gradle.properties)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match version $version in gradle.properties"
+            exit 1
+          fi
+
+  test:
+    name: Tests, examples and UI check
+    runs-on: ubuntu-24.04
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - uses: gradle/actions/wrapper-validation@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth libgtk-3-0t64 libgl1 libxtst6 libxxf86vm1
+      - run: ./gradlew clean test
+      - run: ./gradlew verifyExamples
+      - run: xvfb-run --auto-servernum ./gradlew :app:uiCheck
+
+  deb:
+    name: App image and .deb
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dpkg-dev binutils lintian desktop-file-utils \
+            appstream shared-mime-info xvfb xauth x11-utils xdg-utils libfile-mimeinfo-perl
+      - name: Build (release date from the tagged commit)
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          ./gradlew packageLinuxImage packageDeb verifyDeb
+      - run: scripts/smoke-test-linux.sh image app/build/jpackage/LogicForge
+      - run: scripts/smoke-test-linux.sh deb app/build/packages/logicforge_*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: app/build/packages/logicforge_*.deb
+          if-no-files-found: error
+
+  snap:
+    name: Snap
+    runs-on: ubuntu-24.04
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - id: build
+        uses: snapcore/action-build@v1
+      - name: Install, start, open/save and remove the snap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb xauth x11-utils
+          scripts/smoke-test-linux.sh snap "${{ steps.build.outputs.snap }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snap
+          path: ${{ steps.build.outputs.snap }}
+          if-no-files-found: error
+
+  draft-release:
+    name: Checksums and draft release
+    runs-on: ubuntu-24.04
+    needs: [version, deb, snap]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum logicforge_*.deb logicforge_*.snap > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: dist/*
+      - name: Attach to a draft release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: LogicForge ${{ needs.version.outputs.version }}
+          files: |
+            dist/logicforge_*.deb
+            dist/logicforge_*.snap
+            dist/SHA256SUMS

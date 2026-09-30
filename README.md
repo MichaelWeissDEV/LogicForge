@@ -99,10 +99,17 @@ navigate backward and forward, and show current `0`/`1`/`X`/`Z` port values and 
 LF-8 inspection includes registers, PC, SP, IR, flags, IE, interrupt state, the current
 instruction, the raw microcode word, decoded ALU operation and active control signals.
 Controls pause/run the shared simulation and step one event, clock edge or instruction
-boundary without mutating CPU state directly.
+boundary without mutating CPU state directly. For an LF-8 the inspector also manages PC,
+memory-read and memory-write breakpoints (add, enable/disable, remove); a hit pauses the run
+and is reported in the Study window's status line.
 
 **Projects.** Circuits are saved as versioned JSON (`.logic`). Loading a saved project
-restores the same circuit structurally, wire for wire.
+restores the same circuit structurally, wire for wire, and every older format version is still
+read. Saving is atomic — the new content is written to a temporary file, flushed and then
+renamed over the project — so a crash or a full disk never leaves a half-written file, and the
+previous version is kept next to it as `<name>.logic.bak`. "Save As" adds the `.logic`
+extension when it is missing. A project can be opened from the command line
+(`logicforge circuit.logic`) or by double-clicking it in the file manager.
 
 ### Current limits
 
@@ -143,13 +150,48 @@ UI  →  Circuit Document  →  Circuit Compiler  →  Simulation Core  →  Sig
 
 `docs/architecture.md` describes the design and the decisions behind it in detail.
 
-## Build and run
+## Installation
 
-LogicForge needs a JDK 25. Everything else — Gradle and JavaFX — is fetched by the wrapper.
+The Linux packages are self-contained: they bring their own Java runtime and JavaFX, so no
+JDK, JavaFX or Gradle has to be installed. They target Ubuntu 24.04 LTS and Debian 13 (and
+work on other amd64 distributions with GTK 3).
+
+**Ubuntu / Debian** (`.deb`):
+
+```bash
+sudo apt install ./logicforge_<version>_amd64.deb
+logicforge                     # or start LogicForge from the application menu
+logicforge circuit.logic       # open a project
+sudo apt remove logicforge     # uninstall
+```
+
+The package installs the application to `/usr/lib/logicforge`, the `logicforge` command, a
+desktop entry, icons, the `application/x-logicforge-project` file type for `*.logic` files and
+AppStream metadata, so software centres list it and file managers open projects with it.
+
+**Snap** (a locally built snap, strict confinement):
+
+```bash
+sudo snap install ./logicforge_<version>_amd64.snap --dangerous
+```
+
+The snap can read and write projects in your home directory; for projects on USB sticks run
+`sudo snap connect logicforge:removable-media`. LogicForge is not in the Snap Store yet.
+
+`logicforge --help` lists the command-line options. Unexpected errors are shown in a dialog
+and logged to `$XDG_STATE_HOME/logicforge/logicforge.log` (default
+`~/.local/state/logicforge/`). LogicForge never opens a network connection and collects no
+data.
+
+## Development
+
+Building from source needs a JDK 25; Gradle and JavaFX are fetched by the wrapper (and the
+wrapper can download a JDK 25 through the Foojay toolchain resolver if none is installed).
 
 ```bash
 ./gradlew :app:run          # start the application
-./gradlew test              # run the whole test suite (headless, no JavaFX needed)
+./gradlew test              # run the whole test suite (headless, no display needed)
+./gradlew verifyExamples    # check that examples/ matches what the generator produces
 ```
 
 The JavaFX dependencies are resolved for the platform you build on, so build on the
@@ -159,9 +201,30 @@ Development helpers:
 
 ```bash
 ./gradlew :app:screenshot   # render the workbench into app/build/screenshot.png
-./gradlew :app:uiCheck      # replay editor gestures against the real UI
+./gradlew :app:uiCheck      # replay editor gestures against the real UI (xvfb-run on CI)
 ./gradlew :app:examples     # regenerate examples/ through the real save path
 ```
+
+## Packaging
+
+The version is set once, in `gradle.properties`; the packages, the AppStream release entry,
+`logicforge --version` and the About dialog all take it from there. Desktop entry, MIME type,
+AppStream metadata and icons live in `packaging/linux/` and are shared by both packages.
+
+```bash
+./gradlew packageLinuxImage # app/build/jpackage/LogicForge — jpackage image with a private runtime
+./gradlew packageDeb        # app/build/packages/logicforge_<version>_amd64.deb
+./gradlew verifyDeb         # dpkg-deb, lintian, desktop-file-validate, appstreamcli
+snapcraft pack              # logicforge_<version>_amd64.snap (or ./gradlew packageSnap)
+```
+
+Packaging needs Linux with `dpkg-dev` and `binutils`; `verifyDeb` also uses `lintian`,
+`desktop-file-utils`, `appstream` and `shared-mime-info`. The snap needs `snapcraft`; it is
+not part of the normal build, so a machine without it builds and tests as usual.
+`scripts/smoke-test-linux.sh image|deb|snap <artifact>` installs a package, starts it, opens,
+saves and reopens a project, checks the file association and uninstalls it again.
+`.github/workflows/release.yml` runs all of this for a `v<version>` tag and attaches the
+`.deb`, the `.snap` and `SHA256SUMS` to a draft release.
 
 ## Controls
 
@@ -183,6 +246,7 @@ Development helpers:
 | Search the palette | ⌘/Ctrl `F` |
 | Zoom in / out / reset | ⌘/Ctrl `+` `-` `0` |
 | Open live Study view | Click **Study** in the toolbar |
+| About LogicForge | **Help** → **About LogicForge** |
 
 ## Examples
 
@@ -205,10 +269,9 @@ The simulator, editor, hierarchy compiler, physical chip pipeline, programmable 
 (including `GATE_LEVEL`), vector interrupts, MMIO, timer, structural library, logic analyzer
 trigger and Study workflow are implemented and covered by headless tests, JavaFX interaction
 checks and (for LF-8) instruction-level differential tests across all three implementation
-modes. A headless breakpoint engine (PC, memory read, memory write) exists but is not yet
-wired into the Study window's UI. Reusable component metadata and truth tables, analyzer
-performance at very long captures, and richer physical package models (more 7400-series
-parts, memory ICs) are the next intended layers.
+modes, including PC and memory breakpoints in the Study window. Reusable component metadata
+and truth tables, analyzer performance at very long captures, and richer physical package
+models (more 7400-series parts, memory ICs) are the next intended layers.
 
 ## License
 

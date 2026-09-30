@@ -35,8 +35,8 @@ import java.util.UUID;
  *
  * <p>Every file carries a {@code formatVersion}. Version 1 contains whole-port wires;
  * version 2 adds bit endpoints and port presentation; version 3 adds range endpoints;
- * version 4 adds stable, non-display semantic component roles.
- * The reader accepts every version.
+ * version 4 adds stable, non-display semantic component roles; version 5 adds physical chip
+ * packages and wires to their pins. The reader accepts every version.
  */
 public final class ProjectFormat {
 
@@ -46,6 +46,12 @@ public final class ProjectFormat {
     /** File extension used by the file choosers. */
     public static final String EXTENSION = "logic";
 
+    /**
+     * Upper bound for a project file. The largest shipped example is well under 2 MiB; the
+     * limit only stops an accidentally chosen huge file from exhausting memory.
+     */
+    static final long MAX_FILE_BYTES = 256L * 1024 * 1024;
+
     private ProjectFormat() {
     }
 
@@ -53,12 +59,44 @@ public final class ProjectFormat {
     // Writing
     // ------------------------------------------------------------------
 
+    /**
+     * Writes the project to {@code file}. The file is replaced atomically: a failed or
+     * interrupted save leaves the previous content untouched.
+     */
     public static void save(CircuitProject project, Path file) {
+        save(project, file, AtomicFileWriter.Backup.NONE);
+    }
+
+    /**
+     * Writes the project to {@code file} atomically and, with
+     * {@link AtomicFileWriter.Backup#KEEP_PREVIOUS}, keeps the version it replaces as
+     * {@code <file>.bak}.
+     */
+    public static void save(CircuitProject project, Path file, AtomicFileWriter.Backup backup) {
+        // Serialise first: nothing on disk is touched until the complete content exists.
+        byte[] content = toJson(project).getBytes(StandardCharsets.UTF_8);
         try {
-            Files.writeString(file, toJson(project), StandardCharsets.UTF_8);
-        } catch (IOException failure) {
-            throw new ProjectFormatException("Could not write " + file, failure);
+            AtomicFileWriter.write(file, content, backup);
+        } catch (IOException | UncheckedIOException | SecurityException failure) {
+            throw new ProjectFormatException("Could not write " + file + ": " + describe(failure),
+                    failure);
         }
+    }
+
+    /**
+     * The file a "Save As" to {@code chosen} should write: {@code my-project} becomes
+     * {@code my-project.logic}, while a name that already ends in {@code .logic} (in any case)
+     * is kept as it is.
+     */
+    public static Path withExtension(Path chosen) {
+        String name = chosen.getFileName().toString();
+        String suffix = "." + EXTENSION;
+        if (name.length() > suffix.length()
+                && name.regionMatches(true, name.length() - suffix.length(), suffix, 0, suffix.length())) {
+            return chosen;
+        }
+        String base = name.endsWith(".") ? name.substring(0, name.length() - 1) : name;
+        return chosen.resolveSibling(base + suffix);
     }
 
     public static String toJson(CircuitProject project) {
@@ -197,11 +235,37 @@ public final class ProjectFormat {
     // ------------------------------------------------------------------
 
     public static CircuitProject load(Path file) {
+        String text;
         try {
-            return fromJson(Files.readString(file, StandardCharsets.UTF_8), fileName(file));
-        } catch (IOException | UncheckedIOException failure) {
-            throw new ProjectFormatException("Could not read " + file, failure);
+            if (!Files.exists(file)) {
+                throw new ProjectFormatException("The file " + file + " does not exist");
+            }
+            if (!Files.isRegularFile(file)) {
+                throw new ProjectFormatException(file + " is not a file");
+            }
+            if (Files.size(file) > MAX_FILE_BYTES) {
+                throw new ProjectFormatException(file.getFileName() + " is too large to be a"
+                        + " LogicForge project (" + Files.size(file) / (1024 * 1024) + " MiB)");
+            }
+            text = Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException | UncheckedIOException | SecurityException failure) {
+            throw new ProjectFormatException("Could not read " + file + ": " + describe(failure),
+                    failure);
         }
+        return fromJson(text, fileName(file));
+    }
+
+    /** A short reason for an I/O failure, e.g. "permission denied" rather than a class name. */
+    private static String describe(Exception failure) {
+        return switch (failure) {
+            case java.nio.file.AccessDeniedException ignored -> "permission denied";
+            case java.nio.file.NoSuchFileException ignored -> "the file or its folder does not exist";
+            case java.nio.charset.CharacterCodingException ignored -> "the file is not UTF-8 text";
+            case java.nio.file.FileSystemException fileSystem when fileSystem.getReason() != null ->
+                    fileSystem.getReason();
+            default -> failure.getMessage() != null ? failure.getMessage()
+                    : failure.getClass().getSimpleName();
+        };
     }
 
     public static CircuitProject fromJson(String text, String fallbackName) {
@@ -216,7 +280,7 @@ public final class ProjectFormat {
             throw new ProjectFormatException("A project file must contain a JSON object");
         }
         int version = root.integer("formatVersion", 0);
-        if (version == 0) {
+        if (version < 1) {
             throw new ProjectFormatException("Missing formatVersion: this is not a LogicForge project");
         }
         if (version > FORMAT_VERSION) {
@@ -224,6 +288,21 @@ public final class ProjectFormat {
                     + " (format " + version + ", this build reads up to " + FORMAT_VERSION + ")");
         }
 
+        try {
+            return readProject(root, version, fallbackName);
+        } catch (ProjectFormatException failure) {
+            throw failure;
+        } catch (RuntimeException damaged) {
+            // The model rejects inconsistent content (a duplicate id, a 45° rotation, a chip
+            // without a designator) with ordinary argument exceptions. For a file on disk those
+            // all mean the same thing to the user: the project is damaged.
+            throw new ProjectFormatException("This project file is damaged: " + damaged.getMessage(),
+                    damaged);
+        }
+    }
+
+    private static CircuitProject readProject(JsonValue.JsonObject root, int version,
+                                              String fallbackName) {
         CircuitProject project = new CircuitProject(root.string("name", fallbackName));
         List<JsonValue> circuits = root.array("circuits");
         if (circuits.isEmpty()) {

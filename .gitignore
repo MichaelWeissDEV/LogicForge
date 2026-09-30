@@ -6,3 +6,15 @@ build/
 *.iml
 out/
 .java25.env
+.vscode/
+
+# Backups LogicForge keeps next to saved projects
+*.logic.bak
+
+# Packaging output
+*.deb
+*.snap
+/parts/
+/stage/
+/prime/
+/snap/.snapcraft/

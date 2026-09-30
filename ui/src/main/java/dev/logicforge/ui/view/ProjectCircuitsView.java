@@ -11,6 +11,7 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 
@@ -38,6 +39,7 @@ public final class ProjectCircuitsView extends VBox {
         navigation.setPadding(new Insets(4, 8, 4, 8));
 
         circuits.setPrefHeight(110);
+        circuits.getStyleClass().add("palette-list");
         circuits.setCellFactory(ignored -> new ListCell<>() {
             @Override protected void updateItem(String name, boolean empty) {
                 super.updateItem(name, empty);
@@ -58,6 +60,12 @@ public final class ProjectCircuitsView extends VBox {
         create.setOnAction(event -> promptNew());
         rename.setOnAction(event -> promptRename());
         delete.setOnAction(event -> deleteSelected());
+        for (Button action : new Button[]{create, rename, delete}) {
+            action.setMinWidth(Region.USE_PREF_SIZE);
+        }
+        create.setTooltip(new javafx.scene.control.Tooltip("Create a new reusable circuit in this project"));
+        rename.setTooltip(new javafx.scene.control.Tooltip("Rename the selected circuit"));
+        delete.setTooltip(new javafx.scene.control.Tooltip("Delete the selected circuit"));
         HBox actions = new HBox(6, create, rename, delete);
         actions.setPadding(new Insets(4, 8, 8, 8));
 
