@@ -1,0 +1,18 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=LogicForge
+GenericName=Digital Logic Simulator
+GenericName[de]=Digitaler Logiksimulator
+Comment=Design and simulate digital logic circuits
+Comment[de]=Digitale Logikschaltungen entwerfen und simulieren
+Exec=logicforge %f
+Icon=dev.logicforge.LogicForge
+Terminal=false
+Categories=Education;Electronics;Engineering;
+Keywords=logic;circuit;gate;simulator;digital;electronics;CPU;waveform;
+Keywords[de]=Logik;Schaltung;Gatter;Simulator;digital;Elektronik;CPU;
+MimeType=application/x-logicforge-project;
+StartupNotify=true
+# JavaFX names the window after the Application class; see LogicForgeApp.
+StartupWMClass=dev.logicforge.app.LogicForgeApp

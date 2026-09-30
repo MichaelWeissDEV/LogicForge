@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata for LogicForge, shared by the .deb and the snap.
+
+  The first <release> always describes the build that ships this file: the build fills in its
+  version from gradle.properties and its date from -PreleaseDate, SOURCE_DATE_EPOCH or the
+  build day. Older releases may be listed below it by hand.
+-->
+<component type="desktop-application">
+  <id>dev.logicforge.LogicForge</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>LogicForge</name>
+  <summary>Design and simulate digital logic circuits</summary>
+  <developer id="dev.logicforge">
+    <name>LogicForge contributors</name>
+  </developer>
+
+  <description>
+    <p>
+      LogicForge is a digital logic simulator for learning, teaching and experimenting with
+      hardware. Circuits are drawn in an interactive editor and simulated with four-state
+      signals — 0, 1, X (unknown) and Z (not driven) — so tri-state buses and driver
+      conflicts behave the way they do in real hardware.
+    </p>
+    <ul>
+      <li>Gates, latches, flip-flops, registers, counters, multiplexers, adders, an ALU, RAM and ROM</li>
+      <li>Reusable subcircuits that can be opened and edited in context</li>
+      <li>Real 7400-series chips placed and wired as physical DIP packages</li>
+      <li>A logic analyzer with edge and value triggers</li>
+      <li>The programmable LF-8 educational computer with an assembler, interrupts and memory-mapped I/O</li>
+      <li>A Study window to step through a running circuit, including breakpoints on the LF-8</li>
+    </ul>
+    <p>
+      Projects are stored as versioned, human-readable JSON files. LogicForge works entirely
+      offline and collects no data.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">dev.logicforge.LogicForge.desktop</launchable>
+
+  <categories>
+    <category>Education</category>
+    <category>Electronics</category>
+    <category>Engineering</category>
+  </categories>
+
+  <keywords>
+    <keyword>logic</keyword>
+    <keyword>circuit</keyword>
+    <keyword>gate</keyword>
+    <keyword>simulator</keyword>
+    <keyword>digital</keyword>
+    <keyword>electronics</keyword>
+    <keyword>CPU</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/MichaelWeissDEV/LogicForge</url>
+  <url type="bugtracker">https://github.com/MichaelWeissDEV/LogicForge/issues</url>
+  <url type="vcs-browser">https://github.com/MichaelWeissDEV/LogicForge</url>
+
+  <provides>
+    <binary>logicforge</binary>
+    <mediatype>application/x-logicforge-project</mediatype>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-09-30"/>
+  </releases>
+</component>

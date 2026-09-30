@@ -213,7 +213,8 @@ independent observers on the same simulation, reacting to the exact same push-ba
 stream — which is what makes a trigger delta-cycle accurate: it sees every transition the
 waveform is built from, including a glitch that settles back within one physical time step,
 never a periodic sample that could land between two of them. A headless `BreakpointEngine`
-(PC, memory-read and memory-write breakpoints) hooks into the same mechanism.
+(PC, memory-read and memory-write breakpoints) hooks into the same mechanism; the Study
+window's inspector adds, toggles and removes them for an LF-8.
 
 ## Component model
 
@@ -342,6 +343,29 @@ turned out to need rework to carry the weight actually put on them:
 - Transistor networks and physical propagation timing: a placed 74HC00 simulates as four
   ideal NAND gates on the same delta-cycle model as everything else, not as a timing-accurate
   model of the actual part.
-- The headless `BreakpointEngine` has no Study-window UI yet.
-- The logic analyzer has no viewport-based segment culling; a very long capture rebuilds its
-  full waveform-segment list on every redraw.
+- The logic analyzer only draws the segments inside the viewport, but it still derives them
+  from the full recorded trace (at most 100 000 transitions per signal) on every redraw; an
+  index into the trace would make very long captures cheaper to scroll.
+
+## Desktop application and packaging
+
+The `app` module is the only place that knows it runs as a desktop program. `Main` answers
+`--version`/`--help`, installs the uncaught-exception handler (log file under
+`$XDG_STATE_HOME/logicforge`, dialog with folded-away details) and launches `LogicForgeApp`,
+which opens a file given on the command line through the same `ProjectController.open(Path)`
+that File → Open uses. `AppDirectories` resolves the XDG directories; nothing outside `app`,
+`ui` and `packaging/` is aware of Linux.
+
+Persistence stays in `project-format`: `ProjectFormat.save` serialises first and then writes
+through `AtomicFileWriter` (temporary file in the same folder, `fsync`, atomic rename with a
+plain replacing move as fallback, optional `.bak` of the previous version). Loading turns any
+inconsistency in a file into a `ProjectFormatException` with a readable message.
+
+`gradle/linux-packaging.gradle` builds a jpackage app image whose private runtime is linked by
+jlink from the JDK and from jmods made out of the JavaFX Maven jars, so JavaFX's native
+libraries sit in the runtime's `lib/` instead of being unpacked into the user's home at start.
+AWT's native libraries are left out (JavaFX never loads them), which keeps the package free of
+distribution-specific dependencies. `stageLinuxRoot` lays out the installed tree once; the
+`.deb` (`packaging/linux/build-deb.sh`) and the snap (`snap/snapcraft.yaml`) both package that
+same tree, with the desktop entry, MIME type, icons and AppStream metadata from
+`packaging/linux/`.

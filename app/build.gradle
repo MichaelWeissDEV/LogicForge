@@ -15,7 +15,8 @@ javafx {
 }
 
 application {
-    mainClass = 'dev.logicforge.app.LogicForgeApp'
+    applicationName = 'logicforge'
+    mainClass = 'dev.logicforge.app.Main'
     // JavaFX loads its own native libraries; granting native access keeps start-up quiet.
     applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics']
 }
@@ -123,4 +124,12 @@ tasks.register('verifyExamples') {
                     + '. Run ./gradlew :app:examples and commit the results.')
         }
     }
+}
+
+// Self-contained Linux packages: packageLinuxImage, packageDeb, verifyDeb, packageSnap.
+apply from: rootProject.file('gradle/linux-packaging.gradle')
+
+tasks.named('test') {
+    // DesktopIntegrationFilesTest checks packaging/linux against the code.
+    systemProperty 'logicforge.packaging', rootProject.file('packaging/linux').absolutePath
 }

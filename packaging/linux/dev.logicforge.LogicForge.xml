@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shared MIME info for LogicForge project files (freedesktop.org shared-mime-info). -->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-logicforge-project">
+    <comment>LogicForge project</comment>
+    <comment xml:lang="de">LogicForge-Projekt</comment>
+    <sub-class-of type="application/json"/>
+    <icon name="dev.logicforge.LogicForge"/>
+    <glob pattern="*.logic"/>
+    <magic priority="60">
+      <match type="string" offset="0:256" value="&quot;application&quot;: &quot;LogicForge&quot;"/>
+    </magic>
+  </mime-type>
+</mime-info>

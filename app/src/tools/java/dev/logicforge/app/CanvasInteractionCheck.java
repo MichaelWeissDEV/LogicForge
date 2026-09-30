@@ -203,34 +203,34 @@ public final class CanvasInteractionCheck {
         ComponentInstance button = place(canvas, editor, "source.button", -200, -200);
         ComponentInstance buttonLed = place(canvas, editor, "output.led", -100, -200);
         dragBetweenPorts(canvas, editor, button, "OUT", buttonLed, "IN");
-        
+
         // Verify initial state: button is released, LED is off
-        check("push button initially off", 
+        check("push button initially off",
                 value(editor, buttonLed).equals(LogicVector.ZERO));
-        
+
         // Press and hold the button
         var buttonScreen = viewport.worldToScreen(button.position());
         firePress(canvas, buttonScreen.x(), buttonScreen.y());
-        check("push button pressed turns LED on", 
+        check("push button pressed turns LED on",
                 value(editor, buttonLed).equals(LogicVector.ONE));
-        
+
         // Release the button
         fireRelease(canvas, buttonScreen.x(), buttonScreen.y());
-        check("push button released turns LED off", 
+        check("push button released turns LED off",
                 value(editor, buttonLed).equals(LogicVector.ZERO));
 
         // 23: Dirty state must not be set by clicking components
         editor.markSaved();
         check("editor not dirty after markSaved", !editor.isDirty());
-        
+
         // Click on a non-input component (AND gate)
         clickComponent(canvas, viewport, gate);
         check("clicking AND gate does not make project dirty", !editor.isDirty());
-        
+
         // Click on a toggle switch
         clickComponent(canvas, viewport, switchA);
         check("clicking toggle switch does not make project dirty", !editor.isDirty());
-        
+
         // Press and release push button
         firePress(canvas, buttonScreen.x(), buttonScreen.y());
         fireRelease(canvas, buttonScreen.x(), buttonScreen.y());
@@ -239,24 +239,24 @@ public final class CanvasInteractionCheck {
         runChipChecks(workbench, canvas, editor, viewport);
         runTriggerChecks(workbench, editor, switchA);
 
-        // 24-26: Inverted push button test - TODO: Fix parameter propagation to behavior
-        // ComponentInstance invButton = place(canvas, editor, "source.button", -200, -300);
-        // var invButtonDef = editor.definitionOf(invButton).orElseThrow();
-        // var invButtonInstance = editor.document().requireComponent(invButton.id());
-        // editor.execute(new dev.logicforge.ui.command.ChangeParameterCommand(
-        //         editor.document(), invButtonDef, invButtonInstance,
-        //         dev.logicforge.library.LibraryParameters.INVERTED.key(), true));
-        // ComponentInstance invLed = place(canvas, editor, "output.led", -100, -300);
-        // dragBetweenPorts(canvas, editor, invButton, "OUT", invLed, "IN");
-        // check("inverted push button initially on", 
-        //         value(editor, invLed).equals(LogicVector.ONE));
-        // var invButtonScreen = viewport.worldToScreen(invButton.position());
-        // firePress(canvas, invButtonScreen.x(), invButtonScreen.y());
-        // check("inverted push button pressed turns LED off", 
-        //         value(editor, invLed).equals(LogicVector.ZERO));
-        // fireRelease(canvas, invButtonScreen.x(), invButtonScreen.y());
-        // check("inverted push button released turns LED on", 
-        //         value(editor, invLed).equals(LogicVector.ONE));
+        // 24-26: an inverted (active-low) push button reads 1 until it is pressed.
+        ComponentInstance invButton = place(canvas, editor, "source.button", -200, -300);
+        var invButtonDef = editor.definitionOf(invButton).orElseThrow();
+        var invButtonInstance = editor.document().requireComponent(invButton.id());
+        editor.execute(new dev.logicforge.ui.command.ChangeParameterCommand(
+                editor.document(), invButtonDef, invButtonInstance,
+                dev.logicforge.library.LibraryParameters.INVERTED.key(), true));
+        ComponentInstance invLed = place(canvas, editor, "output.led", -100, -300);
+        dragBetweenPorts(canvas, editor, invButton, "OUT", invLed, "IN");
+        check("inverted push button initially on",
+                value(editor, invLed).equals(LogicVector.ONE));
+        var invButtonScreen = viewport.worldToScreen(invButton.position());
+        firePress(canvas, invButtonScreen.x(), invButtonScreen.y());
+        check("inverted push button pressed turns LED off",
+                value(editor, invLed).equals(LogicVector.ZERO));
+        fireRelease(canvas, invButtonScreen.x(), invButtonScreen.y());
+        check("inverted push button released turns LED on",
+                value(editor, invLed).equals(LogicVector.ONE));
     }
 
     /**

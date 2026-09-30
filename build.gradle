@@ -5,7 +5,8 @@ plugins {
 
 allprojects {
     group = 'dev.logicforge'
-    version = '0.1.0'
+    // Set once, in gradle.properties.
+    version = rootProject.property('version')
 }
 
 subprojects {

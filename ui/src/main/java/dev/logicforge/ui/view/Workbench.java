@@ -22,6 +22,8 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.ToolBar;
+import javafx.scene.control.Tooltip;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
@@ -51,11 +53,20 @@ public final class Workbench extends BorderPane {
     private final SimulationPlaybackController playback;
     private final SplitPane verticalSplit = new SplitPane();
 
-    private final Button undoButton = toolButton("Undo");
-    private final Button redoButton = toolButton("Redo");
+    private static final double LEFT_PANEL_MIN_WIDTH = 200;
+
+    /** How the platform names the shortcut modifier in tooltips. */
+    private static final String SHORTCUT =
+            System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                    ? "Cmd" : "Ctrl";
+
+    private final Button undoButton = toolButton("Undo", "Undo the last change (" + SHORTCUT + "+Z)");
+    private final Button redoButton = toolButton("Redo", "Redo the last undone change ("
+            + SHORTCUT + "+Shift+Z)");
     private final ToggleButton runButton = new ToggleButton("Pause");
-    private final Button stepButton = toolButton("Step");
-    private final Button stepTimeButton = toolButton("Step Time");
+    private final Button stepButton = toolButton("Step", "Process the next simulation event");
+    private final Button stepTimeButton = toolButton("Step Time",
+            "Advance the simulation to the next scheduled time");
     private final ComboBox<SimulationPlaybackController.Speed> speedBox =
             new ComboBox<>(javafx.collections.FXCollections.observableArrayList(
                     SimulationPlaybackController.Speed.values()));
@@ -67,6 +78,7 @@ public final class Workbench extends BorderPane {
         this.palette = new PaletteView(editor, canvas);
         this.statusBar = new StatusBarView(editor, canvas.viewport());
         this.projects = new ProjectController(editor, stage, statusBar::showMessage);
+        projects.setAfterDialog(canvas::requestFocus);
         this.analyzerController = new LogicAnalyzerController(editor);
         this.analyzerView = new LogicAnalyzerView(analyzerController, this::showAnalyzerSignal);
         this.playback = new SimulationPlaybackController(editor);
@@ -90,6 +102,8 @@ public final class Workbench extends BorderPane {
     private SplitPane buildContent() {
         VBox left = new VBox(new ProjectCircuitsView(editor), palette);
         VBox.setVgrow(palette, Priority.ALWAYS);
+        // Wide enough for the circuit buttons even when the window is at its minimum size.
+        left.setMinWidth(LEFT_PANEL_MIN_WIDTH);
         SplitPane split = new SplitPane(left, canvas,
                 new InspectorView(editor, this::inspectInternals, this::studyImplementation));
         split.setOrientation(Orientation.HORIZONTAL);
@@ -152,61 +166,87 @@ public final class Workbench extends BorderPane {
                 editor.navigateToRuntimeEndpoint(location.parentPath(), location.endpoint()));
     }
 
-    private HBox buildToolbar() {
+    /**
+     * A {@link ToolBar} rather than a plain box: when the window is too narrow for every
+     * control, the ones that do not fit move into its overflow menu instead of all of them
+     * being squeezed until no label is readable.
+     */
+    private ToolBar buildToolbar() {
         Label title = new Label("LogicForge");
         title.getStyleClass().add("app-title");
 
-        Button newButton = toolButton("New");
+        Button newButton = toolButton("New", "Start a new, empty circuit (" + SHORTCUT + "+N)");
         newButton.setOnAction(event -> projects.newProject());
-        Button openButton = toolButton("Open");
+        Button openButton = toolButton("Open", "Open a LogicForge project (" + SHORTCUT + "+O)");
         openButton.setOnAction(event -> projects.open());
         MenuButton examplesButton = examplesMenu();
-        Button saveButton = toolButton("Save");
+        Button saveButton = toolButton("Save", "Save the project (" + SHORTCUT + "+S)");
         saveButton.setOnAction(event -> projects.save());
+        Button saveAsButton = toolButton("Save As",
+                "Save the project under a new name (" + SHORTCUT + "+Shift+S)");
+        saveAsButton.setOnAction(event -> projects.saveAs());
 
         undoButton.setOnAction(event -> editor.undo());
         redoButton.setOnAction(event -> editor.redo());
 
         runButton.getStyleClass().add("tool-button");
+        runButton.setTooltip(new Tooltip("Pause or resume the simulation"));
         runButton.setOnAction(event -> toggleRunning());
         stepButton.setOnAction(event -> editor.step());
         stepTimeButton.setOnAction(event -> editor.stepTime());
-        Button resetButton = toolButton("Reset");
+        Button resetButton = toolButton("Reset", "Reset the simulation to its initial state");
         resetButton.setOnAction(event -> editor.resetSimulation());
-        Button studyButton = toolButton("Study This Circuit");
+        Button studyButton = toolButton("Study",
+                "Open a read-only Study window attached to the running circuit");
         studyButton.setOnAction(event -> new StudyWindow(StudyTarget.live(editor)).show());
 
         speedBox.setValue(SimulationPlaybackController.Speed.REALTIME);
         speedBox.getStyleClass().add("tool-button");
+        speedBox.setTooltip(new Tooltip("Simulation speed while running"));
         speedBox.setOnAction(event -> playback.setSpeed(speedBox.getValue()));
 
         analyzerToggle.getStyleClass().add("tool-button");
+        analyzerToggle.setTooltip(new Tooltip("Show or hide the logic analyzer"));
         analyzerToggle.setOnAction(event -> toggleAnalyzer());
 
-        Button zoomOut = toolButton("−");
+        Button zoomOut = toolButton("−", "Zoom out (" + SHORTCUT + "+-)");
         zoomOut.setOnAction(event -> canvas.zoomOut());
-        Button zoomIn = toolButton("+");
+        Button zoomIn = toolButton("+", "Zoom in (" + SHORTCUT + "++)");
         zoomIn.setOnAction(event -> canvas.zoomIn());
-        Button zoomFit = toolButton("Fit");
+        Button zoomFit = toolButton("Fit", "Zoom to fit the whole circuit");
         zoomFit.setOnAction(event -> canvas.zoomToFit());
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox toolbar = new HBox(title,
-                newButton, openButton, examplesButton, saveButton, separator(),
+        ToolBar toolbar = new ToolBar(title,
+                newButton, openButton, examplesButton, saveButton, saveAsButton, separator(),
                 undoButton, redoButton, separator(),
                 runButton, stepButton, stepTimeButton, resetButton, speedBox, studyButton, separator(),
                 analyzerToggle,
                 spacer,
-                zoomOut, zoomIn, zoomFit);
+                zoomOut, zoomIn, zoomFit, helpMenu());
         toolbar.getStyleClass().add("toolbar");
         return toolbar;
+    }
+
+    private MenuButton helpMenu() {
+        MenuButton button = new MenuButton("Help");
+        button.getStyleClass().add("tool-button");
+        button.setTooltip(new Tooltip("Help and information about LogicForge"));
+        MenuItem about = new MenuItem("About LogicForge");
+        about.setOnAction(event -> {
+            AboutDialog.show(getScene() == null ? null : getScene().getWindow());
+            canvas.requestFocus();
+        });
+        button.getItems().add(about);
+        return button;
     }
 
     private MenuButton examplesMenu() {
         MenuButton button = new MenuButton("Examples");
         button.getStyleClass().add("tool-button");
+        button.setTooltip(new Tooltip("Open one of the bundled example circuits"));
         button.getItems().addAll(
                 exampleCategory("Basic Logic", "logic",
                         "gates", "mux", "decoder"),
@@ -216,6 +256,8 @@ public final class Workbench extends BorderPane {
                         "half-adder", "full-adder", "ripple-adder8", "alu8"),
                 exampleCategory("Memory", "memory",
                         "register8", "register-file8x8", "ram", "rom"),
+                exampleCategory("Physical ICs", "physical-ic",
+                        "74hc-nand", "74hc-half-adder", "74hc283-adder"),
                 exampleCategory("Processors", "lf8",
                         "lf8-fast", "lf8-structural", "lf8-gate-level"));
         return button;
@@ -272,6 +314,12 @@ public final class Workbench extends BorderPane {
         return button;
     }
 
+    private static Button toolButton(String text, String tooltip) {
+        Button button = toolButton(text);
+        button.setTooltip(new Tooltip(tooltip));
+        return button;
+    }
+
     private static Region separator() {
         Region separator = new Region();
         separator.getStyleClass().add("toolbar-separator");
@@ -324,6 +372,11 @@ public final class Workbench extends BorderPane {
 
     public CircuitEditor editor() {
         return editor;
+    }
+
+    /** New, Open and Save of this window, including opening a file passed on the command line. */
+    public ProjectController projects() {
+        return projects;
     }
 
     public CircuitCanvasView canvas() {

@@ -1,0 +1,13 @@
+# LogicForge ships a private, self-contained Java runtime and JavaFX in /usr/lib/logicforge.
+
+# OpenJFX's image loader is built with its own static copy of the IJG JPEG code; it is part
+# of the upstream JavaFX binary and cannot be replaced by the system libjpeg.
+logicforge: embedded-library libjpeg [usr/lib/logicforge/lib/runtime/lib/libjavafx_iio.so]
+
+# The application jars belong to the private runtime, not to the system-wide Java library
+# path in /usr/share/java, and are only ever loaded by LogicForge's own launcher.
+logicforge: jar-not-in-usr-share [usr/lib/logicforge/lib/app/*.jar]
+logicforge: jar-not-in-usr-share [usr/lib/logicforge/lib/runtime/lib/jrt-fs.jar]
+
+# Java 25 class files (version 69); older lintian releases do not know that version yet.
+logicforge: unknown-java-class-version * [usr/lib/logicforge/lib/app/*.jar]
