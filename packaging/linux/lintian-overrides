@@ -4,6 +4,14 @@
 # of the upstream JavaFX binary and cannot be replaced by the system libjpeg.
 logicforge: embedded-library libjpeg [usr/lib/logicforge/lib/runtime/lib/libjavafx_iio.so]
 
+# The private JDK runtime that jlink assembles statically links its own copies of freetype
+# (font rendering) and zlib (the launcher and the zip filesystem) into its native libraries;
+# that is how every jlink-produced runtime image ships, upstream, and is not something a
+# downstream package can relink against the system libraries.
+logicforge: embedded-library freetype [usr/lib/logicforge/lib/runtime/lib/libfreetype.so]
+logicforge: embedded-library zlib [usr/lib/logicforge/lib/runtime/lib/libjli.so]
+logicforge: embedded-library zlib [usr/lib/logicforge/lib/runtime/lib/libzip.so]
+
 # The application jars belong to the private runtime, not to the system-wide Java library
 # path in /usr/share/java, and are only ever loaded by LogicForge's own launcher.
 logicforge: jar-not-in-usr-share [usr/lib/logicforge/lib/app/*.jar]
