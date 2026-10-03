@@ -8,10 +8,9 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version 
 
 ## [Unreleased]
 
-## [0.1.0]
+## [1.0.0] - 2026-10-03
 
-First version prepared for distribution as a Linux desktop application. It has not been
-tagged or published yet.
+First tagged release: a self-contained Linux desktop application.
 
 ### Added
 
@@ -49,5 +48,5 @@ tagged or published yet.
 - Saving a memory image no longer overwrites the target file non-atomically, and loading one
   reads at most as much as fits into the memory.
 
-[Unreleased]: https://github.com/MichaelWeissDEV/LogicForge/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/MichaelWeissDEV/LogicForge/releases/tag/v0.1.0
+[Unreleased]: https://github.com/MichaelWeissDEV/LogicForge/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/MichaelWeissDEV/LogicForge/releases/tag/v1.0.0

@@ -1,5 +1,9 @@
 # LogicForge
 
+[![Tests](https://github.com/MichaelWeissDEV/LogicForge/actions/workflows/test.yml/badge.svg)](https://github.com/MichaelWeissDEV/LogicForge/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/MichaelWeissDEV/LogicForge)](https://github.com/MichaelWeissDEV/LogicForge/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 LogicForge is a modern cross-platform digital logic simulator written in Java. It combines
 an extensible circuit model, a deterministic simulation core, an interactive graphical
 editor and a programmable educational 8-bit computer. Circuits use four-state digital
