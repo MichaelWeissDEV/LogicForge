@@ -217,8 +217,8 @@ public final class Simulation {
                 case WakeupEvent wakeup -> {
                     if (pendingWakeupAt[wakeup.componentId()] == wakeup.time()) {
                         pendingWakeupAt[wakeup.componentId()] = -1;
+                        toEvaluate.add(wakeup.componentId());
                     }
-                    toEvaluate.add(wakeup.componentId());
                 }
             }
         }

@@ -12,6 +12,13 @@ follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version 
 
 First tagged release: a self-contained Linux desktop application.
 
+### Fixed
+
+- A component that rescheduled its own wakeup to a different time while an earlier one was
+  still pending could be evaluated an extra time, at the stale original time. No shipped
+  component triggers this today (only `ClockBehavior` uses wakeups, and it never reschedules
+  while one is outstanding), but the scheduler itself no longer has the bug.
+
 ### Added
 
 - Self-contained Linux packages: a jpackage application image with a private Java runtime and
